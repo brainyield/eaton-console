@@ -28,9 +28,14 @@ interface AssignmentData {
   is_active: boolean
 }
 
+interface TeachersProps {
+  selectedTeacherId?: string | null
+  onSelectTeacher?: (id: string | null) => void
+}
+
 type TabFilter = 'all' | 'active' | 'reserve'
 
-export default function Teachers() {
+export default function Teachers({ selectedTeacherId, onSelectTeacher }: TeachersProps) {
   const [teachers, setTeachers] = useState<Teacher[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
@@ -40,6 +45,46 @@ export default function Teachers() {
   useEffect(() => {
     fetchTeachers()
   }, [])
+
+  // Handle external selection (from CommandPalette)
+  useEffect(() => {
+    if (selectedTeacherId && teachers.length > 0) {
+      const teacher = teachers.find(t => t.id === selectedTeacherId)
+      if (teacher) {
+        setSelectedTeacher(teacher)
+      } else {
+        // Teacher not found in list, fetch directly
+        fetchTeacherById(selectedTeacherId)
+      }
+    }
+  }, [selectedTeacherId, teachers])
+
+  async function fetchTeacherById(id: string) {
+    const { data, error } = await supabase
+      .from('teachers')
+      .select('*')
+      .eq('id', id)
+      .single()
+
+    if (!error && data) {
+      const teacherData = data as Teacher
+      
+      // Also fetch assignment data for this teacher
+      const { data: assignmentData } = await supabase
+        .from('teacher_assignments')
+        .select('teacher_id, hours_per_week, is_active')
+        .eq('teacher_id', id)
+        .eq('is_active', true)
+
+      const assignments = (assignmentData || []) as AssignmentData[]
+      const teacherWithLoad: Teacher = {
+        ...teacherData,
+        active_assignments: assignments.length,
+        assigned_hours: assignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
+      }
+      setSelectedTeacher(teacherWithLoad)
+    }
+  }
 
   async function fetchTeachers() {
     setLoading(true)
@@ -67,20 +112,31 @@ export default function Teachers() {
     }
 
     // Cast the data to our known types
+    const typedTeachers = (teacherData || []) as Teacher[]
     const typedAssignments = (assignmentData || []) as AssignmentData[]
 
     // Merge assignment data into teachers
-    const teachersWithLoad = (teacherData || []).map((teacher: any) => {
+    const teachersWithLoad: Teacher[] = typedTeachers.map((teacher) => {
       const assignments = typedAssignments.filter((a) => a.teacher_id === teacher.id)
       return {
         ...teacher,
         active_assignments: assignments.length,
         assigned_hours: assignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
-      } as Teacher
+      }
     })
 
     setTeachers(teachersWithLoad)
     setLoading(false)
+  }
+
+  const handleSelectTeacher = (teacher: Teacher | null) => {
+    setSelectedTeacher(teacher)
+    onSelectTeacher?.(teacher?.id || null)
+  }
+
+  const handleClosePanel = () => {
+    setSelectedTeacher(null)
+    onSelectTeacher?.(null)
   }
 
   // Filter teachers based on search and tab
@@ -174,7 +230,8 @@ export default function Teachers() {
               <TeacherCard
                 key={teacher.id}
                 teacher={teacher}
-                onClick={() => setSelectedTeacher(teacher)}
+                isSelected={selectedTeacher?.id === teacher.id}
+                onClick={() => handleSelectTeacher(teacher)}
               />
             ))}
           </div>
@@ -185,7 +242,7 @@ export default function Teachers() {
       {selectedTeacher && (
         <TeacherDetailPanel
           teacher={selectedTeacher}
-          onClose={() => setSelectedTeacher(null)}
+          onClose={handleClosePanel}
         />
       )}
     </div>
@@ -195,9 +252,11 @@ export default function Teachers() {
 // Teacher Card Component
 function TeacherCard({ 
   teacher, 
+  isSelected,
   onClick 
 }: { 
   teacher: Teacher
+  isSelected?: boolean
   onClick: () => void 
 }) {
   const loadPercent = teacher.max_hours_per_week 
@@ -207,7 +266,9 @@ function TeacherCard({
   return (
     <div
       onClick={onClick}
-      className="p-4 bg-card border border-border rounded-lg hover:border-accent cursor-pointer transition-colors"
+      className={`p-4 bg-card border rounded-lg hover:border-accent cursor-pointer transition-colors ${
+        isSelected ? 'border-accent bg-accent/10' : 'border-border'
+      }`}
     >
       {/* Name & Status */}
       <div className="flex items-start justify-between mb-2">

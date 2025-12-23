@@ -10,6 +10,11 @@ interface FamilyWithStudents extends Family {
   active_enrollment_count?: number
 }
 
+interface DirectoryProps {
+  selectedFamilyId?: string | null
+  onSelectFamily?: (id: string | null) => void
+}
+
 const STATUS_COLORS: Record<CustomerStatus, string> = {
   active: 'bg-green-500/20 text-green-400',
   trial: 'bg-blue-500/20 text-blue-400',
@@ -18,7 +23,7 @@ const STATUS_COLORS: Record<CustomerStatus, string> = {
   lead: 'bg-gray-500/20 text-gray-400',
 }
 
-export function Directory() {
+export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) {
   const [families, setFamilies] = useState<FamilyWithStudents[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,6 +36,31 @@ export function Directory() {
   useEffect(() => {
     fetchFamilies()
   }, [page, statusFilter])
+
+  // Handle external selection (from CommandPalette)
+  useEffect(() => {
+    if (selectedFamilyId && families.length > 0) {
+      const family = families.find(f => f.id === selectedFamilyId)
+      if (family) {
+        setSelectedFamily(family)
+      } else {
+        // Family not in current page, fetch it directly
+        fetchFamilyById(selectedFamilyId)
+      }
+    }
+  }, [selectedFamilyId, families])
+
+  async function fetchFamilyById(id: string) {
+    const { data, error } = await supabase
+      .from('families')
+      .select(`*, students (*)`)
+      .eq('id', id)
+      .single()
+
+    if (!error && data) {
+      setSelectedFamily(data as FamilyWithStudents)
+    }
+  }
 
   async function fetchFamilies() {
     setLoading(true)
@@ -61,6 +91,16 @@ export function Directory() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleSelectFamily = (family: FamilyWithStudents | null) => {
+    setSelectedFamily(family)
+    onSelectFamily?.(family?.id || null)
+  }
+
+  const handleClosePanel = () => {
+    setSelectedFamily(null)
+    onSelectFamily?.(null)
   }
 
   const filteredFamilies = families.filter(family => {
@@ -154,7 +194,7 @@ export function Directory() {
                 {filteredFamilies.map((family) => (
                   <tr
                     key={family.id}
-                    onClick={() => setSelectedFamily(family)}
+                    onClick={() => handleSelectFamily(family)}
                     className={`
                       hover:bg-zinc-800/50 cursor-pointer
                       ${selectedFamily?.id === family.id ? 'bg-zinc-800' : ''}
@@ -234,7 +274,7 @@ export function Directory() {
       {selectedFamily && (
         <FamilyDetailPanel
           family={selectedFamily}
-          onClose={() => setSelectedFamily(null)}
+          onClose={handleClosePanel}
         />
       )}
     </div>

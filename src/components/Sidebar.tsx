@@ -39,6 +39,16 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
     { name: 'Garcia, Maria', href: '/directory/3' },
   ])
 
+  const openCommandPalette = () => {
+    // Dispatch the keyboard event that CommandPalette listens for
+    const event = new KeyboardEvent('keydown', {
+      key: 'k',
+      metaKey: true,
+      bubbles: true,
+    })
+    document.dispatchEvent(event)
+  }
+
   return (
     <div className="flex h-full w-56 flex-col bg-zinc-900 border-r border-zinc-800">
       {/* Logo */}
@@ -50,7 +60,7 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
       <div className="px-3 py-3">
         <button 
           className="flex w-full items-center gap-2 rounded-md bg-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"
-          onClick={() => {/* TODO: Open command palette */}}
+          onClick={openCommandPalette}
         >
           <Search className="h-4 w-4" />
           <span>Search...</span>
