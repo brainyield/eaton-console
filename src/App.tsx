@@ -7,6 +7,7 @@ import CommandCenter from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
 import Invoicing from './components/Invoicing'
 import PublicInvoicePage from './components/PublicInvoicePage'
+import ActiveRoster from './components/ActiveRoster'
 
 // Wrapper component that provides navigation context
 function AppContent() {
@@ -53,7 +54,7 @@ function AppContent() {
         } />
         <Route path="/roster" element={
           <Layout currentPath="/roster" onNavigate={(path) => navigate(path)}>
-            <Placeholder title="Active Roster" />
+            <ActiveRoster />
           </Layout>
         } />
         <Route path="/invoicing" element={
