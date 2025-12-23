@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { X, Mail, Phone, MessageSquare, Pencil } from 'lucide-react'
+import { X, Mail, Phone, MessageSquare, Pencil, Plus } from 'lucide-react'
 import { EditTeacherModal } from './EditTeacherModal'
+import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
 
 interface Teacher {
   id: string
@@ -68,6 +69,7 @@ export default function TeacherDetailPanel({
 
   // Modal state
   const [showEditTeacher, setShowEditTeacher] = useState(false)
+  const [showRecordPayment, setShowRecordPayment] = useState(false)
 
   // Update local teacher when prop changes
   useEffect(() => {
@@ -192,6 +194,11 @@ export default function TeacherDetailPanel({
     onTeacherUpdated?.()
   }
 
+  const handlePaymentSuccess = () => {
+    fetchPayments()
+    onTeacherUpdated?.()
+  }
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'overview', label: 'Overview' },
     { key: 'assignments', label: 'Assignments' },
@@ -285,7 +292,11 @@ export default function TeacherDetailPanel({
             <AssignmentsTab assignments={assignments} loading={loading} />
           )}
           {activeTab === 'payroll' && (
-            <PayrollTab payments={payments} loading={loading} />
+            <PayrollTab 
+              payments={payments} 
+              loading={loading} 
+              onRecordPayment={() => setShowRecordPayment(true)}
+            />
           )}
         </div>
       </div>
@@ -297,6 +308,14 @@ export default function TeacherDetailPanel({
         onClose={() => setShowEditTeacher(false)}
         onSuccess={handleEditSuccess}
         onDelete={handleDelete}
+      />
+
+      {/* Record Payment Modal */}
+      <RecordTeacherPaymentModal
+        isOpen={showRecordPayment}
+        teacher={teacher}
+        onClose={() => setShowRecordPayment(false)}
+        onSuccess={handlePaymentSuccess}
       />
     </>
   )
@@ -420,9 +439,11 @@ function AssignmentsTab({
 function PayrollTab({ 
   payments, 
   loading,
+  onRecordPayment,
 }: { 
   payments: Payment[]
   loading: boolean
+  onRecordPayment: () => void
 }) {
   if (loading) {
     return <div className="text-muted-foreground text-center py-8">Loading payroll...</div>
@@ -434,7 +455,13 @@ function PayrollTab({
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium">Payment History</h4>
-        <button className="text-xs text-primary hover:underline">+ Record Payment</button>
+        <button 
+          onClick={onRecordPayment}
+          className="flex items-center gap-1 text-xs text-primary hover:underline"
+        >
+          <Plus className="w-3 h-3" />
+          Record Payment
+        </button>
       </div>
 
       {payments.length === 0 ? (
