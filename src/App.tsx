@@ -8,6 +8,7 @@ import { CommandPalette } from './components/CommandPalette'
 import Invoicing from './components/Invoicing'
 import PublicInvoicePage from './components/PublicInvoicePage'
 import ActiveRoster from './components/ActiveRoster'
+import Reports from './components/Reports'
 
 // Wrapper component that provides navigation context
 function AppContent() {
@@ -72,7 +73,7 @@ function AppContent() {
         } />
         <Route path="/reports" element={
           <Layout currentPath="/reports" onNavigate={(path) => navigate(path)}>
-            <Placeholder title="Reports" />
+            <Reports />
           </Layout>
         } />
         <Route path="/settings" element={

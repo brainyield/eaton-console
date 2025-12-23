@@ -1,0 +1,669 @@
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from 'recharts'
+import {
+  BarChart3,
+  PieChart as PieChartIcon,
+  TrendingUp,
+  Clock,
+  DollarSign,
+  Users,
+  Calendar,
+  RefreshCw,
+} from 'lucide-react'
+
+// Supabase response types
+interface InvoiceRow {
+  invoice_date: string
+  total_amount: number | null
+  amount_paid: number | null
+  status: string
+}
+
+interface EnrollmentRow {
+  id: string
+  status: string
+  service_id: string
+  services: {
+    id: string
+    name: string
+    code: string
+  } | null
+}
+
+interface BalanceRow {
+  due_date: string
+  balance_due: number | null
+  status: string
+}
+
+interface PayrollRow {
+  pay_date: string
+  total_amount: number | null
+}
+
+// Chart data types
+interface RevenueByMonth {
+  month: string
+  revenue: number
+  collected: number
+}
+
+interface EnrollmentByService {
+  name: string
+  value: number
+  code: string
+}
+
+interface BalanceAging {
+  bucket: string
+  amount: number
+  count: number
+}
+
+interface PayrollByMonth {
+  month: string
+  amount: number
+  payments: number
+}
+
+// Color palette for dark mode
+const COLORS = {
+  primary: '#3b82f6',
+  secondary: '#10b981',
+  accent: '#f59e0b',
+  danger: '#ef4444',
+  purple: '#8b5cf6',
+  pink: '#ec4899',
+  cyan: '#06b6d4',
+}
+
+const PIE_COLORS = [
+  COLORS.primary,
+  COLORS.secondary,
+  COLORS.accent,
+  COLORS.purple,
+  COLORS.pink,
+  COLORS.cyan,
+  COLORS.danger,
+]
+
+// Date range options
+const DATE_RANGES = [
+  { label: 'Last 3 Months', value: '3m' },
+  { label: 'Last 6 Months', value: '6m' },
+  { label: 'Year to Date', value: 'ytd' },
+  { label: 'All Time', value: 'all' },
+]
+
+export default function Reports() {
+  const [dateRange, setDateRange] = useState('6m')
+  const [loading, setLoading] = useState(true)
+  const [revenueData, setRevenueData] = useState<RevenueByMonth[]>([])
+  const [enrollmentData, setEnrollmentData] = useState<EnrollmentByService[]>([])
+  const [balanceData, setBalanceData] = useState<BalanceAging[]>([])
+  const [payrollData, setPayrollData] = useState<PayrollByMonth[]>([])
+
+  // Summary stats
+  const [totalRevenue, setTotalRevenue] = useState(0)
+  const [totalOutstanding, setTotalOutstanding] = useState(0)
+  const [activeEnrollments, setActiveEnrollments] = useState(0)
+  const [totalPayroll, setTotalPayroll] = useState(0)
+
+  // Calculate date range start
+  const getStartDate = () => {
+    const now = new Date()
+    switch (dateRange) {
+      case '3m':
+        return new Date(now.getFullYear(), now.getMonth() - 3, 1)
+      case '6m':
+        return new Date(now.getFullYear(), now.getMonth() - 6, 1)
+      case 'ytd':
+        return new Date(now.getFullYear(), 0, 1)
+      case 'all':
+        return new Date(2020, 0, 1) // Far back enough
+      default:
+        return new Date(now.getFullYear(), now.getMonth() - 6, 1)
+    }
+  }
+
+  // Fetch all data
+  const fetchData = async () => {
+    setLoading(true)
+    const startDate = getStartDate().toISOString().split('T')[0]
+
+    await Promise.all([
+      fetchRevenueByMonth(startDate),
+      fetchEnrollmentsByService(),
+      fetchBalanceAging(),
+      fetchPayrollByMonth(startDate),
+    ])
+
+    setLoading(false)
+  }
+
+  // Revenue by month from invoices
+  const fetchRevenueByMonth = async (startDate: string) => {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('invoice_date, total_amount, amount_paid, status')
+      .gte('invoice_date', startDate)
+      .order('invoice_date', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching revenue:', error)
+      return
+    }
+
+    const invoices = (data || []) as InvoiceRow[]
+
+    // Group by month
+    const monthlyData: Record<string, { revenue: number; collected: number }> = {}
+
+    invoices.forEach((inv) => {
+      const date = new Date(inv.invoice_date)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { revenue: 0, collected: 0 }
+      }
+      
+      monthlyData[monthKey].revenue += Number(inv.total_amount) || 0
+      monthlyData[monthKey].collected += Number(inv.amount_paid) || 0
+    })
+
+    // Convert to array and format month names
+    const chartData = Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]) => {
+        const [year, m] = month.split('-')
+        const date = new Date(Number(year), Number(m) - 1)
+        return {
+          month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          revenue: Math.round(data.revenue),
+          collected: Math.round(data.collected),
+        }
+      })
+
+    setRevenueData(chartData)
+    setTotalRevenue(chartData.reduce((sum, d) => sum + d.revenue, 0))
+  }
+
+  // Enrollments by service type
+  const fetchEnrollmentsByService = async () => {
+    const { data, error } = await supabase
+      .from('enrollments')
+      .select(`
+        id,
+        status,
+        service_id,
+        services (
+          id,
+          name,
+          code
+        )
+      `)
+      .eq('status', 'active')
+
+    if (error) {
+      console.error('Error fetching enrollments:', error)
+      return
+    }
+
+    const enrollments = (data || []) as EnrollmentRow[]
+
+    // Group by service
+    const serviceData: Record<string, { name: string; count: number; code: string }> = {}
+
+    enrollments.forEach((e) => {
+      const service = e.services
+      if (service) {
+        const key = service.id
+        if (!serviceData[key]) {
+          serviceData[key] = { name: service.name, count: 0, code: service.code }
+        }
+        serviceData[key].count++
+      }
+    })
+
+    const chartData = Object.values(serviceData)
+      .map((s) => ({
+        name: s.name,
+        value: s.count,
+        code: s.code,
+      }))
+      .sort((a, b) => b.value - a.value)
+
+    setEnrollmentData(chartData)
+    setActiveEnrollments(chartData.reduce((sum, d) => sum + d.value, 0))
+  }
+
+  // Outstanding balance aging
+  const fetchBalanceAging = async () => {
+    const { data, error } = await supabase
+      .from('invoices')
+      .select('due_date, balance_due, status')
+      .gt('balance_due', 0)
+      .in('status', ['sent', 'partial', 'overdue'])
+
+    if (error) {
+      console.error('Error fetching balances:', error)
+      return
+    }
+
+    const invoices = (data || []) as BalanceRow[]
+
+    const today = new Date()
+    const buckets: Record<string, { amount: number; count: number }> = {
+      'Current': { amount: 0, count: 0 },
+      '1-30 Days': { amount: 0, count: 0 },
+      '31-60 Days': { amount: 0, count: 0 },
+      '61-90 Days': { amount: 0, count: 0 },
+      '90+ Days': { amount: 0, count: 0 },
+    }
+
+    invoices.forEach((inv) => {
+      const dueDate = new Date(inv.due_date)
+      const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+      const amount = Number(inv.balance_due) || 0
+
+      if (daysOverdue <= 0) {
+        buckets['Current'].amount += amount
+        buckets['Current'].count++
+      } else if (daysOverdue <= 30) {
+        buckets['1-30 Days'].amount += amount
+        buckets['1-30 Days'].count++
+      } else if (daysOverdue <= 60) {
+        buckets['31-60 Days'].amount += amount
+        buckets['31-60 Days'].count++
+      } else if (daysOverdue <= 90) {
+        buckets['61-90 Days'].amount += amount
+        buckets['61-90 Days'].count++
+      } else {
+        buckets['90+ Days'].amount += amount
+        buckets['90+ Days'].count++
+      }
+    })
+
+    const chartData = Object.entries(buckets).map(([bucket, data]) => ({
+      bucket,
+      amount: Math.round(data.amount),
+      count: data.count,
+    }))
+
+    setBalanceData(chartData)
+    setTotalOutstanding(chartData.reduce((sum, d) => sum + d.amount, 0))
+  }
+
+  // Teacher payroll by month
+  const fetchPayrollByMonth = async (startDate: string) => {
+    const { data, error } = await supabase
+      .from('teacher_payments')
+      .select('pay_date, total_amount')
+      .gte('pay_date', startDate)
+      .order('pay_date', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching payroll:', error)
+      return
+    }
+
+    const payments = (data || []) as PayrollRow[]
+
+    // Group by month
+    const monthlyData: Record<string, { amount: number; count: number }> = {}
+
+    payments.forEach((p) => {
+      const date = new Date(p.pay_date)
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+      
+      if (!monthlyData[monthKey]) {
+        monthlyData[monthKey] = { amount: 0, count: 0 }
+      }
+      
+      monthlyData[monthKey].amount += Number(p.total_amount) || 0
+      monthlyData[monthKey].count++
+    })
+
+    // Convert to array
+    const chartData = Object.entries(monthlyData)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, data]) => {
+        const [year, m] = month.split('-')
+        const date = new Date(Number(year), Number(m) - 1)
+        return {
+          month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          amount: Math.round(data.amount),
+          payments: data.count,
+        }
+      })
+
+    setPayrollData(chartData)
+    setTotalPayroll(chartData.reduce((sum, d) => sum + d.amount, 0))
+  }
+
+  // Fetch on mount and when date range changes
+  useEffect(() => {
+    fetchData()
+  }, [dateRange])
+
+  // Custom tooltip styles for dark mode
+  const tooltipStyle = {
+    backgroundColor: '#1f2937',
+    border: '1px solid #374151',
+    borderRadius: '8px',
+    color: '#e5e7eb',
+  }
+
+  // Pie chart data (simplified for Recharts compatibility)
+  const pieData = enrollmentData.map(({ name, value }) => ({ name, value }))
+
+  return (
+    <div className="p-6 bg-gray-900 min-h-screen">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+            <BarChart3 className="w-7 h-7 text-blue-500" />
+            Reports
+          </h1>
+          <p className="text-gray-400 text-sm mt-1">
+            Financial and operational insights
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {/* Date Range Selector */}
+          <div className="flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-gray-400" />
+            <select
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {DATE_RANGES.map((range) => (
+                <option key={range.value} value={range.value}>
+                  {range.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Refresh Button */}
+          <button
+            onClick={fetchData}
+            disabled={loading}
+            className="p-2 bg-gray-800 border border-gray-700 rounded-lg hover:bg-gray-700 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 text-gray-400 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Total Revenue</p>
+              <p className="text-2xl font-bold text-white">
+                ${totalRevenue.toLocaleString()}
+              </p>
+            </div>
+            <DollarSign className="w-8 h-8 text-blue-500 opacity-50" />
+          </div>
+        </div>
+
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Outstanding Balance</p>
+              <p className="text-2xl font-bold text-amber-500">
+                ${totalOutstanding.toLocaleString()}
+              </p>
+            </div>
+            <Clock className="w-8 h-8 text-amber-500 opacity-50" />
+          </div>
+        </div>
+
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Active Enrollments</p>
+              <p className="text-2xl font-bold text-white">{activeEnrollments}</p>
+            </div>
+            <Users className="w-8 h-8 text-green-500 opacity-50" />
+          </div>
+        </div>
+
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-400 text-sm">Teacher Payroll</p>
+              <p className="text-2xl font-bold text-white">
+                ${totalPayroll.toLocaleString()}
+              </p>
+            </div>
+            <TrendingUp className="w-8 h-8 text-purple-500 opacity-50" />
+          </div>
+        </div>
+      </div>
+
+      {/* Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Revenue by Month */}
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-blue-500" />
+            Revenue by Month
+          </h3>
+          {loading ? (
+            <div className="h-64 flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : revenueData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              No invoice data for this period
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={revenueData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
+                <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ color: '#9ca3af' }} />
+                <Bar dataKey="revenue" name="Invoiced" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="collected" name="Collected" fill={COLORS.secondary} radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Enrollments by Service */}
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <PieChartIcon className="w-5 h-5 text-green-500" />
+            Enrollments by Service
+          </h3>
+          {loading ? (
+            <div className="h-64 flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : enrollmentData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              No active enrollments
+            </div>
+          ) : (
+            <div className="flex items-center">
+              <ResponsiveContainer width="60%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                    nameKey="name"
+                    label={({ percent = 0 }) => percent > 0.05 ? `${(percent * 100).toFixed(0)}%` : ''}
+                    labelLine={false}
+                  >
+                    {pieData.map((_, index) => (
+                      <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={tooltipStyle} />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="w-40 space-y-2">
+                {enrollmentData.map((entry, index) => (
+                  <div key={entry.code} className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: PIE_COLORS[index % PIE_COLORS.length] }}
+                    />
+                    <span className="text-sm text-gray-300 truncate">{entry.name}</span>
+                    <span className="text-sm text-gray-500 ml-auto">{entry.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Outstanding Balance Aging */}
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Clock className="w-5 h-5 text-amber-500" />
+            Outstanding Balance Aging
+          </h3>
+          {loading ? (
+            <div className="h-64 flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : balanceData.every((d) => d.amount === 0) ? (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              No outstanding balances! 🎉
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={balanceData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="bucket" stroke="#9ca3af" tick={{ fill: '#9ca3af', fontSize: 12 }} />
+                <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Bar dataKey="amount" name="Amount" radius={[4, 4, 0, 0]}>
+                  {balanceData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={
+                        entry.bucket === 'Current'
+                          ? COLORS.secondary
+                          : entry.bucket === '1-30 Days'
+                          ? COLORS.accent
+                          : entry.bucket === '31-60 Days'
+                          ? '#f97316'
+                          : COLORS.danger
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Teacher Payroll by Month */}
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-purple-500" />
+            Teacher Payroll by Month
+          </h3>
+          {loading ? (
+            <div className="h-64 flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : payrollData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              No payroll data for this period
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={280}>
+              <LineChart data={payrollData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
+                <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
+                <Tooltip contentStyle={tooltipStyle} />
+                <Legend wrapperStyle={{ color: '#9ca3af' }} />
+                <Line
+                  type="monotone"
+                  dataKey="amount"
+                  name="Payroll"
+                  stroke={COLORS.purple}
+                  strokeWidth={2}
+                  dot={{ fill: COLORS.purple, strokeWidth: 2 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      {/* Quick Stats Table */}
+      <div className="mt-6 bg-gray-800 border border-gray-700 rounded-lg p-4">
+        <h3 className="text-lg font-semibold text-white mb-4">Quick Stats</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <p className="text-gray-400">Collection Rate</p>
+            <p className="text-xl font-bold text-white">
+              {totalRevenue > 0
+                ? `${Math.round((revenueData.reduce((sum, d) => sum + d.collected, 0) / totalRevenue) * 100)}%`
+                : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400">Avg Invoice</p>
+            <p className="text-xl font-bold text-white">
+              {revenueData.length > 0
+                ? `$${Math.round(totalRevenue / revenueData.length)}`
+                : '—'}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400">Overdue Amount</p>
+            <p className="text-xl font-bold text-red-500">
+              ${balanceData
+                .filter((d) => d.bucket !== 'Current')
+                .reduce((sum, d) => sum + d.amount, 0)
+                .toLocaleString()}
+            </p>
+          </div>
+          <div>
+            <p className="text-gray-400">Profit Margin</p>
+            <p className="text-xl font-bold text-green-500">
+              {totalRevenue > 0 && totalPayroll > 0
+                ? `${Math.round(((totalRevenue - totalPayroll) / totalRevenue) * 100)}%`
+                : '—'}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}

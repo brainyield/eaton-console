@@ -428,7 +428,7 @@ export default function ActiveRoster() {
                 {groupBy !== 'none' && (
                   <button
                     onClick={() => toggleGroup(groupName)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-800 hover:bg-gray-750 transition-colors"
+                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-800 hover:bg-gray-700/50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
                       {isExpanded ? (
@@ -456,7 +456,7 @@ export default function ActiveRoster() {
                       return (
                         <div
                           key={enrollment.id}
-                          className="px-4 py-3 hover:bg-gray-750 transition-colors"
+                          className="px-4 py-3 hover:bg-gray-700/50 transition-colors"
                         >
                           <div className="flex items-start justify-between">
                             {/* Left: Student & Family Info */}
