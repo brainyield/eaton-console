@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import type { Family, Student, CustomerStatus } from '../types/database'
 import { Search, Filter, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { FamilyDetailPanel } from './FamilyDetailPanel'
+import { AddFamilyModal } from './AddFamilyModal'
 
 interface FamilyWithStudents extends Family {
   students: Student[]
@@ -32,6 +33,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const [selectedFamily, setSelectedFamily] = useState<FamilyWithStudents | null>(null)
   const [page, setPage] = useState(1)
   const pageSize = 25
+
+  // Modal state
+  const [showAddFamily, setShowAddFamily] = useState(false)
 
   useEffect(() => {
     fetchFamilies()
@@ -103,6 +107,14 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
     onSelectFamily?.(null)
   }
 
+  const handleFamilyUpdated = () => {
+    // Refresh the list and re-fetch selected family if needed
+    fetchFamilies()
+    if (selectedFamily) {
+      fetchFamilyById(selectedFamily.id)
+    }
+  }
+
   const filteredFamilies = families.filter(family => {
     if (!searchQuery) return true
     const query = searchQuery.toLowerCase()
@@ -150,7 +162,10 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               Filters
             </button>
 
-            <button className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 rounded-md px-4 py-2 text-sm text-white font-medium">
+            <button 
+              onClick={() => setShowAddFamily(true)}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 rounded-md px-4 py-2 text-sm text-white font-medium transition-colors"
+            >
               <Plus className="h-4 w-4" />
               Add Family
             </button>
@@ -275,8 +290,18 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
         <FamilyDetailPanel
           family={selectedFamily}
           onClose={handleClosePanel}
+          onFamilyUpdated={handleFamilyUpdated}
         />
       )}
+
+      {/* Add Family Modal */}
+      <AddFamilyModal
+        isOpen={showAddFamily}
+        onClose={() => setShowAddFamily(false)}
+        onSuccess={() => {
+          fetchFamilies()
+        }}
+      />
     </div>
   )
 }

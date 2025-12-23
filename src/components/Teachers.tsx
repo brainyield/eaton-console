@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import TeacherDetailPanel from './TeacherDetailPanel'
+import { AddTeacherModal } from './AddTeacherModal'
 import { Search, Plus, Filter } from 'lucide-react'
 
 interface Teacher {
@@ -15,6 +16,7 @@ interface Teacher {
   default_hourly_rate: number | null
   max_hours_per_week: number | null
   payment_info_on_file: boolean
+  hire_date: string | null
   notes: string | null
   created_at: string
   // Computed from assignments
@@ -41,6 +43,9 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<TabFilter>('all')
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null)
+
+  // Modal state
+  const [showAddTeacher, setShowAddTeacher] = useState(false)
 
   useEffect(() => {
     fetchTeachers()
@@ -139,6 +144,14 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
     onSelectTeacher?.(null)
   }
 
+  const handleTeacherUpdated = () => {
+    // Refresh the list and re-fetch selected teacher if needed
+    fetchTeachers()
+    if (selectedTeacher) {
+      fetchTeacherById(selectedTeacher.id)
+    }
+  }
+
   // Filter teachers based on search and tab
   const filteredTeachers = teachers.filter(teacher => {
     // Tab filter
@@ -171,7 +184,10 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
       <div className="flex-shrink-0 border-b border-border p-4">
         <div className="flex items-center justify-between mb-4">
           <h1 className="text-xl font-semibold">Teachers</h1>
-          <button className="flex items-center gap-2 px-3 py-2 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90">
+          <button 
+            onClick={() => setShowAddTeacher(true)}
+            className="flex items-center gap-2 px-3 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-md text-sm transition-colors"
+          >
             <Plus className="w-4 h-4" />
             Add Teacher
           </button>
@@ -243,8 +259,18 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         <TeacherDetailPanel
           teacher={selectedTeacher}
           onClose={handleClosePanel}
+          onTeacherUpdated={handleTeacherUpdated}
         />
       )}
+
+      {/* Add Teacher Modal */}
+      <AddTeacherModal
+        isOpen={showAddTeacher}
+        onClose={() => setShowAddTeacher(false)}
+        onSuccess={() => {
+          fetchTeachers()
+        }}
+      />
     </div>
   )
 }
