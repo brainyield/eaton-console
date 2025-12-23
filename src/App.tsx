@@ -9,6 +9,7 @@ import Invoicing from './components/Invoicing'
 import PublicInvoicePage from './components/PublicInvoicePage'
 import ActiveRoster from './components/ActiveRoster'
 import Reports from './components/Reports'
+import Settings from './components/Settings'
 
 // Wrapper component that provides navigation context
 function AppContent() {
@@ -78,7 +79,7 @@ function AppContent() {
         } />
         <Route path="/settings" element={
           <Layout currentPath="/settings" onNavigate={(path) => navigate(path)}>
-            <Placeholder title="Settings" />
+            <Settings />
           </Layout>
         } />
 
@@ -106,15 +107,6 @@ function PublicInvoiceWrapper() {
     return <div className="p-8 text-center">Invoice ID not provided</div>
   }
   return <PublicInvoicePage publicId={publicId} />
-}
-
-function Placeholder({ title }: { title: string }) {
-  return (
-    <div className="p-6">
-      <h1 className="text-xl font-semibold mb-4">{title}</h1>
-      <p className="text-muted-foreground">Coming soon...</p>
-    </div>
-  )
 }
 
 function App() {
