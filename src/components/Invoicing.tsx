@@ -63,6 +63,17 @@ interface InvoiceLineItem {
   profit: number | null;
 }
 
+interface Payment {
+  id: string;
+  invoice_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string | null;
+  reference: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
 interface WeeklyInvoiceRow {
   enrollment_id: string;
   family_id: string;
@@ -86,6 +97,8 @@ const statusConfig: Record<string, { label: string; color: string; icon: React.R
   overdue: { label: 'Overdue', color: 'bg-red-600 text-red-100', icon: <AlertCircle className="w-3 h-3" /> },
   void: { label: 'Void', color: 'bg-zinc-700 text-zinc-400', icon: <X className="w-3 h-3" /> },
 };
+
+const PAYMENT_METHODS = ['Zelle', 'StepUp', 'Cash', 'Check', 'Bank Transfer', 'Stripe', 'PEP'];
 
 // Helper to get week boundaries
 function getWeekBoundaries(date: Date = new Date()): { start: Date; end: Date } {
@@ -122,6 +135,232 @@ function formatWeekRange(start: Date, end: Date): string {
   return `${start.toLocaleDateString('en-US', opts)} - ${end.toLocaleDateString('en-US', { ...opts, year: 'numeric' })}`;
 }
 
+function formatDateForInput(date: Date): string {
+  return date.toISOString().split('T')[0];
+}
+
+// ============================================================================
+// RECORD PAYMENT MODAL
+// ============================================================================
+interface RecordPaymentModalProps {
+  invoice: Invoice;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function RecordPaymentModal({ invoice, onClose, onSuccess }: RecordPaymentModalProps) {
+  const [amount, setAmount] = useState(invoice.balance_due.toString());
+  const [paymentDate, setPaymentDate] = useState(formatDateForInput(new Date()));
+  const [paymentMethod, setPaymentMethod] = useState('Zelle');
+  const [reference, setReference] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    const paymentAmount = parseFloat(amount);
+    if (isNaN(paymentAmount) || paymentAmount <= 0) {
+      setError('Please enter a valid payment amount');
+      setSaving(false);
+      return;
+    }
+
+    if (paymentAmount > invoice.balance_due) {
+      setError(`Payment amount ($${paymentAmount.toFixed(2)}) exceeds balance due ($${invoice.balance_due.toFixed(2)})`);
+      setSaving(false);
+      return;
+    }
+
+    try {
+      // Insert payment record - the trigger will auto-update invoice status
+      const { error: insertError } = await (supabase.from('payments') as any).insert({
+        invoice_id: invoice.id,
+        amount: paymentAmount,
+        payment_date: paymentDate,
+        payment_method: paymentMethod,
+        reference: reference || null,
+        notes: notes || null,
+      });
+
+      if (insertError) {
+        throw new Error(insertError.message);
+      }
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      console.error('Error recording payment:', err);
+      setError(err instanceof Error ? err.message : 'Failed to record payment');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        onClick={onClose}
+      />
+      
+      {/* Modal */}
+      <div className="relative bg-zinc-900 border border-zinc-700 rounded-xl shadow-2xl w-full max-w-md mx-4">
+        {/* Header */}
+        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
+          <div>
+            <h2 className="text-lg font-semibold text-zinc-100">Record Payment</h2>
+            <p className="text-sm text-zinc-400">
+              {invoice.invoice_number || `#${invoice.public_id}`} • {invoice.family?.display_name}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5 text-zinc-400" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {/* Balance info */}
+          <div className="bg-zinc-800/50 rounded-lg p-3 flex justify-between items-center">
+            <span className="text-sm text-zinc-400">Balance Due</span>
+            <span className="text-lg font-bold text-amber-400">
+              {formatCurrency(invoice.balance_due)}
+            </span>
+          </div>
+
+          {error && (
+            <div className="bg-red-900/30 border border-red-700 text-red-300 rounded-lg p-3 text-sm">
+              {error}
+            </div>
+          )}
+
+          {/* Amount */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Payment Amount
+            </label>
+            <div className="relative">
+              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+              <input
+                type="number"
+                step="0.01"
+                min="0.01"
+                max={invoice.balance_due}
+                value={amount}
+                onChange={e => setAmount(e.target.value)}
+                className="w-full pl-9 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                placeholder="0.00"
+                required
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setAmount(invoice.balance_due.toString())}
+              className="mt-1.5 text-xs text-blue-400 hover:text-blue-300"
+            >
+              Pay full balance ({formatCurrency(invoice.balance_due)})
+            </button>
+          </div>
+
+          {/* Payment Date */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Payment Date
+            </label>
+            <input
+              type="date"
+              value={paymentDate}
+              onChange={e => setPaymentDate(e.target.value)}
+              className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              required
+            />
+          </div>
+
+          {/* Payment Method */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Payment Method
+            </label>
+            <select
+              value={paymentMethod}
+              onChange={e => setPaymentMethod(e.target.value)}
+              className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {PAYMENT_METHODS.map(method => (
+                <option key={method} value={method}>{method}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Reference */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Reference / Confirmation # <span className="text-zinc-500">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={reference}
+              onChange={e => setReference(e.target.value)}
+              className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              placeholder="e.g., Zelle confirmation number"
+            />
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+              Notes <span className="text-zinc-500">(optional)</span>
+            </label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              rows={2}
+              className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+              placeholder="Any additional notes..."
+            />
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-200 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex-1 py-2.5 bg-green-600 hover:bg-green-700 disabled:bg-green-600/50 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  Record Payment
+                </>
+              )}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function Invoicing() {
   const [activeTab, setActiveTab] = useState<TabType>('all');
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -129,6 +368,7 @@ export default function Invoicing() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [selectedLineItems, setSelectedLineItems] = useState<InvoiceLineItem[]>([]);
+  const [paymentHistory, setPaymentHistory] = useState<Payment[]>([]);
   
   // Weekly invoice state
   const [currentWeek, setCurrentWeek] = useState<{ start: Date; end: Date }>(getWeekBoundaries());
@@ -138,6 +378,9 @@ export default function Invoicing() {
 
   // Send invoice state
   const [sendingInvoiceId, setSendingInvoiceId] = useState<string | null>(null);
+
+  // Record payment modal state
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   // Stats
   const [stats, setStats] = useState({
@@ -207,16 +450,27 @@ export default function Invoicing() {
 
   async function fetchInvoiceDetails(invoice: Invoice) {
     try {
-      const { data, error } = await supabase
+      // Fetch line items
+      const { data: lineItemsData, error: lineItemsError } = await supabase
         .from('invoice_line_items')
         .select('*')
         .eq('invoice_id', invoice.id)
         .order('sort_order');
 
-      if (error) throw error;
-      setSelectedLineItems((data || []) as InvoiceLineItem[]);
+      if (lineItemsError) throw lineItemsError;
+      setSelectedLineItems((lineItemsData || []) as InvoiceLineItem[]);
+
+      // Fetch payment history
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('payments')
+        .select('*')
+        .eq('invoice_id', invoice.id)
+        .order('payment_date', { ascending: false });
+
+      if (paymentsError) throw paymentsError;
+      setPaymentHistory((paymentsData || []) as Payment[]);
     } catch (err) {
-      console.error('Error fetching line items:', err);
+      console.error('Error fetching invoice details:', err);
     }
   }
 
@@ -399,64 +653,65 @@ export default function Invoicing() {
       // Get student names
       const studentIds = enrollments
         .map(e => e.student_id)
-        .filter((id): id is string => id !== null);
-      
+        .filter(Boolean) as string[];
+
       const { data: studentsData } = await supabase
         .from('students')
         .select('id, full_name')
         .in('id', studentIds);
 
-      // Type assertion for students
       type StudentRow = { id: string; full_name: string };
       const students = (studentsData || []) as StudentRow[];
       const studentMap = new Map(students.map(s => [s.id, s.full_name]));
 
-      // Get teacher assignments for these enrollments
+      // Get teacher assignments
       const enrollmentIds = enrollments.map(e => e.id);
       const { data: assignmentsData } = await supabase
         .from('teacher_assignments')
-        .select('enrollment_id, teacher_id, hours_per_week')
+        .select('enrollment_id, teacher_id, hourly_rate_teacher')
         .in('enrollment_id', enrollmentIds)
         .eq('is_active', true);
 
-      // Type assertion for assignments
-      type AssignmentRow = { enrollment_id: string; teacher_id: string; hours_per_week: number | null };
+      type AssignmentRow = {
+        enrollment_id: string;
+        teacher_id: string;
+        hourly_rate_teacher: number | null;
+      };
       const assignments = (assignmentsData || []) as AssignmentRow[];
 
       // Get teacher names
-      const teacherIds = assignments
-        .map(a => a.teacher_id)
-        .filter((id): id is string => id !== null);
-      
+      const teacherIds = [...new Set(assignments.map(a => a.teacher_id))];
       const { data: teachersData } = await supabase
         .from('teachers')
         .select('id, display_name')
         .in('id', teacherIds);
 
-      // Type assertion for teachers
       type TeacherRow = { id: string; display_name: string };
       const teachers = (teachersData || []) as TeacherRow[];
       const teacherMap = new Map(teachers.map(t => [t.id, t.display_name]));
-      const assignmentMap = new Map(assignments.map(a => [a.enrollment_id, a]));
 
-      // Map to weekly rows
-      const rows: WeeklyInvoiceRow[] = enrollments.map(e => {
-        const assignment = assignmentMap.get(e.id);
-        const teacherName = assignment ? teacherMap.get(assignment.teacher_id) : null;
-        const studentName = e.student_id ? studentMap.get(e.student_id) : null;
-        const hours = e.hours_per_week || 0;
-        const rate = e.hourly_rate_customer || 0;
-        
+      // Build weekly rows
+      const rows: WeeklyInvoiceRow[] = enrollments.map(enrollment => {
+        const assignment = assignments.find(a => a.enrollment_id === enrollment.id);
+        const studentName = enrollment.student_id
+          ? studentMap.get(enrollment.student_id) || 'Unknown Student'
+          : 'Unknown Student';
+        const teacherName = assignment
+          ? teacherMap.get(assignment.teacher_id) || 'Unassigned'
+          : 'Unassigned';
+        const agreedHours = enrollment.hours_per_week || 0;
+        const hourlyRate = enrollment.hourly_rate_customer || 0;
+
         return {
-          enrollment_id: e.id,
-          family_id: e.family_id,
-          student_name: studentName || 'Unknown Student',
-          teacher_name: teacherName || 'Unassigned',
-          agreed_hours: hours,
-          worked_hours: hours, // Default to agreed
+          enrollment_id: enrollment.id,
+          family_id: enrollment.family_id,
+          student_name: studentName,
+          teacher_name: teacherName,
+          agreed_hours: agreedHours,
+          worked_hours: agreedHours, // Default to agreed hours
           adjustments: 0,
-          hourly_rate: rate,
-          amount: hours * rate,
+          hourly_rate: hourlyRate,
+          amount: agreedHours * hourlyRate,
           selected: false,
         };
       });
@@ -464,135 +719,6 @@ export default function Invoicing() {
       setWeeklyRows(rows);
     } catch (err) {
       console.error('Error fetching weekly data:', err);
-      setWeeklyRows([]);
-    }
-  }
-
-  async function generateInvoices() {
-    const selectedEnrollments = weeklyRows.filter(r => selectedRows.has(r.enrollment_id));
-    
-    if (selectedEnrollments.length === 0) {
-      alert('No enrollments selected');
-      return;
-    }
-
-    setGenerating(true);
-
-    try {
-      // Group selected rows by family_id
-      const byFamily = new Map<string, WeeklyInvoiceRow[]>();
-      for (const row of selectedEnrollments) {
-        const existing = byFamily.get(row.family_id) || [];
-        existing.push(row);
-        byFamily.set(row.family_id, existing);
-      }
-
-      // Get next invoice number from app_settings
-      const { data: settingsData } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'invoice_defaults')
-        .single();
-      
-      type SettingsRow = { value: { due_days: number; number_prefix: string; next_number: number } };
-      const settings = settingsData as SettingsRow | null;
-      const duedays = settings?.value?.due_days || 15;
-      const prefix = settings?.value?.number_prefix || 'INV-';
-      let nextNumber = settings?.value?.next_number || 1;
-
-      const createdInvoiceIds: string[] = [];
-
-      // Create one invoice per family
-      for (const [familyId, rows] of byFamily) {
-        const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
-        
-        // Calculate dates
-        const invoiceDate = new Date();
-        const dueDate = new Date();
-        dueDate.setDate(dueDate.getDate() + duedays);
-
-        // Create invoice
-        const invoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`;
-        nextNumber++;
-
-        const invoiceInsert = {
-          family_id: familyId,
-          invoice_number: invoiceNumber,
-          invoice_date: invoiceDate.toISOString().split('T')[0],
-          due_date: dueDate.toISOString().split('T')[0],
-          period_start: currentWeek.start.toISOString().split('T')[0],
-          period_end: currentWeek.end.toISOString().split('T')[0],
-          subtotal: totalAmount,
-          total_amount: totalAmount,
-          status: 'draft' as const,
-        };
-
-        const { data: invoiceData, error: invoiceError } = await (supabase
-          .from('invoices') as any)
-          .insert(invoiceInsert)
-          .select('id')
-          .single();
-
-        if (invoiceError) {
-          console.error('Error creating invoice:', invoiceError);
-          throw invoiceError;
-        }
-
-        type InvoiceInsertResult = { id: string };
-        const invoice = invoiceData as InvoiceInsertResult;
-        createdInvoiceIds.push(invoice.id);
-
-        // Create line items for each enrollment
-        const lineItems = rows.map((row, index) => {
-          const totalHours = row.worked_hours + row.adjustments;
-          return {
-            invoice_id: invoice.id,
-            enrollment_id: row.enrollment_id,
-            description: `${row.student_name} - Academic Coaching: ${totalHours} hrs × ${formatCurrency(row.hourly_rate)}`,
-            quantity: totalHours,
-            unit_price: row.hourly_rate,
-            amount: row.amount,
-            sort_order: index,
-          };
-        });
-
-        const { error: lineItemError } = await (supabase
-          .from('invoice_line_items') as any)
-          .insert(lineItems);
-
-        if (lineItemError) {
-          console.error('Error creating line items:', lineItemError);
-          throw lineItemError;
-        }
-      }
-
-      // Update the next invoice number in settings
-      if (settings) {
-        const updatedValue = {
-          ...settings.value,
-          next_number: nextNumber,
-        };
-        await (supabase
-          .from('app_settings') as any)
-          .update({ value: updatedValue })
-          .eq('key', 'invoice_defaults');
-      }
-
-      // Success feedback
-      alert(`Created ${createdInvoiceIds.length} invoice(s) for ${selectedEnrollments.length} enrollment(s)`);
-
-      // Clear selection and refresh
-      setSelectedRows(new Set());
-      
-      // Switch to All Invoices tab to show the new invoices
-      setActiveTab('all');
-      fetchInvoices();
-
-    } catch (err) {
-      console.error('Error generating invoices:', err);
-      alert('Error generating invoices. Check console for details.');
-    } finally {
-      setGenerating(false);
     }
   }
 
@@ -601,17 +727,6 @@ export default function Invoicing() {
       fetchWeeklyData();
     }
   }, [activeTab, currentWeek]);
-
-  function navigateWeek(direction: 'prev' | 'next') {
-    const newStart = new Date(currentWeek.start);
-    newStart.setDate(newStart.getDate() + (direction === 'next' ? 7 : -7));
-    setCurrentWeek(getWeekBoundaries(newStart));
-  }
-
-  function handleSelectInvoice(invoice: Invoice) {
-    setSelectedInvoice(invoice);
-    fetchInvoiceDetails(invoice);
-  }
 
   function toggleRowSelection(enrollmentId: string) {
     setSelectedRows(prev => {
@@ -633,35 +748,156 @@ export default function Invoicing() {
     }
   }
 
-  function updateWorkedHours(enrollmentId: string, hours: number) {
+  function updateRowHours(enrollmentId: string, workedHours: number) {
     setWeeklyRows(prev =>
-      prev.map(row =>
-        row.enrollment_id === enrollmentId
-          ? { ...row, worked_hours: hours, amount: (hours + row.adjustments) * row.hourly_rate }
-          : row
-      )
+      prev.map(row => {
+        if (row.enrollment_id === enrollmentId) {
+          const amount = workedHours * row.hourly_rate;
+          return { ...row, worked_hours: workedHours, amount };
+        }
+        return row;
+      })
     );
   }
 
-  function updateAdjustments(enrollmentId: string, adj: number) {
-    setWeeklyRows(prev =>
-      prev.map(row =>
-        row.enrollment_id === enrollmentId
-          ? { ...row, adjustments: adj, amount: (row.worked_hours + adj) * row.hourly_rate }
-          : row
-      )
-    );
+  async function generateInvoices() {
+    if (selectedRows.size === 0) return;
+    setGenerating(true);
+
+    try {
+      const selectedEnrollments = weeklyRows.filter(r => selectedRows.has(r.enrollment_id));
+
+      // Group by family
+      const byFamily = new Map<string, typeof selectedEnrollments>();
+      for (const row of selectedEnrollments) {
+        const existing = byFamily.get(row.family_id) || [];
+        existing.push(row);
+        byFamily.set(row.family_id, existing);
+      }
+
+      // Get next invoice number
+      const { data: settingsDataRaw } = await supabase
+        .from('app_settings')
+        .select('value')
+        .eq('key', 'invoice_defaults')
+        .single();
+
+      // Type assertion for settings
+      type SettingsRow = { value: { next_number?: number; number_prefix?: string } };
+      const settingsData = settingsDataRaw as SettingsRow | null;
+
+      let nextNumber = 1;
+      let prefix = 'INV-';
+      if (settingsData?.value) {
+        nextNumber = settingsData.value.next_number || 1;
+        prefix = settingsData.value.number_prefix || 'INV-';
+      }
+
+      const periodStart = currentWeek.start.toISOString().split('T')[0];
+      const periodEnd = currentWeek.end.toISOString().split('T')[0];
+      const invoiceDate = new Date().toISOString().split('T')[0];
+      const dueDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      // Create invoices for each family
+      for (const [familyId, rows] of byFamily) {
+        const invoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`;
+        const subtotal = rows.reduce((sum, r) => sum + r.amount, 0);
+
+        // Create invoice
+        const { data: invoiceData, error: invoiceError } = await (supabase.from('invoices') as any)
+          .insert({
+            family_id: familyId,
+            invoice_number: invoiceNumber,
+            invoice_date: invoiceDate,
+            due_date: dueDate,
+            period_start: periodStart,
+            period_end: periodEnd,
+            subtotal,
+            total_amount: subtotal,
+            status: 'draft',
+          })
+          .select('id')
+          .single();
+
+        if (invoiceError) {
+          console.error('Error creating invoice:', invoiceError);
+          continue;
+        }
+
+        // Create line items
+        const lineItems = rows.map((row, index) => ({
+          invoice_id: invoiceData.id,
+          enrollment_id: row.enrollment_id,
+          description: `${row.student_name} - Academic Coaching: ${row.worked_hours} hrs × ${formatCurrency(row.hourly_rate)}`,
+          quantity: row.worked_hours,
+          unit_price: row.hourly_rate,
+          amount: row.amount,
+          sort_order: index,
+        }));
+
+        await (supabase.from('invoice_line_items') as any).insert(lineItems);
+
+        nextNumber++;
+      }
+
+      // Update next invoice number
+      await (supabase.from('app_settings') as any)
+        .update({ value: { next_number: nextNumber, number_prefix: prefix } })
+        .eq('key', 'invoice_defaults');
+
+      // Refresh and clear selection
+      setSelectedRows(new Set());
+      fetchInvoices();
+      setActiveTab('all');
+    } catch (err) {
+      console.error('Error generating invoices:', err);
+      alert('Failed to generate invoices');
+    } finally {
+      setGenerating(false);
+    }
   }
 
-  const filteredInvoices = invoices.filter(inv => {
-    if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
-    return (
-      inv.invoice_number?.toLowerCase().includes(q) ||
-      inv.family?.display_name?.toLowerCase().includes(q) ||
-      inv.public_id?.toLowerCase().includes(q)
-    );
-  });
+  function navigateWeek(direction: 'prev' | 'next') {
+    setCurrentWeek(prev => {
+      const newStart = new Date(prev.start);
+      newStart.setDate(newStart.getDate() + (direction === 'next' ? 7 : -7));
+      return getWeekBoundaries(newStart);
+    });
+  }
+
+  function handleInvoiceClick(invoice: Invoice) {
+    setSelectedInvoice(invoice);
+    fetchInvoiceDetails(invoice);
+  }
+
+  function handlePaymentSuccess() {
+    // Refresh invoice details and list
+    if (selectedInvoice) {
+      // Re-fetch the invoice to get updated balance
+      supabase
+        .from('invoices')
+        .select(`
+          *,
+          family:families(id, display_name, primary_email, primary_phone, primary_contact_name)
+        `)
+        .eq('id', selectedInvoice.id)
+        .single()
+        .then(({ data }) => {
+          if (data) {
+            setSelectedInvoice(data as Invoice);
+            fetchInvoiceDetails(data as Invoice);
+          }
+        });
+    }
+    fetchInvoices();
+  }
+
+  const filteredInvoices = invoices.filter(
+    invoice =>
+      invoice.invoice_number?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      invoice.public_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      invoice.family?.display_name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'this-week', label: 'This Week' },
@@ -673,176 +909,160 @@ export default function Invoicing() {
   ];
 
   return (
-    <div className="flex h-full">
-      {/* Main Content */}
-      <div className={`flex-1 flex flex-col ${selectedInvoice ? 'mr-96' : ''}`}>
-        {/* Header */}
-        <div className="p-6 border-b border-zinc-800">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="text-2xl font-semibold text-zinc-100">Invoicing</h1>
-            <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-              <Plus className="w-4 h-4" />
-              New Invoice
-            </button>
+    <div className="flex-1 flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="flex-none p-6 border-b border-zinc-800">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-2xl font-bold text-zinc-100">Invoicing</h1>
+            <p className="text-sm text-zinc-400 mt-1">Generate, send, and track invoices</p>
           </div>
+          <button className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
+            <Plus className="w-4 h-4" />
+            Create Invoice
+          </button>
+        </div>
 
-          {/* Stats Row */}
-          <div className="grid grid-cols-5 gap-4 mb-6">
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-2xl font-bold text-zinc-100">{stats.total}</div>
-              <div className="text-sm text-zinc-400">Total Invoices</div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-2xl font-bold text-zinc-400">{stats.draft}</div>
-              <div className="text-sm text-zinc-400">Drafts</div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-2xl font-bold text-blue-400">{stats.sent}</div>
-              <div className="text-sm text-zinc-400">Sent</div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-2xl font-bold text-red-400">{stats.overdue}</div>
-              <div className="text-sm text-zinc-400">Overdue</div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-3">
-              <div className="text-2xl font-bold text-amber-400">{formatCurrency(stats.totalOutstanding)}</div>
-              <div className="text-sm text-zinc-400">Outstanding</div>
-            </div>
+        {/* Stats */}
+        <div className="grid grid-cols-5 gap-4 mb-6">
+          <div className="bg-zinc-800/50 rounded-lg p-4">
+            <div className="text-2xl font-bold text-zinc-100">{stats.total}</div>
+            <div className="text-sm text-zinc-400">Total Invoices</div>
           </div>
-
-          {/* Tabs */}
-          <div className="flex gap-1 bg-zinc-800/50 p-1 rounded-lg w-fit">
-            {tabs.map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeTab === tab.id
-                    ? 'bg-zinc-700 text-zinc-100'
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-700/50'
-                }`}
-              >
-                {tab.label}
-                {tab.id === 'overdue' && stats.overdue > 0 && (
-                  <span className="ml-2 px-1.5 py-0.5 text-xs bg-red-600 text-white rounded-full">
-                    {stats.overdue}
-                  </span>
-                )}
-              </button>
-            ))}
+          <div className="bg-zinc-800/50 rounded-lg p-4">
+            <div className="text-2xl font-bold text-zinc-400">{stats.draft}</div>
+            <div className="text-sm text-zinc-400">Draft</div>
+          </div>
+          <div className="bg-zinc-800/50 rounded-lg p-4">
+            <div className="text-2xl font-bold text-blue-400">{stats.sent}</div>
+            <div className="text-sm text-zinc-400">Sent</div>
+          </div>
+          <div className="bg-zinc-800/50 rounded-lg p-4">
+            <div className="text-2xl font-bold text-red-400">{stats.overdue}</div>
+            <div className="text-sm text-zinc-400">Overdue</div>
+          </div>
+          <div className="bg-zinc-800/50 rounded-lg p-4">
+            <div className="text-2xl font-bold text-amber-400">{formatCurrency(stats.totalOutstanding)}</div>
+            <div className="text-sm text-zinc-400">Outstanding</div>
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-auto p-6">
-          {activeTab === 'this-week' ? (
-            <WeeklyInvoiceView
-              currentWeek={currentWeek}
-              onNavigateWeek={navigateWeek}
-              rows={weeklyRows}
-              selectedRows={selectedRows}
-              onToggleRow={toggleRowSelection}
-              onToggleAll={toggleAllRows}
-              onUpdateWorkedHours={updateWorkedHours}
-              onUpdateAdjustments={updateAdjustments}
-              onGenerate={generateInvoices}
-              generating={generating}
-            />
-          ) : activeTab === 'hub-sessions' ? (
-            <PlaceholderTab 
-              title="Hub Sessions" 
-              description="Unbilled Eaton Hub drop-in sessions will appear here"
-            />
-          ) : activeTab === 'electives' ? (
-            <PlaceholderTab 
-              title="Elective Classes" 
-              description="Friday elective class invoices will appear here"
-            />
-          ) : (
-            <AllInvoicesView
-              invoices={filteredInvoices}
-              loading={loading}
-              searchQuery={searchQuery}
-              onSearchChange={setSearchQuery}
-              onSelectInvoice={handleSelectInvoice}
-              selectedInvoiceId={selectedInvoice?.id}
-              onSendInvoice={sendInvoice}
-              sendingInvoiceId={sendingInvoiceId}
-            />
-          )}
+        {/* Tabs */}
+        <div className="flex gap-1 border-b border-zinc-700 -mb-px">
+          {tabs.map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-blue-500 text-blue-400'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Invoice Detail Panel */}
+      {/* Content based on tab */}
+      {activeTab === 'this-week' ? (
+        <WeeklyInvoiceView
+          currentWeek={currentWeek}
+          weeklyRows={weeklyRows}
+          selectedRows={selectedRows}
+          generating={generating}
+          onNavigateWeek={navigateWeek}
+          onToggleRow={toggleRowSelection}
+          onToggleAll={toggleAllRows}
+          onUpdateHours={updateRowHours}
+          onGenerate={generateInvoices}
+        />
+      ) : (
+        <InvoiceListView
+          invoices={filteredInvoices}
+          loading={loading}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          onInvoiceClick={handleInvoiceClick}
+          onSendInvoice={sendInvoice}
+          sendingInvoiceId={sendingInvoiceId}
+        />
+      )}
+
+      {/* Detail Panel */}
       {selectedInvoice && (
         <InvoiceDetailPanel
           invoice={selectedInvoice}
           lineItems={selectedLineItems}
-          onClose={() => setSelectedInvoice(null)}
+          payments={paymentHistory}
+          onClose={() => {
+            setSelectedInvoice(null);
+            setSelectedLineItems([]);
+            setPaymentHistory([]);
+          }}
           onSendInvoice={sendInvoice}
           sendingInvoiceId={sendingInvoiceId}
+          onRecordPayment={() => setShowPaymentModal(true)}
+        />
+      )}
+
+      {/* Record Payment Modal */}
+      {showPaymentModal && selectedInvoice && (
+        <RecordPaymentModal
+          invoice={selectedInvoice}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentSuccess}
         />
       )}
     </div>
   );
 }
 
-// Placeholder for tabs not yet implemented
-function PlaceholderTab({ title, description }: { title: string; description: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <FileText className="w-16 h-16 text-zinc-600 mb-4" />
-      <h3 className="text-lg font-medium text-zinc-300 mb-2">{title}</h3>
-      <p className="text-zinc-500">{description}</p>
-    </div>
-  );
-}
-
-// Weekly Invoice View Component
+// ============================================================================
+// WEEKLY INVOICE VIEW
+// ============================================================================
 interface WeeklyInvoiceViewProps {
   currentWeek: { start: Date; end: Date };
-  onNavigateWeek: (direction: 'prev' | 'next') => void;
-  rows: WeeklyInvoiceRow[];
+  weeklyRows: WeeklyInvoiceRow[];
   selectedRows: Set<string>;
-  onToggleRow: (id: string) => void;
-  onToggleAll: () => void;
-  onUpdateWorkedHours: (id: string, hours: number) => void;
-  onUpdateAdjustments: (id: string, adj: number) => void;
-  onGenerate: () => void;
   generating: boolean;
+  onNavigateWeek: (direction: 'prev' | 'next') => void;
+  onToggleRow: (enrollmentId: string) => void;
+  onToggleAll: () => void;
+  onUpdateHours: (enrollmentId: string, hours: number) => void;
+  onGenerate: () => void;
 }
 
 function WeeklyInvoiceView({
   currentWeek,
-  onNavigateWeek,
-  rows,
+  weeklyRows,
   selectedRows,
+  generating,
+  onNavigateWeek,
   onToggleRow,
   onToggleAll,
-  onUpdateWorkedHours,
-  onUpdateAdjustments,
+  onUpdateHours,
   onGenerate,
-  generating,
 }: WeeklyInvoiceViewProps) {
-  const totalAmount = rows.reduce((sum, r) => sum + r.amount, 0);
-  const selectedAmount = rows
+  const selectedTotal = weeklyRows
     .filter(r => selectedRows.has(r.enrollment_id))
     .reduce((sum, r) => sum + r.amount, 0);
 
   return (
-    <div>
+    <div className="flex-1 overflow-auto p-6">
       {/* Week Navigation */}
       <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
           <button
             onClick={() => onNavigateWeek('prev')}
             className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
           >
             <ChevronLeft className="w-5 h-5 text-zinc-400" />
           </button>
-          <div className="text-lg font-medium text-zinc-100">
+          <span className="text-lg font-medium text-zinc-100">
             {formatWeekRange(currentWeek.start, currentWeek.end)}
-          </div>
+          </span>
           <button
             onClick={() => onNavigateWeek('next')}
             className="p-2 hover:bg-zinc-700 rounded-lg transition-colors"
@@ -851,76 +1071,76 @@ function WeeklyInvoiceView({
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           <span className="text-sm text-zinc-400">
-            {selectedRows.size > 0
-              ? `${selectedRows.size} selected • ${formatCurrency(selectedAmount)}`
-              : `${rows.length} enrollments • ${formatCurrency(totalAmount)}`}
+            Selected: {selectedRows.size} ({formatCurrency(selectedTotal)})
           </span>
           <button
             onClick={onGenerate}
             disabled={selectedRows.size === 0 || generating}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors disabled:cursor-not-allowed"
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-zinc-700 disabled:text-zinc-500 text-white rounded-lg transition-colors"
           >
             {generating ? (
               <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
                 Generating...
               </>
             ) : (
               <>
                 <FileText className="w-4 h-4" />
-                Generate Selected
+                Generate Invoices
               </>
             )}
-          </button>
-          <button
-            disabled={selectedRows.size === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-zinc-700 hover:bg-zinc-600 disabled:bg-zinc-800 disabled:text-zinc-500 text-white rounded-lg transition-colors disabled:cursor-not-allowed"
-          >
-            <Send className="w-4 h-4" />
-            Send Selected
           </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-zinc-800/30 rounded-lg border border-zinc-700/50 overflow-hidden">
+      {/* Weekly Table */}
+      <div className="bg-zinc-900 rounded-lg border border-zinc-700 overflow-hidden">
         <table className="w-full">
-          <thead>
-            <tr className="border-b border-zinc-700/50">
-              <th className="w-12 px-4 py-3">
+          <thead className="bg-zinc-800/50">
+            <tr>
+              <th className="w-10 px-4 py-3 text-left">
                 <input
                   type="checkbox"
-                  checked={selectedRows.size === rows.length && rows.length > 0}
+                  checked={selectedRows.size === weeklyRows.length && weeklyRows.length > 0}
                   onChange={onToggleAll}
-                  className="rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                  className="rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-zinc-400">Student</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-zinc-400">Teacher</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-zinc-400">Agreed</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-zinc-400">Worked</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-zinc-400">Adj</th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-zinc-400">Rate</th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-zinc-400">Amount</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Student
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Teacher
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Agreed
+              </th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Worked
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Rate
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Amount
+              </th>
             </tr>
           </thead>
-          <tbody>
-            {rows.length === 0 ? (
+          <tbody className="divide-y divide-zinc-800">
+            {weeklyRows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-zinc-500">
-                  <Clock className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No active Academic Coaching enrollments found</p>
-                  <p className="text-sm mt-1">Enrollments will appear here when added</p>
+                <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
+                  No active Academic Coaching enrollments found
                 </td>
               </tr>
             ) : (
-              rows.map(row => (
+              weeklyRows.map(row => (
                 <tr
                   key={row.enrollment_id}
-                  className={`border-b border-zinc-700/30 hover:bg-zinc-700/20 transition-colors ${
-                    selectedRows.has(row.enrollment_id) ? 'bg-blue-900/20' : ''
+                  className={`hover:bg-zinc-800/50 ${
+                    selectedRows.has(row.enrollment_id) ? 'bg-zinc-800/30' : ''
                   }`}
                 >
                   <td className="px-4 py-3">
@@ -928,172 +1148,160 @@ function WeeklyInvoiceView({
                       type="checkbox"
                       checked={selectedRows.has(row.enrollment_id)}
                       onChange={() => onToggleRow(row.enrollment_id)}
-                      className="rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+                      className="rounded border-zinc-600 bg-zinc-700 text-blue-500 focus:ring-blue-500"
                     />
                   </td>
-                  <td className="px-4 py-3 text-zinc-100">{row.student_name}</td>
-                  <td className="px-4 py-3 text-zinc-300">{row.teacher_name}</td>
-                  <td className="px-4 py-3 text-center text-zinc-400">{row.agreed_hours}</td>
+                  <td className="px-4 py-3 text-sm text-zinc-100">{row.student_name}</td>
+                  <td className="px-4 py-3 text-sm text-zinc-400">{row.teacher_name}</td>
+                  <td className="px-4 py-3 text-sm text-center text-zinc-400">{row.agreed_hours}</td>
                   <td className="px-4 py-3 text-center">
                     <input
                       type="number"
-                      value={row.worked_hours}
-                      onChange={e => onUpdateWorkedHours(row.enrollment_id, parseFloat(e.target.value) || 0)}
-                      className="w-16 px-2 py-1 text-center bg-zinc-700 border border-zinc-600 rounded text-zinc-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                       step="0.5"
                       min="0"
+                      value={row.worked_hours}
+                      onChange={e => onUpdateHours(row.enrollment_id, parseFloat(e.target.value) || 0)}
+                      className="w-16 px-2 py-1 text-center bg-zinc-700 border border-zinc-600 rounded text-zinc-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <input
-                      type="number"
-                      value={row.adjustments}
-                      onChange={e => onUpdateAdjustments(row.enrollment_id, parseFloat(e.target.value) || 0)}
-                      className="w-16 px-2 py-1 text-center bg-zinc-700 border border-zinc-600 rounded text-zinc-100 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                      step="0.5"
-                    />
+                  <td className="px-4 py-3 text-sm text-right text-zinc-400">
+                    {formatCurrency(row.hourly_rate)}
                   </td>
-                  <td className="px-4 py-3 text-right text-zinc-400">{formatCurrency(row.hourly_rate)}/hr</td>
-                  <td className="px-4 py-3 text-right font-medium text-zinc-100">
+                  <td className="px-4 py-3 text-sm text-right font-medium text-zinc-100">
                     {formatCurrency(row.amount)}
                   </td>
                 </tr>
               ))
             )}
           </tbody>
-          {rows.length > 0 && (
-            <tfoot>
-              <tr className="bg-zinc-800/50">
-                <td colSpan={7} className="px-4 py-3 text-right font-medium text-zinc-300">
-                  Total:
-                </td>
-                <td className="px-4 py-3 text-right font-bold text-zinc-100">
-                  {formatCurrency(totalAmount)}
-                </td>
-              </tr>
-            </tfoot>
-          )}
         </table>
       </div>
     </div>
   );
 }
 
-// All Invoices View Component
-interface AllInvoicesViewProps {
+// ============================================================================
+// INVOICE LIST VIEW
+// ============================================================================
+interface InvoiceListViewProps {
   invoices: Invoice[];
   loading: boolean;
   searchQuery: string;
   onSearchChange: (query: string) => void;
-  onSelectInvoice: (invoice: Invoice) => void;
-  selectedInvoiceId?: string;
+  onInvoiceClick: (invoice: Invoice) => void;
   onSendInvoice: (invoiceId: string) => void;
   sendingInvoiceId: string | null;
 }
 
-function AllInvoicesView({
+function InvoiceListView({
   invoices,
   loading,
   searchQuery,
   onSearchChange,
-  onSelectInvoice,
-  selectedInvoiceId,
+  onInvoiceClick,
   onSendInvoice,
   sendingInvoiceId,
-}: AllInvoicesViewProps) {
+}: InvoiceListViewProps) {
   return (
-    <div>
-      {/* Search and Filters */}
+    <div className="flex-1 overflow-auto p-6">
+      {/* Search */}
       <div className="flex items-center gap-4 mb-4">
-        <div className="relative flex-1 max-w-md">
+        <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
           <input
             type="text"
             placeholder="Search invoices..."
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder-zinc-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
         </div>
-        <button className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-700 transition-colors">
+        <button className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg transition-colors">
           <Filter className="w-4 h-4" />
           Filters
         </button>
-        <button className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-zinc-300 hover:bg-zinc-700 transition-colors">
-          <Download className="w-4 h-4" />
-          Export
-        </button>
       </div>
 
-      {/* Table */}
-      <div className="bg-zinc-800/30 rounded-lg border border-zinc-700/50 overflow-hidden">
+      {/* Invoice Table */}
+      <div className="bg-zinc-900 rounded-lg border border-zinc-700 overflow-hidden">
         <table className="w-full">
-          <thead>
-            <tr className="border-b border-zinc-700/50">
-              <th className="px-4 py-3 text-left text-sm font-medium text-zinc-400">Invoice #</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-zinc-400">Family</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-zinc-400">Date</th>
-              <th className="px-4 py-3 text-left text-sm font-medium text-zinc-400">Period</th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-zinc-400">Amount</th>
-              <th className="px-4 py-3 text-right text-sm font-medium text-zinc-400">Balance</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-zinc-400">Status</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-zinc-400">Due Date</th>
-              <th className="px-4 py-3 text-center text-sm font-medium text-zinc-400">Actions</th>
+          <thead className="bg-zinc-800/50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Invoice
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Family
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Date
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Due
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Total
+              </th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Balance
+              </th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                Status
+              </th>
+              <th className="w-24 px-4 py-3"></th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-zinc-800">
             {loading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-zinc-500">
-                  Loading invoices...
+                <td colSpan={8} className="px-4 py-8 text-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-zinc-500 mx-auto" />
                 </td>
               </tr>
             ) : invoices.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-zinc-500">
-                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No invoices found</p>
-                  <p className="text-sm mt-1">
-                    {searchQuery
-                      ? 'Try a different search term'
-                      : 'Generate your first invoice from the "This Week" tab'}
-                  </p>
+                <td colSpan={8} className="px-4 py-8 text-center text-zinc-500">
+                  No invoices found
                 </td>
               </tr>
             ) : (
               invoices.map(invoice => {
                 const status = statusConfig[invoice.status] || statusConfig.draft;
+                const isSending = sendingInvoiceId === invoice.id;
+
                 return (
                   <tr
                     key={invoice.id}
-                    onClick={() => onSelectInvoice(invoice)}
-                    className={`border-b border-zinc-700/30 hover:bg-zinc-700/20 cursor-pointer transition-colors ${
-                      selectedInvoiceId === invoice.id ? 'bg-blue-900/20' : ''
-                    }`}
+                    onClick={() => onInvoiceClick(invoice)}
+                    className="hover:bg-zinc-800/50 cursor-pointer"
                   >
-                    <td className="px-4 py-3 font-mono text-zinc-100">
-                      {invoice.invoice_number || invoice.public_id}
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-medium text-zinc-100">
+                        {invoice.invoice_number || `#${invoice.public_id}`}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-zinc-100">{invoice.family?.display_name || '—'}</td>
-                    <td className="px-4 py-3 text-zinc-400">{formatDate(invoice.invoice_date)}</td>
-                    <td className="px-4 py-3 text-zinc-400">
-                      {invoice.period_start && invoice.period_end
-                        ? `${formatDate(invoice.period_start)} - ${formatDate(invoice.period_end)}`
-                        : '—'}
+                    <td className="px-4 py-3 text-sm text-zinc-300">
+                      {invoice.family?.display_name}
                     </td>
-                    <td className="px-4 py-3 text-right text-zinc-100">
+                    <td className="px-4 py-3 text-sm text-zinc-400">
+                      {formatDate(invoice.invoice_date)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-zinc-400">
+                      {formatDate(invoice.due_date)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-right text-zinc-100">
                       {formatCurrency(invoice.total_amount)}
                     </td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="px-4 py-3 text-sm text-right">
                       <span
                         className={
-                          invoice.balance_due > 0 ? 'text-amber-400 font-medium' : 'text-zinc-400'
+                          invoice.balance_due > 0 ? 'text-amber-400' : 'text-green-400'
                         }
                       >
                         {formatCurrency(invoice.balance_due)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium ${status.color}`}
                       >
@@ -1101,20 +1309,17 @@ function AllInvoicesView({
                         {status.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-center text-zinc-400">
-                      {formatDate(invoice.due_date)}
-                    </td>
-                    <td className="px-4 py-3 text-center">
+                    <td className="px-4 py-3 text-right">
                       {invoice.status === 'draft' ? (
                         <button
                           onClick={e => {
                             e.stopPropagation();
                             onSendInvoice(invoice.id);
                           }}
-                          disabled={sendingInvoiceId === invoice.id}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white text-xs font-medium rounded transition-colors"
+                          disabled={isSending}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white text-xs rounded transition-colors"
                         >
-                          {sendingInvoiceId === invoice.id ? (
+                          {isSending ? (
                             <>
                               <Loader2 className="w-3 h-3 animate-spin" />
                               Sending...
@@ -1146,21 +1351,33 @@ function AllInvoicesView({
   );
 }
 
-// Invoice Detail Panel Component
+// ============================================================================
+// INVOICE DETAIL PANEL
+// ============================================================================
 interface InvoiceDetailPanelProps {
   invoice: Invoice;
   lineItems: InvoiceLineItem[];
+  payments: Payment[];
   onClose: () => void;
   onSendInvoice: (invoiceId: string) => void;
   sendingInvoiceId: string | null;
+  onRecordPayment: () => void;
 }
 
-function InvoiceDetailPanel({ invoice, lineItems, onClose, onSendInvoice, sendingInvoiceId }: InvoiceDetailPanelProps) {
+function InvoiceDetailPanel({
+  invoice,
+  lineItems,
+  payments,
+  onClose,
+  onSendInvoice,
+  sendingInvoiceId,
+  onRecordPayment,
+}: InvoiceDetailPanelProps) {
   const status = statusConfig[invoice.status] || statusConfig.draft;
   const isSending = sendingInvoiceId === invoice.id;
 
   return (
-    <div className="fixed right-0 top-0 h-full w-96 bg-zinc-900 border-l border-zinc-700 shadow-xl overflow-auto">
+    <div className="fixed right-0 top-0 h-full w-96 bg-zinc-900 border-l border-zinc-700 shadow-xl overflow-auto z-40">
       {/* Header */}
       <div className="sticky top-0 bg-zinc-900 border-b border-zinc-700 p-4">
         <div className="flex items-center justify-between">
@@ -1263,6 +1480,32 @@ function InvoiceDetailPanel({ invoice, lineItems, onClose, onSendInvoice, sendin
           )}
         </div>
 
+        {/* Payment History */}
+        {payments.length > 0 && (
+          <div>
+            <h3 className="text-sm font-medium text-zinc-400 mb-3">Payment History</h3>
+            <div className="space-y-2">
+              {payments.map(payment => (
+                <div
+                  key={payment.id}
+                  className="flex justify-between items-center text-sm bg-green-900/20 border border-green-800/30 p-3 rounded-lg"
+                >
+                  <div>
+                    <div className="text-green-300 font-medium">
+                      {formatCurrency(payment.amount)}
+                    </div>
+                    <div className="text-zinc-500 text-xs">
+                      {formatDate(payment.payment_date)} • {payment.payment_method}
+                      {payment.reference && ` • ${payment.reference}`}
+                    </div>
+                  </div>
+                  <CheckCircle2 className="w-4 h-4 text-green-500" />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Totals */}
         <div className="border-t border-zinc-700 pt-4 space-y-2">
           <div className="flex justify-between text-sm">
@@ -1284,7 +1527,7 @@ function InvoiceDetailPanel({ invoice, lineItems, onClose, onSendInvoice, sendin
         {/* Actions */}
         <div className="space-y-2">
           {invoice.status === 'draft' && (
-            <button 
+            <button
               onClick={() => onSendInvoice(invoice.id)}
               disabled={isSending}
               className="w-full flex items-center justify-center gap-2 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white rounded-lg transition-colors"
@@ -1302,9 +1545,12 @@ function InvoiceDetailPanel({ invoice, lineItems, onClose, onSendInvoice, sendin
               )}
             </button>
           )}
-          {['sent', 'partial', 'overdue'].includes(invoice.status) && (
+          {['sent', 'partial', 'overdue'].includes(invoice.status) && invoice.balance_due > 0 && (
             <>
-              <button className="w-full flex items-center justify-center gap-2 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors">
+              <button
+                onClick={onRecordPayment}
+                className="w-full flex items-center justify-center gap-2 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+              >
                 <DollarSign className="w-4 h-4" />
                 Record Payment
               </button>
@@ -1314,7 +1560,7 @@ function InvoiceDetailPanel({ invoice, lineItems, onClose, onSendInvoice, sendin
               </button>
             </>
           )}
-          <a 
+          <a
             href={`/invoice/${invoice.public_id}`}
             target="_blank"
             rel="noopener noreferrer"
