@@ -207,9 +207,13 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <Building2 className="w-8 h-8 text-blue-600" />
-                <h1 className="text-2xl font-bold text-gray-900">Eaton Academic</h1>
+                <h1 className="text-2xl font-bold text-gray-900">Eaton Academic, LLC</h1>
               </div>
-              <p className="text-gray-500">Miami, FL</p>
+              <div className="text-gray-500 text-sm">
+                <p>1309 Coffeen Avenue STE 1200</p>
+                <p>Sheridan, Wyoming 82801</p>
+                <p>United States</p>
+              </div>
             </div>
             <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${statusConfig.bgColor}`}>
               <StatusIcon className={`w-5 h-5 ${statusConfig.iconColor}`} />
@@ -328,8 +332,8 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
                 <div>
                   <h3 className="font-medium text-blue-900 mb-1">Payment Methods</h3>
                   <p className="text-blue-800 text-sm">
-                    We accept payment via Zelle, check, or bank transfer. 
-                    Please contact us at <a href="mailto:ivan@eatonacademic.com" className="underline">ivan@eatonacademic.com</a> for payment instructions.
+                    We accept payment via Step Up, Zelle, or debit/credit cards. 
+                    Please contact us at <a href="mailto:info@eatonacademic.com" className="underline">info@eatonacademic.com</a> for payment instructions.
                   </p>
                 </div>
               </div>
@@ -351,8 +355,8 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
 
         {/* Footer */}
         <div className="text-center mt-8 text-gray-500 text-sm">
-          <p>Questions about this invoice? Contact us at ivan@eatonacademic.com</p>
-          <p className="mt-1">Eaton Academic • Miami, FL</p>
+          <p>Questions about this invoice? Contact us at info@eatonacademic.com</p>
+          <p className="mt-1">Eaton Academic, LLC • Sheridan, WY 82801</p>
         </div>
       </div>
     </div>

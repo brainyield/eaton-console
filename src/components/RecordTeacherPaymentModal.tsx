@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
 import { X, DollarSign, Calendar, AlertCircle } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { useTeacherAssignmentsByTeacher, useTeacherPaymentMutations } from '../lib/hooks'
 import type { Teacher } from '../lib/hooks'
 
@@ -183,42 +182,31 @@ export function RecordTeacherPaymentModal({
     setSaving(true)
     
     try {
-      // 1. Create the teacher_payments record using mutation
+      // FIX: Include line_items in the mutation call (the mutation handles insertion)
       const paymentData = await createPayment.mutateAsync({
         teacher_id: teacher.id,
         pay_period_start: payPeriodStart,
         pay_period_end: payPeriodEnd,
         pay_date: payDate,
         total_amount: totalAmount,
-        payment_method: paymentMethod || null,
-        reference: reference || null,
-        notes: notes || null,
+        payment_method: paymentMethod || undefined,
+        reference: reference || undefined,
+        notes: notes || undefined,
+        line_items: lineItems
+          .filter(item => item.amount > 0)
+          .map(item => ({
+            description: item.description,
+            hours: item.hours,
+            hourly_rate: item.hourly_rate,
+            amount: item.amount,
+            service_id: item.service_id || undefined,
+            enrollment_id: item.enrollment_id || undefined,
+          })),
       })
 
       const paymentId = paymentData.id
 
-      // 2. Create line items (still using direct supabase - no hook for this)
-      const lineItemsToInsert = lineItems
-        .filter(item => item.amount > 0)
-        .map(item => ({
-          teacher_payment_id: paymentId,
-          service_id: item.service_id || null,
-          enrollment_id: item.enrollment_id || null,
-          description: item.description,
-          hours: item.hours,
-          hourly_rate: item.hourly_rate,
-          amount: item.amount,
-        }))
-
-      if (lineItemsToInsert.length > 0) {
-        const { error: lineItemsError } = await (supabase
-          .from('teacher_payment_line_items') as any)
-          .insert(lineItemsToInsert)
-
-        if (lineItemsError) throw lineItemsError
-      }
-
-      // 3. Trigger n8n notification (fire and forget)
+      // Trigger n8n notification (fire and forget)
       await triggerPayrollNotification(paymentId)
 
       onSuccess?.()

@@ -165,6 +165,19 @@ export interface TeacherPayment {
   created_at: string
 }
 
+// NEW: Invoice Email type for email history tracking
+export interface InvoiceEmail {
+  id: string
+  invoice_id: string
+  email_type: string
+  sent_to: string
+  sent_at: string
+  subject: string | null
+  opened_at: string | null
+  clicked_at: string | null
+  created_at: string
+}
+
 // =============================================================================
 // FAMILIES HOOKS
 // =============================================================================
@@ -313,11 +326,12 @@ export function useStudentMutations() {
       if (error) throw error
       return student
     },
-    onSuccess: (data) => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.students.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.students.byFamily(data.family_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      if (variables.family_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.students.byFamily(variables.family_id) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.families.detail(variables.family_id) })
+      }
     },
   })
 
@@ -331,22 +345,19 @@ export function useStudentMutations() {
       if (error) throw error
       return student
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.students.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.students.byFamily(data.family_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.families.detail(data.family_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
   const deleteStudent = useMutation({
-    mutationFn: async ({ id, familyId }: { id: string; familyId: string }) => {
+    mutationFn: async (id: string) => {
       const { error } = await supabase.from('students').delete().eq('id', id)
       if (error) throw error
-      return { familyId }
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.students.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.students.byFamily(data.familyId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
@@ -425,7 +436,6 @@ export function useTeacherMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -440,12 +450,8 @@ export function useTeacherMutations() {
       return teacher
     },
     onSuccess: (_, variables) => {
-      // Invalidate all teacher-related queries
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.detail(variables.id) })
-      // Also invalidate enrollments since they may display teacher data
-      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
     },
   })
 
@@ -456,7 +462,6 @@ export function useTeacherMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -479,7 +484,7 @@ export function useServices() {
       if (error) throw error
       return data as Service[]
     },
-    staleTime: 5 * 60 * 1000, // Services rarely change, cache for 5 minutes
+    staleTime: 5 * 60 * 1000,
   })
 }
 
@@ -501,7 +506,7 @@ export function useActiveServices() {
 }
 
 // =============================================================================
-// ENROLLMENTS HOOKS
+// ENROLLMENT TYPES
 // =============================================================================
 
 export interface EnrollmentWithDetails extends Enrollment {
@@ -511,24 +516,28 @@ export interface EnrollmentWithDetails extends Enrollment {
   teacher_assignments: (TeacherAssignment & { teacher: Teacher })[]
 }
 
-export function useEnrollments(filters?: { status?: EnrollmentStatus; serviceId?: string }) {
+// =============================================================================
+// ENROLLMENTS HOOKS
+// =============================================================================
+
+export function useEnrollments(filters?: { status?: string; serviceId?: string }) {
   return useQuery({
     queryKey: queryKeys.enrollments.list(filters),
     queryFn: async () => {
       let query = (supabase.from('enrollments') as any)
         .select(`
           *,
-          student:students(id, full_name, grade_level),
-          family:families(id, display_name, primary_email, status),
-          service:services(id, code, name, billing_frequency),
+          student:students(*),
+          family:families(*),
+          service:services(*),
           teacher_assignments(
             *,
-            teacher:teachers(id, display_name, email, status)
+            teacher:teachers(*)
           )
         `)
         .order('created_at', { ascending: false })
 
-      if (filters?.status) {
+      if (filters?.status && filters.status !== 'all') {
         query = query.eq('status', filters.status)
       }
 
@@ -550,11 +559,11 @@ export function useEnrollmentsByFamily(familyId: string) {
       const { data, error } = await (supabase.from('enrollments') as any)
         .select(`
           *,
-          student:students(id, full_name, grade_level),
-          service:services(id, code, name, billing_frequency),
+          student:students(*),
+          service:services(*),
           teacher_assignments(
             *,
-            teacher:teachers(id, display_name, email)
+            teacher:teachers(*)
           )
         `)
         .eq('family_id', familyId)
@@ -574,12 +583,12 @@ export function useEnrollment(id: string) {
       const { data, error } = await (supabase.from('enrollments') as any)
         .select(`
           *,
-          student:students(id, full_name, grade_level),
-          family:families(id, display_name, primary_email),
-          service:services(id, code, name, billing_frequency),
+          student:students(*),
+          family:families(*),
+          service:services(*),
           teacher_assignments(
             *,
-            teacher:teachers(id, display_name, email, default_hourly_rate)
+            teacher:teachers(*)
           )
         `)
         .eq('id', id)
@@ -682,7 +691,11 @@ export function useTeacherAssignmentsByEnrollment(enrollmentId: string) {
   })
 }
 
-export function useTeacherAssignmentsByTeacher(teacherId: string) {
+// FIXED: Added options parameter to support { enabled } option
+export function useTeacherAssignmentsByTeacher(
+  teacherId: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: queryKeys.teacherAssignments.byTeacher(teacherId),
     queryFn: async () => {
@@ -703,7 +716,7 @@ export function useTeacherAssignmentsByTeacher(teacherId: string) {
       if (error) throw error
       return data as (TeacherAssignment & { enrollment: EnrollmentWithDetails })[]
     },
-    enabled: !!teacherId,
+    enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
   })
 }
 
@@ -741,24 +754,35 @@ export function useTeacherAssignmentMutations() {
     },
   })
 
+  // FIXED: Updated to support more parameters for TransferTeacherModal
   const transferTeacher = useMutation({
     mutationFn: async ({
       enrollmentId,
       oldTeacherId,
       newTeacherId,
       hourlyRate,
+      hoursPerWeek,
+      effectiveDate,
+      endPrevious = true,
     }: {
       enrollmentId: string
-      oldTeacherId: string
+      oldTeacherId?: string
       newTeacherId: string
       hourlyRate?: number
+      hoursPerWeek?: number
+      effectiveDate?: string
+      endPrevious?: boolean
     }) => {
-      // End old assignment
-      await (supabase.from('teacher_assignments') as any)
-        .update({ is_active: false, end_date: new Date().toISOString().split('T')[0] })
-        .eq('enrollment_id', enrollmentId)
-        .eq('teacher_id', oldTeacherId)
-        .eq('is_active', true)
+      const today = effectiveDate || new Date().toISOString().split('T')[0]
+      
+      // End old assignment if exists and endPrevious is true
+      if (oldTeacherId && endPrevious) {
+        await (supabase.from('teacher_assignments') as any)
+          .update({ is_active: false, end_date: today })
+          .eq('enrollment_id', enrollmentId)
+          .eq('teacher_id', oldTeacherId)
+          .eq('is_active', true)
+      }
 
       // Create new assignment
       const { data, error } = await (supabase.from('teacher_assignments') as any)
@@ -766,8 +790,9 @@ export function useTeacherAssignmentMutations() {
           enrollment_id: enrollmentId,
           teacher_id: newTeacherId,
           hourly_rate_teacher: hourlyRate,
+          hours_per_week: hoursPerWeek,
           is_active: true,
-          start_date: new Date().toISOString().split('T')[0],
+          start_date: today,
         })
         .select()
         .single()
@@ -781,10 +806,19 @@ export function useTeacherAssignmentMutations() {
     },
   })
 
+  // FIXED: Updated to accept object with enrollmentId and optional endDate
   const endAssignmentsByEnrollment = useMutation({
-    mutationFn: async (enrollmentId: string) => {
+    mutationFn: async (
+      params: string | { enrollmentId: string; endDate?: string }
+    ) => {
+      // Support both string (backward compat) and object (new usage)
+      const enrollmentId = typeof params === 'string' ? params : params.enrollmentId
+      const endDate = typeof params === 'string' 
+        ? new Date().toISOString().split('T')[0] 
+        : params.endDate || new Date().toISOString().split('T')[0]
+
       const { error } = await (supabase.from('teacher_assignments') as any)
-        .update({ is_active: false, end_date: new Date().toISOString().split('T')[0] })
+        .update({ is_active: false, end_date: endDate })
         .eq('enrollment_id', enrollmentId)
         .eq('is_active', true)
 
@@ -803,7 +837,11 @@ export function useTeacherAssignmentMutations() {
 // TEACHER PAYMENTS HOOKS
 // =============================================================================
 
-export function useTeacherPaymentsByTeacher(teacherId: string) {
+// FIXED: Added options parameter to support { enabled } option
+export function useTeacherPaymentsByTeacher(
+  teacherId: string,
+  options?: { enabled?: boolean }
+) {
   return useQuery({
     queryKey: queryKeys.teacherPayments.byTeacher(teacherId),
     queryFn: async () => {
@@ -818,7 +856,7 @@ export function useTeacherPaymentsByTeacher(teacherId: string) {
       if (error) throw error
       return data as (TeacherPayment & { line_items: any[] })[]
     },
-    enabled: !!teacherId,
+    enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
   })
 }
 
@@ -832,9 +870,9 @@ export function useTeacherPaymentMutations() {
       pay_period_end: string
       pay_date: string
       total_amount: number
-      payment_method?: string
-      reference?: string
-      notes?: string
+      payment_method?: string | null
+      reference?: string | null
+      notes?: string | null
       line_items: {
         description: string
         hours?: number
@@ -846,9 +884,17 @@ export function useTeacherPaymentMutations() {
     }) => {
       const { line_items, ...paymentData } = data
 
+      // Convert null to undefined for optional fields
+      const cleanedPaymentData = {
+        ...paymentData,
+        payment_method: paymentData.payment_method || undefined,
+        reference: paymentData.reference || undefined,
+        notes: paymentData.notes || undefined,
+      }
+
       // Create payment
       const { data: payment, error } = await (supabase.from('teacher_payments') as any)
-        .insert(paymentData)
+        .insert(cleanedPaymentData)
         .select()
         .single()
       if (error) throw error
@@ -885,52 +931,41 @@ export interface BillableEnrollment extends Enrollment {
 }
 
 export interface InvoiceWithDetails extends Invoice {
-  family: Family | null
+  family: Family
   line_items: InvoiceLineItem[]
-  services?: string[] // derived from line items
+  services?: string[]
 }
 
-interface GenerateDraftsParams {
-  period_start: string
-  period_end: string
-  period_note: string
-  due_date: string
-  enrollment_ids: string[]
-  invoice_type: 'weekly' | 'monthly'
-  // NEW: Per-enrollment overrides for quantity and unit_price
-  line_item_overrides?: Record<string, {
-    quantity?: number
-    unit_price?: number
-    description_override?: string
-  }>
+export interface InvoiceWithFamily extends Invoice {
+  family: Family
 }
 
 // =============================================================================
-// INVOICE QUERIES
+// INVOICE HOOKS
 // =============================================================================
 
-export function useInvoices(filters?: { status?: InvoiceStatus | InvoiceStatus[] }) {
+export function useInvoices(filters?: { status?: string | string[] }) {
   return useQuery({
     queryKey: queryKeys.invoices.list(filters),
     queryFn: async () => {
       let query = (supabase.from('invoices') as any)
         .select(`
           *,
-          family:families(id, display_name, primary_email)
+          family:families(*)
         `)
         .order('invoice_date', { ascending: false })
 
       if (filters?.status) {
         if (Array.isArray(filters.status)) {
           query = query.in('status', filters.status)
-        } else {
+        } else if (filters.status !== 'all') {
           query = query.eq('status', filters.status)
         }
       }
 
       const { data, error } = await query
       if (error) throw error
-      return data as (Invoice & { family: Family })[]
+      return data as InvoiceWithFamily[]
     },
   })
 }
@@ -948,277 +983,186 @@ export function useInvoicesByFamily(familyId: string) {
         .order('invoice_date', { ascending: false })
 
       if (error) throw error
-      return data as (Invoice & { line_items: InvoiceLineItem[] })[]
+      return data as Invoice[]
     },
     enabled: !!familyId,
   })
 }
 
-/**
- * Get invoices with full details including line items and derived service list
- */
-export function useInvoicesWithDetails(filters?: {
-  status?: InvoiceStatus | InvoiceStatus[]
-  service_code?: string
-  search?: string
-  date_from?: string
-  date_to?: string
-}) {
+export function useInvoicesWithDetails(filters?: { status?: string | string[] }) {
   return useQuery({
-    queryKey: [...queryKeys.invoices.all, 'details', filters],
+    queryKey: queryKeys.invoices.withDetails(filters),
     queryFn: async () => {
-      // First get invoices with family info
       let query = (supabase.from('invoices') as any)
         .select(`
           *,
-          family:families!inner(
-            id,
-            display_name,
-            primary_email,
-            primary_phone,
-            status
+          family:families(*),
+          line_items:invoice_line_items(
+            *,
+            enrollment:enrollments(
+              service:services(code, name)
+            )
           )
         `)
         .order('invoice_date', { ascending: false })
 
-      // Apply status filter
       if (filters?.status) {
         if (Array.isArray(filters.status)) {
           query = query.in('status', filters.status)
-        } else {
+        } else if (filters.status !== 'all') {
           query = query.eq('status', filters.status)
         }
       }
 
-      // Apply date filters
-      if (filters?.date_from) {
-        query = query.gte('invoice_date', filters.date_from)
-      }
-      if (filters?.date_to) {
-        query = query.lte('invoice_date', filters.date_to)
-      }
-
-      const { data: invoices, error } = await query
-
+      const { data, error } = await query
       if (error) throw error
-      if (!invoices) return []
 
-      // Fetch line items for all invoices
-      const invoiceIds = (invoices as any[]).map((inv: any) => inv.id)
-      const { data: lineItems, error: lineError } = await (supabase.from('invoice_line_items') as any)
-        .select(`
-          *,
-          enrollment:enrollments(
-            service:services(code, name)
-          )
-        `)
-        .in('invoice_id', invoiceIds)
-
-      if (lineError) throw lineError
-
-      // Group line items by invoice and extract service codes
-      const lineItemsByInvoice = new Map<string, any[]>()
-      const servicesByInvoice = new Map<string, Set<string>>()
-
-      ;(lineItems as any[] || []).forEach((item: any) => {
-        const invoiceId = item.invoice_id
-        if (!lineItemsByInvoice.has(invoiceId)) {
-          lineItemsByInvoice.set(invoiceId, [])
-          servicesByInvoice.set(invoiceId, new Set())
-        }
-        lineItemsByInvoice.get(invoiceId)!.push(item)
-        
-        // Extract service code from enrollment or description
-        const serviceCode = item.enrollment?.service?.code || 
-          extractServiceCodeFromDescription(item.description)
-        if (serviceCode) {
-          servicesByInvoice.get(invoiceId)!.add(serviceCode)
-        }
+      // Extract service codes from line items
+      return (data || []).map((inv: any) => {
+        const serviceCodes = new Set<string>()
+        inv.line_items?.forEach((li: InvoiceLineItem) => {
+          const code = li.enrollment?.service?.code || extractServiceCodeFromDescription(li.description)
+          if (code) serviceCodes.add(code)
+        })
+        return {
+          ...inv,
+          services: Array.from(serviceCodes),
+        } as InvoiceWithDetails
       })
-
-      // Combine data
-      const result: InvoiceWithDetails[] = (invoices as any[]).map((inv: any) => ({
-        ...inv,
-        line_items: lineItemsByInvoice.get(inv.id) || [],
-        services: Array.from(servicesByInvoice.get(inv.id) || [])
-      }))
-
-      // Apply service filter (post-query since it's derived)
-      if (filters?.service_code) {
-        return result.filter(inv => 
-          inv.services?.includes(filters.service_code!)
-        )
-      }
-
-      // Apply search filter
-      if (filters?.search) {
-        const searchLower = filters.search.toLowerCase()
-        return result.filter(inv =>
-          inv.invoice_number?.toLowerCase().includes(searchLower) ||
-          inv.family?.display_name?.toLowerCase().includes(searchLower) ||
-          inv.family?.primary_email?.toLowerCase().includes(searchLower)
-        )
-      }
-
-      return result
     },
   })
 }
 
-/**
- * Get billable enrollments for draft generation
- */
-export function useBillableEnrollments(serviceFilter?: 'weekly' | 'monthly' | 'all') {
+export function useBillableEnrollments(serviceFilter?: string) {
   return useQuery({
-    queryKey: [...queryKeys.enrollments.all, 'billable', serviceFilter],
+    queryKey: queryKeys.enrollments.billable(serviceFilter),
     queryFn: async () => {
       let query = (supabase.from('enrollments') as any)
         .select(`
           *,
-          student:students!inner(id, full_name, grade_level),
-          family:families!inner(id, display_name, primary_email, status),
-          service:services!inner(id, code, name, billing_frequency),
+          student:students(*),
+          family:families(*),
+          service:services(*),
           teacher_assignments(
-            teacher:teachers(display_name),
-            hourly_rate_teacher,
-            is_active
+            *,
+            teacher:teachers(*)
           )
         `)
         .eq('status', 'active')
+        .order('created_at', { ascending: false })
 
-      // Filter by billing frequency
-      if (serviceFilter === 'weekly') {
-        query = query.eq('service.billing_frequency', 'weekly')
-      } else if (serviceFilter === 'monthly') {
-        query = query.in('service.billing_frequency', ['monthly', 'bi_monthly', 'annual'])
+      if (serviceFilter && serviceFilter !== 'all') {
+        query = query.eq('service_id', serviceFilter)
       }
 
-      const { data, error } = await query.order('family(display_name)')
-
+      const { data, error } = await query
       if (error) throw error
-      return (data || []) as BillableEnrollment[]
+      return data as BillableEnrollment[]
     },
   })
 }
 
-/**
- * Check for existing invoices in a period
- */
 export function useExistingInvoicesForPeriod(periodStart: string, periodEnd: string) {
   return useQuery({
-    queryKey: [...queryKeys.invoices.all, 'period', periodStart, periodEnd],
+    queryKey: queryKeys.invoices.byPeriod(periodStart, periodEnd),
     queryFn: async () => {
       const { data, error } = await (supabase.from('invoices') as any)
-        .select('id, family_id, invoice_number')
+        .select(`
+          *,
+          line_items:invoice_line_items(enrollment_id)
+        `)
         .eq('period_start', periodStart)
         .eq('period_end', periodEnd)
+        .neq('status', 'void')
 
       if (error) throw error
-      return (data || []) as { id: string; family_id: string; invoice_number: string }[]
+      return data as (Invoice & { line_items: { enrollment_id: string }[] })[]
     },
     enabled: !!periodStart && !!periodEnd,
   })
 }
 
-// =============================================================================
-// INVOICE MUTATIONS
-// =============================================================================
+// NEW: Hook to fetch email history for an invoice
+export function useInvoiceEmails(invoiceId: string) {
+  return useQuery({
+    queryKey: queryKeys.invoiceEmails.byInvoice(invoiceId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('invoice_emails') as any)
+        .select('*')
+        .eq('invoice_id', invoiceId)
+        .order('sent_at', { ascending: false })
+
+      if (error) throw error
+      return data as InvoiceEmail[]
+    },
+    enabled: !!invoiceId,
+  })
+}
+
+// NEW: Helper function to determine reminder type based on days overdue
+export function getReminderType(dueDate: string): { 
+  type: 'reminder_7' | 'reminder_14' | 'reminder_30'
+  label: string
+  daysOverdue: number 
+} {
+  const due = new Date(dueDate)
+  const today = new Date()
+  const diffTime = today.getTime() - due.getTime()
+  const daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+  if (daysOverdue >= 30) {
+    return { type: 'reminder_30', label: 'Urgent Reminder', daysOverdue }
+  } else if (daysOverdue >= 14) {
+    return { type: 'reminder_14', label: 'Past Due Reminder', daysOverdue }
+  } else {
+    return { type: 'reminder_7', label: 'Friendly Reminder', daysOverdue }
+  }
+}
 
 export function useInvoiceMutations() {
   const queryClient = useQueryClient()
 
   const generateDrafts = useMutation({
-    mutationFn: async (params: GenerateDraftsParams) => {
-      const { period_start, period_end, period_note, due_date, enrollment_ids, line_item_overrides } = params
-
-      // Fetch enrollments with all needed data
-      const { data: enrollments, error: enrollError } = await (supabase.from('enrollments') as any)
-        .select(`
-          *,
-          student:students(id, full_name),
-          family:families(id, display_name, primary_email),
-          service:services(id, code, name, billing_frequency)
-        `)
-        .in('id', enrollment_ids)
-
-      if (enrollError) throw enrollError
-      if (!enrollments?.length) throw new Error('No enrollments found')
-
-      // Get next invoice number
-      const { data: settings } = await (supabase.from('app_settings') as any)
-        .select('value')
-        .eq('key', 'invoice_defaults')
-        .single()
-
-      let nextNumber = settings?.value?.next_number || 1
-      const prefix = settings?.value?.number_prefix || 'INV-'
-
+    mutationFn: async ({
+      enrollments,
+      periodStart,
+      periodEnd,
+      dueDate,
+      invoiceType,
+      customAmounts,
+    }: {
+      enrollments: BillableEnrollment[]
+      periodStart: string
+      periodEnd: string
+      dueDate: string
+      invoiceType: 'weekly' | 'monthly'
+      customAmounts?: Record<string, { quantity: number; unitPrice: number; amount: number }>
+    }) => {
       // Group enrollments by family
-      const byFamily = new Map<string, any[]>()
-      ;(enrollments as any[]).forEach((e: any) => {
-        const familyId = e.family?.id
-        if (!familyId) return
-        if (!byFamily.has(familyId)) byFamily.set(familyId, [])
-        byFamily.get(familyId)!.push(e)
-      })
+      const byFamily = enrollments.reduce((acc, e) => {
+        const famId = e.family_id
+        if (!acc[famId]) acc[famId] = { family: e.family, enrollments: [] }
+        acc[famId].enrollments.push(e)
+        return acc
+      }, {} as Record<string, { family: Family | null; enrollments: BillableEnrollment[] }>)
 
-      const createdInvoices: string[] = []
+      const createdInvoices: Invoice[] = []
 
-      // Create one invoice per family
-      for (const [familyId, familyEnrollments] of byFamily) {
-        // Calculate line items with potential overrides
-        const lineItems = familyEnrollments.map((e: any) => {
-          const override = line_item_overrides?.[e.id]
-          
-          // Get base values
-          let baseAmount = calculateEnrollmentAmount(e as BillableEnrollment, params.invoice_type)
-          let quantity = e.service?.code === 'academic_coaching' ? (e.hours_per_week || 0) : 1
-          let unitPrice = e.service?.code === 'academic_coaching' 
-            ? (e.hourly_rate_customer || 0) 
-            : baseAmount
-          
-          // Apply overrides if present
-          if (override) {
-            if (override.quantity !== undefined) {
-              quantity = override.quantity
-            }
-            if (override.unit_price !== undefined) {
-              unitPrice = override.unit_price
-            }
-          }
-          
-          // Calculate final amount
-          const amount = quantity * unitPrice
-          
-          // Build description (with override support)
-          let description = override?.description_override || 
-            buildLineItemDescriptionWithQuantity(e as BillableEnrollment, quantity, unitPrice, params.invoice_type)
-          
-          return {
-            enrollment_id: e.id,
-            description,
-            quantity,
-            unit_price: unitPrice,
-            amount,
-          }
-        })
-
-        const subtotal = lineItems.reduce((sum: number, li: any) => sum + (li.amount || 0), 0)
-        const invoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`
-
+      for (const [familyId, group] of Object.entries(byFamily)) {
         // Create invoice
+        const invoiceNote = invoiceType === 'weekly'
+          ? `For the week of ${new Date(periodStart).toLocaleDateString()} - ${new Date(periodEnd).toLocaleDateString()}`
+          : `For ${new Date(periodStart).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
+
         const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
           .insert({
             family_id: familyId,
-            invoice_number: invoiceNumber,
             invoice_date: new Date().toISOString().split('T')[0],
-            due_date,
-            period_start,
-            period_end,
-            subtotal,
-            total_amount: subtotal,
+            due_date: dueDate,
+            period_start: periodStart,
+            period_end: periodEnd,
             status: 'draft',
-            notes: period_note,
+            notes: invoiceNote,
           })
           .select()
           .single()
@@ -1226,79 +1170,96 @@ export function useInvoiceMutations() {
         if (invError) throw invError
 
         // Create line items
-        const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
-          .insert(lineItems.map((li: any, idx: number) => ({
-            ...li,
+        let subtotal = 0
+        const lineItems = group.enrollments.map((enrollment, idx) => {
+          // Check for custom amount override
+          const customData = customAmounts?.[enrollment.id]
+          
+          let quantity: number
+          let unitPrice: number
+          let amount: number
+
+          if (customData) {
+            quantity = customData.quantity
+            unitPrice = customData.unitPrice
+            amount = customData.amount
+          } else {
+            // Default calculation
+            const baseAmount = calculateEnrollmentAmount(enrollment, invoiceType)
+            if (enrollment.service?.code === 'academic_coaching') {
+              quantity = enrollment.hours_per_week || 0
+              unitPrice = enrollment.hourly_rate_customer || 0
+              amount = baseAmount
+            } else {
+              quantity = 1
+              unitPrice = baseAmount
+              amount = baseAmount
+            }
+          }
+
+          subtotal += amount
+
+          return {
             invoice_id: invoice.id,
+            enrollment_id: enrollment.id,
+            description: buildLineItemDescriptionWithQuantity(enrollment, quantity, unitPrice, invoiceType),
+            quantity,
+            unit_price: unitPrice,
+            amount,
             sort_order: idx,
-          })))
+          }
+        })
+
+        const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
+          .insert(lineItems)
 
         if (itemsError) throw itemsError
 
-        createdInvoices.push(invoice.id)
-        nextNumber++
-      }
+        // Update invoice totals
+        const { error: updateError } = await (supabase.from('invoices') as any)
+          .update({
+            subtotal,
+            total_amount: subtotal,
+          })
+          .eq('id', invoice.id)
 
-      // Update next invoice number
-      await (supabase.from('app_settings') as any)
-        .update({
-          value: { ...settings?.value, next_number: nextNumber },
-          updated_at: new Date().toISOString(),
-        })
-        .eq('key', 'invoice_defaults')
+        if (updateError) throw updateError
+
+        createdInvoices.push(invoice)
+      }
 
       return createdInvoices
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
     },
   })
 
   const updateInvoice = useMutation({
-    mutationFn: async ({ id, ...data }: Partial<Invoice> & { id: string }) => {
-      const { data: result, error } = await (supabase.from('invoices') as any)
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Invoice> }) => {
+      const { data: invoice, error } = await (supabase.from('invoices') as any)
         .update(data)
         .eq('id', id)
         .select()
         .single()
-
       if (error) throw error
-      return result
+      return invoice
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.id) })
     },
   })
 
   const updateLineItem = useMutation({
-    mutationFn: async ({ id, ...data }: Partial<InvoiceLineItem> & { id: string }) => {
-      const { data: result, error } = await (supabase.from('invoice_line_items') as any)
+    mutationFn: async ({ id, data }: { id: string; data: Partial<InvoiceLineItem> }) => {
+      const { data: lineItem, error } = await (supabase.from('invoice_line_items') as any)
         .update(data)
         .eq('id', id)
         .select()
         .single()
-
       if (error) throw error
-
-      // Recalculate invoice totals
-      const { data: invoice } = await (supabase.from('invoices') as any)
-        .select('id')
-        .eq('id', result.invoice_id)
-        .single()
-
-      if (invoice) {
-        const { data: items } = await (supabase.from('invoice_line_items') as any)
-          .select('amount')
-          .eq('invoice_id', invoice.id)
-
-        const subtotal = (items as any[] || []).reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
-        await (supabase.from('invoices') as any)
-          .update({ subtotal, total_amount: subtotal })
-          .eq('id', invoice.id)
-      }
-
-      return result
+      return lineItem
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
@@ -1307,10 +1268,7 @@ export function useInvoiceMutations() {
 
   const deleteInvoice = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase.from('invoices') as any)
-        .delete()
-        .eq('id', id)
-
+      const { error } = await supabase.from('invoices').delete().eq('id', id)
       if (error) throw error
     },
     onSuccess: () => {
@@ -1320,10 +1278,7 @@ export function useInvoiceMutations() {
 
   const bulkDeleteInvoices = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase.from('invoices') as any)
-        .delete()
-        .in('id', ids)
-
+      const { error } = await supabase.from('invoices').delete().in('id', ids)
       if (error) throw error
     },
     onSuccess: () => {
@@ -1331,30 +1286,26 @@ export function useInvoiceMutations() {
     },
   })
 
-  // NEW: Void a single invoice (for sent/outstanding invoices)
   const voidInvoice = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await (supabase.from('invoices') as any)
+      const { data: invoice, error } = await (supabase.from('invoices') as any)
         .update({ status: 'void' })
         .eq('id', id)
         .select()
         .single()
-
       if (error) throw error
-      return data
+      return invoice
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
     },
   })
 
-  // NEW: Void multiple invoices at once
   const bulkVoidInvoices = useMutation({
     mutationFn: async (ids: string[]) => {
       const { error } = await (supabase.from('invoices') as any)
         .update({ status: 'void' })
         .in('id', ids)
-
       if (error) throw error
     },
     onSuccess: () => {
@@ -1364,53 +1315,62 @@ export function useInvoiceMutations() {
 
   const sendInvoice = useMutation({
     mutationFn: async (invoiceId: string) => {
-      // Fetch full invoice data for webhook
-      const { data: invoice, error } = await (supabase.from('invoices') as any)
+      // First, get the full invoice with family and line items
+      const { data: invoice, error: fetchError } = await (supabase.from('invoices') as any)
         .select(`
           *,
-          family:families(id, display_name, primary_email, primary_contact_name, primary_phone),
-          line_items:invoice_line_items(description, amount)
+          family:families(*),
+          line_items:invoice_line_items(*)
         `)
         .eq('id', invoiceId)
         .single()
 
-      if (error) throw error
+      if (fetchError) throw fetchError
       if (!invoice.family?.primary_email) {
         throw new Error('Family has no email address')
       }
 
-      const invoiceUrl = `${window.location.origin}/invoice/${invoice.public_id}`
+      // Prepare payload for n8n
+      const payload = {
+        type: 'send',
+        invoice_id: invoice.id,
+        invoice_number: invoice.invoice_number || `INV-${invoice.public_id}`,
+        public_id: invoice.public_id,
+        invoice_url: `https://eaton-console.vercel.app/invoice/${invoice.public_id}`,
+        family: {
+          id: invoice.family.id,
+          name: invoice.family.display_name,
+          email: invoice.family.primary_email,
+          contact_name: invoice.family.primary_contact_name || invoice.family.display_name,
+        },
+        amounts: {
+          subtotal: invoice.subtotal,
+          total: invoice.total_amount,
+          amount_paid: invoice.amount_paid,
+          balance_due: invoice.balance_due,
+        },
+        dates: {
+          invoice_date: invoice.invoice_date,
+          due_date: invoice.due_date,
+          period_start: invoice.period_start,
+          period_end: invoice.period_end,
+        },
+        line_items: (invoice.line_items || []).map((li: InvoiceLineItem) => ({
+          description: li.description,
+          amount: li.amount,
+        })),
+      }
 
       // Send via n8n webhook
-      await fetch('https://eatonacademic.app.n8n.cloud/webhook/invoice-send', {
+      const response = await fetch('https://eatonacademic.app.n8n.cloud/webhook/invoice-send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          invoice_id: invoice.id,
-          invoice_number: invoice.invoice_number,
-          public_id: invoice.public_id,
-          invoice_url: invoiceUrl,
-          family: {
-            id: invoice.family.id,
-            name: invoice.family.display_name,
-            email: invoice.family.primary_email,
-            contact_name: invoice.family.primary_contact_name,
-          },
-          amounts: {
-            subtotal: invoice.subtotal,
-            total: invoice.total_amount,
-            amount_paid: invoice.amount_paid,
-            balance_due: invoice.balance_due,
-          },
-          dates: {
-            invoice_date: invoice.invoice_date,
-            due_date: invoice.due_date,
-            period_start: invoice.period_start,
-            period_end: invoice.period_end,
-          },
-          line_items: invoice.line_items,
-        }),
+        body: JSON.stringify(payload),
       })
+
+      if (!response.ok) {
+        throw new Error(`Failed to send invoice: ${response.statusText}`)
+      }
 
       // Update invoice status
       const { error: updateError } = await (supabase.from('invoices') as any)
@@ -1423,28 +1383,138 @@ export function useInvoiceMutations() {
 
       if (updateError) throw updateError
 
+      // Log to invoice_emails
+      await (supabase.from('invoice_emails') as any).insert({
+        invoice_id: invoiceId,
+        email_type: 'invoice',
+        sent_to: invoice.family.primary_email,
+        sent_at: new Date().toISOString(),
+        subject: `Invoice ${invoice.invoice_number || invoice.public_id} from Eaton Academic`,
+      })
+
       return invoice
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceEmails.all })
+    },
+  })
+
+  const bulkSendInvoices = useMutation({
+    mutationFn: async (invoiceIds: string[]) => {
+      const results = await Promise.allSettled(
+        invoiceIds.map((id) => sendInvoice.mutateAsync(id))
+      )
+
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.filter((r) => r.status === 'rejected').length
+
+      return { succeeded, failed, total: invoiceIds.length }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
     },
   })
 
-  const bulkSendInvoices = useMutation({
-    mutationFn: async (invoiceIds: string[]) => {
-      const results = []
-      for (const id of invoiceIds) {
-        try {
-          await sendInvoice.mutateAsync(id)
-          results.push({ id, success: true })
-        } catch (error) {
-          results.push({ id, success: false, error })
-        }
+  // NEW: Send reminder for a single invoice
+  const sendReminder = useMutation({
+    mutationFn: async ({ 
+      invoice, 
+      reminderType 
+    }: { 
+      invoice: InvoiceWithFamily
+      reminderType: 'reminder_7' | 'reminder_14' | 'reminder_30'
+    }) => {
+      if (!invoice.family?.primary_email) {
+        throw new Error('Family has no email address')
       }
-      return results
+
+      const { daysOverdue } = getReminderType(invoice.due_date || '')
+
+      // Prepare payload for n8n
+      const payload = {
+        type: reminderType,
+        invoice_id: invoice.id,
+        invoice_number: invoice.invoice_number || `INV-${invoice.public_id}`,
+        public_id: invoice.public_id,
+        invoice_url: `https://eaton-console.vercel.app/invoice/${invoice.public_id}`,
+        family: {
+          id: invoice.family.id,
+          name: invoice.family.display_name,
+          email: invoice.family.primary_email,
+          contact_name: invoice.family.primary_contact_name || invoice.family.display_name,
+        },
+        amounts: {
+          subtotal: invoice.subtotal,
+          total: invoice.total_amount,
+          amount_paid: invoice.amount_paid,
+          balance_due: invoice.balance_due,
+        },
+        dates: {
+          invoice_date: invoice.invoice_date,
+          due_date: invoice.due_date,
+          period_start: invoice.period_start,
+          period_end: invoice.period_end,
+        },
+        days_overdue: daysOverdue,
+      }
+
+      // Send via n8n webhook
+      const response = await fetch('https://eatonacademic.app.n8n.cloud/webhook/invoice-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to send reminder: ${response.statusText}`)
+      }
+
+      // Map reminder type to email_type for database
+      const emailTypeMap = {
+        'reminder_7': 'reminder_7_day',
+        'reminder_14': 'reminder_14_day',
+        'reminder_30': 'reminder_overdue',
+      }
+
+      // Log to invoice_emails
+      await (supabase.from('invoice_emails') as any).insert({
+        invoice_id: invoice.id,
+        email_type: emailTypeMap[reminderType],
+        sent_to: invoice.family.primary_email,
+        sent_at: new Date().toISOString(),
+        subject: `Payment Reminder: Invoice ${invoice.invoice_number || invoice.public_id}`,
+      })
+
+      return invoice
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceEmails.byInvoice(variables.invoice.id) })
+    },
+  })
+
+  // NEW: Send reminders for multiple invoices at once
+  const bulkSendReminders = useMutation({
+    mutationFn: async ({ invoices }: { invoices: InvoiceWithFamily[] }) => {
+      const results = await Promise.allSettled(
+        invoices.map(async (invoice) => {
+          // Determine reminder type based on days overdue
+          const { type: reminderType } = getReminderType(invoice.due_date || '')
+          
+          // Use the single sendReminder logic
+          return sendReminder.mutateAsync({ invoice, reminderType })
+        })
+      )
+
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length
+      const failed = results.filter((r) => r.status === 'rejected').length
+
+      return { succeeded, failed, total: invoices.length }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceEmails.all })
     },
   })
 
@@ -1458,6 +1528,9 @@ export function useInvoiceMutations() {
     bulkVoidInvoices,
     sendInvoice,
     bulkSendInvoices,
+    // NEW: Reminder mutations
+    sendReminder,
+    bulkSendReminders,
   }
 }
 
@@ -1502,7 +1575,7 @@ function calculateEnrollmentAmount(
   }
 }
 
-// NEW: Build description with quantity for multiplier support
+// Build description with quantity for multiplier support
 function buildLineItemDescriptionWithQuantity(
   enrollment: BillableEnrollment,
   quantity: number,

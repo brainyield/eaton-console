@@ -4,7 +4,6 @@ import {
   FileText,
   Send,
   Trash2,
-  X,
   ChevronUp,
   ChevronDown,
   Plus,
@@ -13,6 +12,7 @@ import {
   AlertCircle,
   RefreshCw,
   Ban,
+  Bell,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
@@ -126,6 +126,7 @@ export default function Invoicing() {
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithDetails | null>(null)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceWithDetails | null>(null)
+  const [sendingReminders, setSendingReminders] = useState(false)
 
   // Data fetching - get all invoices, filter in component
   const { data: allInvoices = [], isLoading, refetch } = useInvoicesWithDetails()
@@ -136,43 +137,44 @@ export default function Invoicing() {
     bulkSendInvoices,
     voidInvoice,
     bulkVoidInvoices,
+    bulkSendReminders,
   } = useInvoiceMutations()
 
-  // Tab counts
+  // Tab counts - with explicit type annotations
   const counts = useMemo(() => {
     return {
-      drafts: allInvoices.filter(i => i.status === 'draft').length,
-      outstanding: allInvoices.filter(i => ['sent', 'partial', 'overdue'].includes(i.status)).length,
-      paid: allInvoices.filter(i => i.status === 'paid').length,
-      voided: allInvoices.filter(i => i.status === 'void').length,
-      all: allInvoices.filter(i => i.status !== 'void').length, // Exclude voided from "All" count
+      drafts: allInvoices.filter((i: InvoiceWithDetails) => i.status === 'draft').length,
+      outstanding: allInvoices.filter((i: InvoiceWithDetails) => ['sent', 'partial', 'overdue'].includes(i.status)).length,
+      paid: allInvoices.filter((i: InvoiceWithDetails) => i.status === 'paid').length,
+      voided: allInvoices.filter((i: InvoiceWithDetails) => i.status === 'void').length,
+      all: allInvoices.filter((i: InvoiceWithDetails) => i.status !== 'void').length, // Exclude voided from "All" count
     }
   }, [allInvoices])
 
-  // Filter invoices by tab
+  // Filter invoices by tab - with explicit type annotations
   const tabFilteredInvoices = useMemo(() => {
     switch (activeTab) {
       case 'drafts':
-        return allInvoices.filter(i => i.status === 'draft')
+        return allInvoices.filter((i: InvoiceWithDetails) => i.status === 'draft')
       case 'outstanding':
-        return allInvoices.filter(i => ['sent', 'partial', 'overdue'].includes(i.status))
+        return allInvoices.filter((i: InvoiceWithDetails) => ['sent', 'partial', 'overdue'].includes(i.status))
       case 'paid':
-        return allInvoices.filter(i => i.status === 'paid')
+        return allInvoices.filter((i: InvoiceWithDetails) => i.status === 'paid')
       case 'voided':
-        return allInvoices.filter(i => i.status === 'void')
+        return allInvoices.filter((i: InvoiceWithDetails) => i.status === 'void')
       case 'all':
       default:
-        return allInvoices.filter(i => i.status !== 'void') // Exclude voided from "All"
+        return allInvoices.filter((i: InvoiceWithDetails) => i.status !== 'void') // Exclude voided from "All"
     }
   }, [allInvoices, activeTab])
 
-  // Apply search and service filters
+  // Apply search and service filters - with explicit type annotations
   const filteredInvoices = useMemo(() => {
     let result = tabFilteredInvoices
 
     if (searchQuery) {
       const q = searchQuery.toLowerCase()
-      result = result.filter(i =>
+      result = result.filter((i: InvoiceWithDetails) =>
         i.invoice_number?.toLowerCase().includes(q) ||
         i.family?.display_name?.toLowerCase().includes(q) ||
         i.family?.primary_email?.toLowerCase().includes(q)
@@ -180,7 +182,7 @@ export default function Invoicing() {
     }
 
     if (serviceFilter) {
-      result = result.filter(i => i.services?.includes(serviceFilter))
+      result = result.filter((i: InvoiceWithDetails) => i.services?.includes(serviceFilter))
     }
 
     return result
@@ -231,7 +233,7 @@ export default function Invoicing() {
     if (selectedIds.size === sortedInvoices.length) {
       setSelectedIds(new Set())
     } else {
-      setSelectedIds(new Set(sortedInvoices.map(i => i.id)))
+      setSelectedIds(new Set(sortedInvoices.map((i: InvoiceWithDetails) => i.id)))
     }
   }, [sortedInvoices, selectedIds])
 
@@ -282,6 +284,37 @@ export default function Invoicing() {
     setSelectedIds(new Set())
   }, [bulkSendInvoices, selectedIds])
 
+  // NEW: Handle bulk send reminders - with explicit type
+  const handleBulkSendReminders = useCallback(async () => {
+    if (selectedIds.size === 0) return
+    
+    // Get the full invoice objects for selected IDs
+    const invoicesToRemind = allInvoices.filter((inv: InvoiceWithDetails) => 
+      selectedIds.has(inv.id) && 
+      ['sent', 'partial', 'overdue'].includes(inv.status)
+    )
+
+    if (invoicesToRemind.length === 0) {
+      alert('No outstanding invoices selected')
+      return
+    }
+
+    const confirmMsg = `Send payment reminders to ${invoicesToRemind.length} families?\n\nReminder type will be based on how overdue each invoice is.`
+    if (!confirm(confirmMsg)) return
+
+    setSendingReminders(true)
+    try {
+      const result = await bulkSendReminders.mutateAsync({ invoices: invoicesToRemind })
+      alert(`Reminders sent!\n✓ ${result.succeeded} succeeded\n✗ ${result.failed} failed`)
+      setSelectedIds(new Set())
+    } catch (error) {
+      console.error('Failed to send reminders:', error)
+      alert('Failed to send some reminders. Check console for details.')
+    } finally {
+      setSendingReminders(false)
+    }
+  }, [selectedIds, allInvoices, bulkSendReminders])
+
   // Clear selection when changing tabs
   const handleTabChange = useCallback((tab: TabKey) => {
     setActiveTab(tab)
@@ -312,11 +345,11 @@ export default function Invoicing() {
     return `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}`
   }
 
-  // Outstanding balance total (exclude voided)
+  // Outstanding balance total (exclude voided) - with explicit type
   const outstandingTotal = useMemo(() => {
     return allInvoices
-      .filter(i => ['sent', 'partial', 'overdue'].includes(i.status))
-      .reduce((sum, i) => sum + (i.balance_due || 0), 0)
+      .filter((i: InvoiceWithDetails) => ['sent', 'partial', 'overdue'].includes(i.status))
+      .reduce((sum: number, i: InvoiceWithDetails) => sum + (i.balance_due || 0), 0)
   }, [allInvoices])
 
   // Tab configuration
@@ -449,16 +482,26 @@ export default function Invoicing() {
               </>
             )}
             
-            {/* Outstanding actions - NEW: Void button */}
+            {/* Outstanding actions - Reminder and Void buttons */}
             {activeTab === 'outstanding' && (
-              <button
-                onClick={handleBulkVoid}
-                disabled={bulkVoidInvoices.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
-              >
-                <Ban className="w-4 h-4" />
-                Void Selected
-              </button>
+              <>
+                <button
+                  onClick={handleBulkSendReminders}
+                  disabled={sendingReminders}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <Bell className="w-4 h-4" />
+                  {sendingReminders ? 'Sending...' : 'Send Reminder'}
+                </button>
+                <button
+                  onClick={handleBulkVoid}
+                  disabled={bulkVoidInvoices.isPending}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                >
+                  <Ban className="w-4 h-4" />
+                  Void Selected
+                </button>
+              </>
             )}
           </div>
           <button
@@ -523,7 +566,7 @@ export default function Invoicing() {
                 </td>
               </tr>
             ) : (
-              sortedInvoices.map(invoice => (
+              sortedInvoices.map((invoice: InvoiceWithDetails) => (
                 <tr
                   key={invoice.id}
                   onClick={() => setSelectedInvoice(invoice)}
@@ -555,7 +598,7 @@ export default function Invoicing() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
-                      {invoice.services?.map(code => (
+                      {invoice.services?.map((code: string) => (
                         <ServiceBadge key={code} code={code} />
                       ))}
                     </div>

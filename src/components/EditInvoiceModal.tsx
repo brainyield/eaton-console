@@ -128,16 +128,18 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   const handleSave = async () => {
     setIsSaving(true)
     try {
-      // Update invoice details
+      // Update invoice details - FIX: wrap fields in data object
       await updateInvoice.mutateAsync({
         id: invoice.id,
-        invoice_date: invoiceDate,
-        due_date: dueDate,
-        period_start: periodStart,
-        period_end: periodEnd,
-        notes,
-        subtotal,
-        total_amount: subtotal,
+        data: {
+          invoice_date: invoiceDate,
+          due_date: dueDate,
+          period_start: periodStart,
+          period_end: periodEnd,
+          notes,
+          subtotal,
+          total_amount: subtotal,
+        },
       })
 
       // Update line items
@@ -151,13 +153,15 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
           // Note: Would need a createLineItem mutation - for now skip
           console.log('Would create:', item)
         } else if (item.id) {
-          // Update existing item
+          // Update existing item - FIX: wrap fields in data object
           await updateLineItem.mutateAsync({
             id: item.id,
-            description: item.description,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            amount: item.amount,
+            data: {
+              description: item.description,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              amount: item.amount,
+            },
           })
         }
       }

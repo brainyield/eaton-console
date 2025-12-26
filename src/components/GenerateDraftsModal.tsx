@@ -82,7 +82,7 @@ function getBaseValues(enrollment: BillableEnrollment): { quantity: number; unit
     }
   }
 
-  // Eaton Online: weekly tuition (default 1 week)
+  // Eaton Online: weekly tuition
   if (serviceCode === 'eaton_online' || billingFreq === 'weekly') {
     return {
       quantity: 1,
@@ -90,11 +90,19 @@ function getBaseValues(enrollment: BillableEnrollment): { quantity: number; unit
     }
   }
 
-  // Learning Pod: daily rate × sessions (default 4 sessions/month)
+  // Hub: daily rate (per session)
+  if (serviceCode === 'eaton_hub' || billingFreq === 'per_session') {
+    return {
+      quantity: 1,
+      unitPrice: enrollment.daily_rate || 100,
+    }
+  }
+
+  // Learning Pod: use monthly_rate but allow session multiplier
   if (serviceCode === 'learning_pod') {
     return {
-      quantity: 4, // Default 4 sessions per month
-      unitPrice: enrollment.daily_rate || 100,
+      quantity: 1,
+      unitPrice: enrollment.monthly_rate || 0,
     }
   }
 
@@ -193,10 +201,8 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     setOverrides({})
   }, [invoiceType])
 
-  // Data fetching
-  const { data: enrollments = [], isLoading: enrollmentsLoading } = useBillableEnrollments(
-    invoiceType === 'weekly' ? 'weekly' : 'monthly'
-  )
+  // Data fetching - fetch all active enrollments, filter by billing frequency below
+  const { data: enrollments = [], isLoading: enrollmentsLoading } = useBillableEnrollments()
 
   const { data: existingInvoices = [] } = useExistingInvoicesForPeriod(periodStart, periodEnd)
 
@@ -208,7 +214,12 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
 
     return enrollments
       .filter(e => {
-        // Filter by service if selected
+        // Filter by invoice type (billing frequency)
+        const billingFreq = e.service?.billing_frequency
+        if (invoiceType === 'weekly' && billingFreq !== 'weekly') return false
+        if (invoiceType === 'monthly' && billingFreq !== 'monthly') return false
+        
+        // Filter by specific service if selected
         if (serviceFilter && e.service?.code !== serviceFilter) return false
         // Only active families
         if (e.family?.status !== 'active') return false
@@ -258,7 +269,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           isEdited,
         }
       })
-  }, [enrollments, existingInvoices, serviceFilter, selectedEnrollments, overrides, globalWeeks, globalSessions])
+  }, [enrollments, existingInvoices, serviceFilter, selectedEnrollments, overrides, globalWeeks, globalSessions, invoiceType])
 
   // Sort preview items
   const sortedPreviewItems = useMemo(() => {
@@ -430,12 +441,18 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     })
   }, [])
 
+  // FIX: Updated handleGenerate to use correct mutation parameter format
   const handleGenerate = useCallback(async () => {
     if (selectedCount === 0) return
 
     try {
-      // Build line_item_overrides for the mutation
-      const lineItemOverrides: Record<string, LineItemOverride> = {}
+      // Get selected enrollments as full BillableEnrollment objects
+      const selectedEnrollmentsList = sortedPreviewItems
+        .filter(item => selectedEnrollments.has(item.enrollment.id))
+        .map(item => item.enrollment)
+      
+      // Build customAmounts for the mutation (correct format)
+      const customAmounts: Record<string, { quantity: number; unitPrice: number; amount: number }> = {}
       
       sortedPreviewItems
         .filter(item => selectedEnrollments.has(item.enrollment.id))
@@ -444,28 +461,29 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           
           // Only include override if values differ from base
           if (item.quantity !== baseQuantity || item.unitPrice !== baseUnitPrice) {
-            lineItemOverrides[item.enrollment.id] = {
+            customAmounts[item.enrollment.id] = {
               quantity: item.quantity,
-              unit_price: item.unitPrice,
+              unitPrice: item.unitPrice,
+              amount: item.finalAmount,
             }
           }
         })
 
+      // FIX: Use correct camelCase property names and pass enrollments array
       await generateDrafts.mutateAsync({
-        period_start: periodStart,
-        period_end: periodEnd,
-        period_note: periodNote,
-        due_date: dueDate,
-        enrollment_ids: Array.from(selectedEnrollments),
-        invoice_type: invoiceType,
-        line_item_overrides: Object.keys(lineItemOverrides).length > 0 ? lineItemOverrides : undefined,
+        enrollments: selectedEnrollmentsList,
+        periodStart,
+        periodEnd,
+        dueDate,
+        invoiceType,
+        customAmounts: Object.keys(customAmounts).length > 0 ? customAmounts : undefined,
       })
       onSuccess()
     } catch (error) {
       console.error('Failed to generate drafts:', error)
       alert('Failed to generate drafts. Check console for details.')
     }
-  }, [selectedCount, generateDrafts, periodStart, periodEnd, periodNote, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess])
+  }, [selectedCount, generateDrafts, periodStart, periodEnd, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess])
 
   // Service filter options based on invoice type
   const serviceOptions = invoiceType === 'weekly'

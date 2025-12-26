@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   X,
   Send,
@@ -9,8 +10,13 @@ import {
   Phone,
   Loader2,
   Ban,
+  Bell,
+  Mail,
+  Clock,
+  CheckCircle,
 } from 'lucide-react'
 import type { InvoiceWithDetails } from '../lib/hooks'
+import { useInvoiceEmails, getReminderType, useInvoiceMutations } from '../lib/hooks'
 
 // ============================================================================
 // Types
@@ -41,6 +47,59 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; label: string }>
 }
 
 // ============================================================================
+// Helper Functions for Email History
+// ============================================================================
+
+function getEmailTypeLabel(emailType: string): string {
+  const labels: Record<string, string> = {
+    'invoice': 'Invoice Sent',
+    'reminder_7_day': 'Friendly Reminder',
+    'reminder_14_day': 'Past Due Reminder',
+    'reminder_overdue': 'Urgent Reminder',
+    'payment_received': 'Payment Confirmation',
+  }
+  return labels[emailType] || emailType
+}
+
+function getEmailTypeBadgeColor(emailType: string): string {
+  const colors: Record<string, string> = {
+    'invoice': 'bg-blue-500/20 text-blue-400',
+    'reminder_7_day': 'bg-sky-500/20 text-sky-400',
+    'reminder_14_day': 'bg-amber-500/20 text-amber-400',
+    'reminder_overdue': 'bg-red-500/20 text-red-400',
+    'payment_received': 'bg-green-500/20 text-green-400',
+  }
+  return colors[emailType] || 'bg-zinc-500/20 text-zinc-400'
+}
+
+function getEmailTypeIcon(emailType: string) {
+  if (emailType.includes('reminder')) {
+    return <Bell className="w-3.5 h-3.5" />
+  }
+  if (emailType === 'payment_received') {
+    return <CheckCircle className="w-3.5 h-3.5" />
+  }
+  return <Mail className="w-3.5 h-3.5" />
+}
+
+function formatEmailDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+  
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  } else if (diffDays === 1) {
+    return 'Yesterday'
+  } else if (diffDays < 7) {
+    return `${diffDays} days ago`
+  } else {
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+}
+
+// ============================================================================
 // Component
 // ============================================================================
 
@@ -55,6 +114,11 @@ export default function InvoiceDetailPanel({
   isVoiding = false,
 }: Props) {
   const statusConfig = STATUS_CONFIG[invoice.status] || STATUS_CONFIG.draft
+  const [sendingReminder, setSendingReminder] = useState(false)
+
+  // Fetch email history for this invoice
+  const { data: emailHistory, isLoading: loadingEmails } = useInvoiceEmails(invoice?.id)
+  const { sendReminder } = useInvoiceMutations()
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null || amount === undefined) return '-'
@@ -84,6 +148,31 @@ export default function InvoiceDetailPanel({
   const canSend = isDraft && invoice.family?.primary_email
   const canVoid = ['sent', 'partial', 'overdue'].includes(invoice.status)
   const canEdit = isDraft
+  const canRemind = ['sent', 'partial', 'overdue'].includes(invoice.status)
+
+  // Handler for sending individual reminder
+  async function handleSendReminder() {
+    if (!invoice || !invoice.family) return
+    
+    const { type, label, daysOverdue } = getReminderType(invoice.due_date || '')
+    
+    const confirmMsg = `Send "${label}" reminder to ${invoice.family.primary_email}?\n\nThis invoice is ${daysOverdue} days overdue.`
+    if (!confirm(confirmMsg)) return
+
+    setSendingReminder(true)
+    try {
+      await sendReminder.mutateAsync({ 
+        invoice: invoice, 
+        reminderType: type 
+      })
+      alert('Reminder sent successfully!')
+    } catch (error) {
+      console.error('Failed to send reminder:', error)
+      alert('Failed to send reminder')
+    } finally {
+      setSendingReminder(false)
+    }
+  }
 
   return (
     <>
@@ -239,6 +328,52 @@ export default function InvoiceDetailPanel({
               <p className="text-sm text-white">{invoice.notes}</p>
             </div>
           )}
+
+          {/* Email History Section */}
+          <div className="px-6 py-4 border-b border-zinc-800">
+            <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              Email History
+            </h3>
+            
+            {loadingEmails ? (
+              <div className="text-sm text-zinc-500">Loading...</div>
+            ) : emailHistory && emailHistory.length > 0 ? (
+              <div className="space-y-2">
+                {emailHistory.map((email) => (
+                  <div
+                    key={email.id}
+                    className="flex items-start justify-between p-3 bg-zinc-800/50 rounded-lg"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`p-1.5 rounded ${getEmailTypeBadgeColor(email.email_type)}`}>
+                        {getEmailTypeIcon(email.email_type)}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium text-zinc-200">
+                          {getEmailTypeLabel(email.email_type)}
+                        </div>
+                        <div className="text-xs text-zinc-500">
+                          Sent to: {email.sent_to}
+                        </div>
+                        {email.subject && (
+                          <div className="text-xs text-zinc-500 mt-1 truncate max-w-[200px]">
+                            {email.subject}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="text-xs text-zinc-500 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatEmailDate(email.sent_at)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-zinc-500 italic">No emails sent yet</div>
+            )}
+          </div>
         </div>
 
         {/* Actions */}
@@ -258,6 +393,27 @@ export default function InvoiceDetailPanel({
                 <>
                   <Send className="w-4 h-4" />
                   Send Invoice
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Send Reminder button for outstanding invoices */}
+          {canRemind && (
+            <button
+              onClick={handleSendReminder}
+              disabled={sendingReminder}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {sendingReminder ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <Bell className="w-4 h-4" />
+                  Send Reminder
                 </>
               )}
             </button>

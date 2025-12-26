@@ -56,24 +56,42 @@ export const queryKeys = {
     detail: (id: string) => ['enrollments', 'detail', id] as const,
     byFamily: (familyId: string) => ['enrollments', 'byFamily', familyId] as const,
     byStudent: (studentId: string) => ['enrollments', 'byStudent', studentId] as const,
+    // NEW: For billable enrollments in invoice generation
+    billable: (serviceFilter?: string) => 
+      serviceFilter 
+        ? ['enrollments', 'billable', serviceFilter] as const 
+        : ['enrollments', 'billable'] as const,
   },
   
   // Teacher Assignments
   teacherAssignments: {
-  all: ['teacher-assignments'] as const,
-  byEnrollment: (enrollmentId: string) => [...queryKeys.teacherAssignments.all, 'enrollment', enrollmentId] as const,
-  byTeacher: (teacherId: string) => [...queryKeys.teacherAssignments.all, 'teacher', teacherId] as const,
-},
+    all: ['teacher-assignments'] as const,
+    byEnrollment: (enrollmentId: string) => ['teacher-assignments', 'enrollment', enrollmentId] as const,
+    byTeacher: (teacherId: string) => ['teacher-assignments', 'teacher', teacherId] as const,
+  },
   
   // Invoices
-  // Invoices
-invoices: {
-  all: ['invoices'] as const,
-  list: (filters?: { status?: string | string[]; familyId?: string }) =>
-    ['invoices', 'list', filters] as const,
-  detail: (id: string) => ['invoices', 'detail', id] as const,
-  byFamily: (familyId: string) => ['invoices', 'byFamily', familyId] as const,
-},
+  invoices: {
+    all: ['invoices'] as const,
+    list: (filters?: { status?: string | string[]; familyId?: string }) =>
+      ['invoices', 'list', filters] as const,
+    detail: (id: string) => ['invoices', 'detail', id] as const,
+    byFamily: (familyId: string) => ['invoices', 'byFamily', familyId] as const,
+    // NEW: For invoices with line items and derived services
+    withDetails: (filters?: { status?: string | string[] }) =>
+      filters 
+        ? ['invoices', 'withDetails', filters] as const 
+        : ['invoices', 'withDetails'] as const,
+    // NEW: For checking duplicate invoices by period
+    byPeriod: (periodStart: string, periodEnd: string) =>
+      ['invoices', 'byPeriod', periodStart, periodEnd] as const,
+  },
+
+  // Invoice Emails
+  invoiceEmails: {
+    all: ['invoiceEmails'] as const,
+    byInvoice: (invoiceId: string) => ['invoiceEmails', 'byInvoice', invoiceId] as const,
+  },
   
   // Teacher Payments
   teacherPayments: {

@@ -93,12 +93,13 @@ export function TransferTeacherModal({
 
     const effectiveDate = new Date().toISOString().split('T')[0];
 
+    // FIXED: Updated to match new hook signature
     transferTeacher.mutate(
       {
-        currentAssignmentId: currentAssignment?.id,
         enrollmentId,
+        oldTeacherId: currentAssignment?.teacher_id,
         newTeacherId: selectedTeacherId,
-        newRate: hourlyRate ? parseFloat(hourlyRate) : undefined,
+        hourlyRate: hourlyRate ? parseFloat(hourlyRate) : undefined,
         hoursPerWeek: hoursPerWeek 
           ? parseFloat(hoursPerWeek) 
           : currentAssignment?.hours_per_week || undefined,

@@ -21,7 +21,7 @@ export function EditStudentModal({
   isOpen,
   onClose,
   student,
-  familyId,
+  familyId: _familyId, // Kept for API compatibility, not used in component
   familyName,
   onSuccess,
 }: EditStudentModalProps) {
@@ -91,8 +91,9 @@ export function EditStudentModal({
   const handleDelete = () => {
     if (!student) return
 
+    // FIX: deleteStudent expects just the id string, not an object
     deleteStudent.mutate(
-      { id: student.id, familyId },
+      student.id,
       {
         onSuccess: () => {
           setShowDeleteConfirm(false)
