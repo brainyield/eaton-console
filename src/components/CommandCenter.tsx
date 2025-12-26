@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { queryKeys } from '../lib/queryClient'
 import { 
   Users, 
   GraduationCap, 
@@ -19,7 +20,6 @@ interface DashboardStats {
   overdueInvoices: number
   unbilledHubSessions: number
   totalMRR: number
-  loading: boolean
 }
 
 interface Alert {
@@ -29,38 +29,11 @@ interface Alert {
   action?: string
 }
 
-// Type definitions for Supabase query results
-interface InvoiceData {
-  balance_due: number | null
-  status: string | null
-}
-
-interface EnrollmentData {
-  monthly_rate: number | null
-  weekly_tuition: number | null
-  hourly_rate_customer: number | null
-  hours_per_week: number | null
-}
-
-export default function CommandCenter() {
-  const [stats, setStats] = useState<DashboardStats>({
-    activeStudents: 0,
-    activeFamilies: 0,
-    activeTeachers: 0,
-    outstandingBalance: 0,
-    overdueInvoices: 0,
-    unbilledHubSessions: 0,
-    totalMRR: 0,
-    loading: true,
-  })
-  const [alerts, setAlerts] = useState<Alert[]>([])
-
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  async function fetchDashboardData() {
-    try {
+// Custom hook for dashboard stats
+function useDashboardStats() {
+  return useQuery({
+    queryKey: queryKeys.stats.dashboard(),
+    queryFn: async (): Promise<DashboardStats> => {
       // Fetch all stats in parallel
       const [
         studentsResult,
@@ -97,7 +70,7 @@ export default function CommandCenter() {
         // Unbilled hub sessions
         supabase
           .from('hub_sessions')
-          .select('id, daily_rate', { count: 'exact' })
+          .select('id', { count: 'exact', head: true })
           .is('invoice_line_item_id', null),
         
         // Active enrollments for MRR calculation
@@ -107,18 +80,30 @@ export default function CommandCenter() {
           .eq('status', 'active'),
       ])
 
-      // Cast the data to known types
+      // Type the invoice data
+      interface InvoiceData {
+        balance_due: number | null
+        status: string | null
+      }
       const invoices = (invoicesResult.data || []) as InvoiceData[]
+
+      // Type the enrollment data
+      interface EnrollmentData {
+        monthly_rate: number | null
+        weekly_tuition: number | null
+        hourly_rate_customer: number | null
+        hours_per_week: number | null
+      }
       const enrollments = (enrollmentsResult.data || []) as EnrollmentData[]
 
       // Calculate outstanding balance
-      const outstandingBalance = invoices.reduce((sum, inv) => sum + (inv.balance_due || 0), 0)
+      const outstandingBalance = invoices.reduce(
+        (sum, inv) => sum + (inv.balance_due || 0), 
+        0
+      )
 
       // Count overdue invoices
       const overdueInvoices = invoices.filter(inv => inv.status === 'overdue').length
-
-      // Calculate unbilled hub sessions
-      const unbilledHubSessions = hubSessionsResult.count || 0
 
       // Calculate rough MRR from active enrollments
       const totalMRR = enrollments.reduce((sum, e) => {
@@ -130,43 +115,42 @@ export default function CommandCenter() {
         return sum
       }, 0)
 
-      setStats({
+      return {
         activeStudents: studentsResult.count || 0,
         activeFamilies: familiesResult.count || 0,
         activeTeachers: teachersResult.count || 0,
         outstandingBalance,
         overdueInvoices,
-        unbilledHubSessions,
+        unbilledHubSessions: hubSessionsResult.count || 0,
         totalMRR,
-        loading: false,
+      }
+    },
+    staleTime: 60 * 1000, // Consider data fresh for 1 minute
+  })
+}
+
+export default function CommandCenter() {
+  const { data: stats, isLoading, error } = useDashboardStats()
+
+  // Derive alerts from stats
+  const alerts: Alert[] = []
+  if (stats) {
+    if (stats.overdueInvoices > 0) {
+      alerts.push({
+        type: 'error',
+        message: 'invoices overdue 30+ days',
+        count: stats.overdueInvoices,
+        action: 'View overdue'
       })
-
-      // Build alerts
-      const newAlerts: Alert[] = []
-      
-      if (overdueInvoices > 0) {
-        newAlerts.push({
-          type: 'error',
-          message: 'invoices overdue 30+ days',
-          count: overdueInvoices,
-          action: 'View overdue'
-        })
-      }
-      
-      if (unbilledHubSessions > 0) {
-        newAlerts.push({
-          type: 'warning',
-          message: 'Hub sessions unbilled',
-          count: unbilledHubSessions,
-          action: 'Generate invoices'
-        })
-      }
-
-      setAlerts(newAlerts)
-
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
-      setStats(prev => ({ ...prev, loading: false }))
+    }
+    
+    if (stats.unbilledHubSessions > 0) {
+      alerts.push({
+        type: 'warning',
+        message: 'Hub sessions unbilled',
+        count: stats.unbilledHubSessions,
+        action: 'Generate invoices'
+      })
     }
   }
 
@@ -180,21 +164,21 @@ export default function CommandCenter() {
   const statCards = [
     {
       label: 'Students',
-      value: stats.activeStudents,
+      value: stats?.activeStudents ?? 0,
       sub: 'Active',
       icon: GraduationCap,
       color: 'text-status-active',
     },
     {
       label: 'Families',
-      value: stats.activeFamilies,
+      value: stats?.activeFamilies ?? 0,
       sub: 'Active',
       icon: Users,
       color: 'text-status-active',
     },
     {
       label: 'MRR',
-      value: formatCurrency(stats.totalMRR),
+      value: formatCurrency(stats?.totalMRR ?? 0),
       sub: 'Monthly Revenue',
       icon: TrendingUp,
       color: 'text-status-trial',
@@ -202,15 +186,15 @@ export default function CommandCenter() {
     },
     {
       label: 'Outstanding',
-      value: formatCurrency(stats.outstandingBalance),
+      value: formatCurrency(stats?.outstandingBalance ?? 0),
       sub: 'Balance',
       icon: DollarSign,
-      color: stats.outstandingBalance > 5000 ? 'text-status-churned' : 'text-status-paused',
+      color: (stats?.outstandingBalance ?? 0) > 5000 ? 'text-status-churned' : 'text-status-paused',
       isFormatted: true,
     },
     {
       label: 'Teachers',
-      value: stats.activeTeachers,
+      value: stats?.activeTeachers ?? 0,
       sub: 'Active',
       icon: UserCheck,
       color: 'text-status-active',
@@ -224,11 +208,20 @@ export default function CommandCenter() {
     { label: 'Process Teacher Payroll', action: () => {} },
   ]
 
-  if (stats.loading) {
+  if (isLoading) {
     return (
       <div className="p-6">
         <h1 className="text-xl font-semibold mb-6">Command Center</h1>
         <div className="text-muted-foreground">Loading dashboard...</div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <h1 className="text-xl font-semibold mb-6">Command Center</h1>
+        <div className="text-red-400">Failed to load dashboard data</div>
       </div>
     )
   }
@@ -255,7 +248,7 @@ export default function CommandCenter() {
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
             </div>
             <div className={`text-2xl font-bold ${stat.color}`}>
-              {stat.isFormatted ? stat.value : stat.value}
+              {stat.value}
             </div>
             <div className="text-sm text-muted-foreground">{stat.label}</div>
             {stat.sub && <div className="text-xs text-muted-foreground/70">{stat.sub}</div>}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings as SettingsIcon,
   Building2,
@@ -13,6 +14,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { queryKeys } from '../lib/queryClient'
 
 // Types for settings
 interface BusinessInfo {
@@ -65,11 +67,10 @@ function Toast({ message, type, onClose }: { message: string; type: 'success' | 
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>('business')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const queryClient = useQueryClient()
 
-  // Settings state
+  // Local form state (initialized from query data)
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
     name: '',
     email: '',
@@ -88,6 +89,7 @@ export default function Settings() {
     elective_classes: { default: 250 }
   })
   const [hubDailyRate, setHubDailyRate] = useState('100.00')
+  const [hasInitialized, setHasInitialized] = useState(false)
 
   const tabs = [
     { id: 'business' as TabId, label: 'Business Info', icon: Building2 },
@@ -96,66 +98,95 @@ export default function Settings() {
     { id: 'rates' as TabId, label: 'Rates', icon: DollarSign }
   ]
 
-  // Fetch all settings on mount
+  // React Query - fetch all settings
+  const { data: settings, isLoading } = useQuery({
+    queryKey: queryKeys.settings.all,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('key, value')
+
+      if (error) throw error
+      
+      // Transform array into object for easier access
+      const settingsMap: Record<string, unknown> = {}
+      ;(data as AppSettingRow[] || []).forEach((setting) => {
+        settingsMap[setting.key] = setting.value
+      })
+      return settingsMap
+    },
+  })
+
+  // Initialize local form state from query data (only once)
   useEffect(() => {
-    async function fetchSettings() {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const { data, error } = await (supabase.from('app_settings') as any)
-          .select('key, value')
-
-        if (error) throw error
-
-        if (data) {
-          (data as AppSettingRow[]).forEach((setting: AppSettingRow) => {
-            switch (setting.key) {
-              case 'business_info':
-                setBusinessInfo(setting.value as BusinessInfo)
-                break
-              case 'invoice_defaults':
-                setInvoiceDefaults(setting.value as InvoiceDefaults)
-                break
-              case 'payment_methods':
-                setPaymentMethods(setting.value as string[])
-                break
-              case 'monthly_rates':
-                setMonthlyRates(setting.value as MonthlyRates)
-                break
-              case 'hub_daily_rate':
-                setHubDailyRate(String(setting.value))
-                break
-            }
-          })
-        }
-      } catch (error) {
-        console.error('Error fetching settings:', error)
-        setToast({ message: 'Failed to load settings', type: 'error' })
-      } finally {
-        setLoading(false)
+    if (settings && !hasInitialized) {
+      if (settings.business_info) {
+        setBusinessInfo(settings.business_info as BusinessInfo)
       }
+      if (settings.invoice_defaults) {
+        setInvoiceDefaults(settings.invoice_defaults as InvoiceDefaults)
+      }
+      if (settings.payment_methods) {
+        setPaymentMethods(settings.payment_methods as string[])
+      }
+      if (settings.monthly_rates) {
+        setMonthlyRates(settings.monthly_rates as MonthlyRates)
+      }
+      if (settings.hub_daily_rate) {
+        setHubDailyRate(String(settings.hub_daily_rate))
+      }
+      setHasInitialized(true)
     }
+  }, [settings, hasInitialized])
 
-    fetchSettings()
-  }, [])
-
-  // Save a setting
-  async function saveSetting(key: string, value: unknown) {
-    setSaving(true)
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase.from('app_settings') as any)
-        .update({ value, updated_at: new Date().toISOString() })
+  // Mutation for saving settings
+  const updateSetting = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
+      const { error } = await supabase
+        .from('app_settings')
+        .update({ value, updated_at: new Date().toISOString() } as never)
         .eq('key', key)
 
       if (error) throw error
-
-      setToast({ message: 'Settings saved successfully', type: 'success' })
-    } catch (error) {
-      console.error('Error saving setting:', error)
+      return { key, value }
+    },
+    onMutate: async ({ key, value }) => {
+      // Cancel in-flight queries
+      await queryClient.cancelQueries({ queryKey: queryKeys.settings.all })
+      
+      // Snapshot previous value
+      const previous = queryClient.getQueryData(queryKeys.settings.all)
+      
+      // Optimistically update
+      queryClient.setQueryData(queryKeys.settings.all, (old: Record<string, unknown> | undefined) => ({
+        ...old,
+        [key]: value,
+      }))
+      
+      return { previous }
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.settings.all, context.previous)
+      }
+      console.error('Error saving setting:', err)
       setToast({ message: 'Failed to save settings', type: 'error' })
-    } finally {
-      setSaving(false)
-    }
+    },
+    onSuccess: () => {
+      setToast({ message: 'Settings saved successfully', type: 'success' })
+    },
+    onSettled: () => {
+      // Refetch to ensure sync
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
+    },
+  })
+
+  const saving = updateSetting.isPending
+
+  // Save a setting
+  function saveSetting(key: string, value: unknown) {
+    updateSetting.mutate({ key, value })
   }
 
   // Add payment method
@@ -183,7 +214,7 @@ export default function Settings() {
     }))
   }
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-gray-400" />

@@ -1,11 +1,47 @@
-import { useEffect, useState } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import type { Family, Student, CustomerStatus } from '../types/database'
-import { Search, Filter, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { queryKeys } from '../lib/queryClient'
+import type { CustomerStatus } from '../lib/hooks'
+import { Search, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
 
-interface FamilyWithStudents extends Family {
+// Define Student locally with all required fields from database
+interface Student {
+  id: string
+  family_id: string
+  full_name: string
+  dob: string | null
+  grade_level: string | null
+  age_group: string | null
+  homeschool_status: string | null
+  active: boolean
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Define FamilyWithStudents locally with all required fields
+interface FamilyWithStudents {
+  id: string
+  display_name: string
+  status: CustomerStatus
+  primary_email: string | null
+  primary_phone: string | null
+  primary_contact_name: string | null
+  payment_gateway: string | null
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  last_contact_at: string | null
+  reengagement_flag: boolean
+  legacy_lookup_key: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
   students: Student[]
   total_balance?: number
   active_enrollment_count?: number
@@ -24,53 +60,11 @@ const STATUS_COLORS: Record<CustomerStatus, string> = {
   lead: 'bg-gray-500/20 text-gray-400',
 }
 
-export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) {
-  const [families, setFamilies] = useState<FamilyWithStudents[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<CustomerStatus | 'all'>('all')
-  const [selectedFamily, setSelectedFamily] = useState<FamilyWithStudents | null>(null)
-  const [page, setPage] = useState(1)
-  const pageSize = 25
-
-  // Modal state
-  const [showAddFamily, setShowAddFamily] = useState(false)
-
-  useEffect(() => {
-    fetchFamilies()
-  }, [page, statusFilter])
-
-  // Handle external selection (from CommandPalette)
-  useEffect(() => {
-    if (selectedFamilyId && families.length > 0) {
-      const family = families.find(f => f.id === selectedFamilyId)
-      if (family) {
-        setSelectedFamily(family)
-      } else {
-        // Family not in current page, fetch it directly
-        fetchFamilyById(selectedFamilyId)
-      }
-    }
-  }, [selectedFamilyId, families])
-
-  async function fetchFamilyById(id: string) {
-    const { data, error } = await supabase
-      .from('families')
-      .select(`*, students (*)`)
-      .eq('id', id)
-      .single()
-
-    if (!error && data) {
-      setSelectedFamily(data as FamilyWithStudents)
-    }
-  }
-
-  async function fetchFamilies() {
-    setLoading(true)
-    setError(null)
-
-    try {
+// Custom hook for paginated families with students
+function usePaginatedFamilies(page: number, pageSize: number, statusFilter: CustomerStatus | 'all') {
+  return useQuery({
+    queryKey: ['families', 'paginated', { page, pageSize, status: statusFilter }],
+    queryFn: async () => {
       let query = supabase
         .from('families')
         .select(`
@@ -84,18 +78,81 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
         query = query.eq('status', statusFilter)
       }
 
-      const { data, error: queryError } = await query
+      const { data, error, count } = await query
 
-      if (queryError) throw queryError
+      if (error) throw error
+      return { 
+        families: (data || []) as FamilyWithStudents[], 
+        totalCount: count || 0 
+      }
+    },
+  })
+}
 
-      setFamilies(data as FamilyWithStudents[] || [])
-    } catch (err) {
-      console.error('Error fetching families:', err)
-      setError(err instanceof Error ? err.message : 'Failed to load families')
-    } finally {
-      setLoading(false)
+// Hook to fetch a single family by ID (for external selection)
+function useFamilyById(id: string | null) {
+  return useQuery({
+    queryKey: queryKeys.families.detail(id || 'none'),
+    queryFn: async () => {
+      if (!id) return null
+      const { data, error } = await supabase
+        .from('families')
+        .select(`*, students (*)`)
+        .eq('id', id)
+        .single()
+
+      if (error) throw error
+      return data as FamilyWithStudents
+    },
+    enabled: !!id,
+  })
+}
+
+export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) {
+  const queryClient = useQueryClient()
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<CustomerStatus | 'all'>('all')
+  const [selectedFamily, setSelectedFamily] = useState<FamilyWithStudents | null>(null)
+  const [page, setPage] = useState(1)
+  const pageSize = 25
+
+  // Modal state
+  const [showAddFamily, setShowAddFamily] = useState(false)
+
+  // Fetch paginated families
+  const { data, isLoading, error } = usePaginatedFamilies(page, pageSize, statusFilter)
+  const families = data?.families || []
+
+  // Fetch family by ID when selected externally (from CommandPalette)
+  const { data: externalFamily } = useFamilyById(
+    selectedFamilyId && !families.find(f => f.id === selectedFamilyId) 
+      ? selectedFamilyId 
+      : null
+  )
+
+  // Handle external selection (from CommandPalette)
+  useEffect(() => {
+    if (selectedFamilyId && families.length > 0) {
+      const family = families.find(f => f.id === selectedFamilyId)
+      if (family) {
+        setSelectedFamily(family)
+      } else if (externalFamily) {
+        setSelectedFamily(externalFamily)
+      }
     }
-  }
+  }, [selectedFamilyId, families, externalFamily])
+
+  // Client-side search filtering
+  const filteredFamilies = useMemo(() => {
+    if (!searchQuery) return families
+    const query = searchQuery.toLowerCase()
+    return families.filter(family => 
+      family.display_name.toLowerCase().includes(query) ||
+      family.primary_email?.toLowerCase().includes(query) ||
+      family.primary_phone?.includes(query) ||
+      family.students.some(s => s.full_name.toLowerCase().includes(query))
+    )
+  }, [families, searchQuery])
 
   const handleSelectFamily = (family: FamilyWithStudents | null) => {
     setSelectedFamily(family)
@@ -108,23 +165,19 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   }
 
   const handleFamilyUpdated = () => {
-    // Refresh the list and re-fetch selected family if needed
-    fetchFamilies()
+    // Invalidate queries to refetch data
+    queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+    // Refetch selected family if needed
     if (selectedFamily) {
-      fetchFamilyById(selectedFamily.id)
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.detail(selectedFamily.id) })
     }
   }
 
-  const filteredFamilies = families.filter(family => {
-    if (!searchQuery) return true
-    const query = searchQuery.toLowerCase()
-    return (
-      family.display_name.toLowerCase().includes(query) ||
-      family.primary_email?.toLowerCase().includes(query) ||
-      family.primary_phone?.includes(query) ||
-      family.students.some(s => s.full_name.toLowerCase().includes(query))
-    )
-  })
+  // Reset page when filter changes
+  const handleStatusFilterChange = (newStatus: CustomerStatus | 'all') => {
+    setStatusFilter(newStatus)
+    setPage(1)
+  }
 
   return (
     <div className="h-full flex">
@@ -146,7 +199,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
             
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as CustomerStatus | 'all')}
+              onChange={(e) => handleStatusFilterChange(e.target.value as CustomerStatus | 'all')}
               className="bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="all">All Status</option>
@@ -156,11 +209,6 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <option value="lead">Lead</option>
               <option value="churned">Churned</option>
             </select>
-
-            <button className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-400 hover:text-white hover:bg-zinc-700">
-              <Filter className="h-4 w-4" />
-              Filters
-            </button>
 
             <button 
               onClick={() => setShowAddFamily(true)}
@@ -173,13 +221,13 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
         </div>
 
         <div className="flex-1 overflow-auto">
-          {loading ? (
+          {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500" />
             </div>
           ) : error ? (
             <div className="flex items-center justify-center h-64 text-red-400">
-              {error}
+              {error instanceof Error ? error.message : 'Failed to load families'}
             </div>
           ) : (
             <table className="w-full">
@@ -288,7 +336,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
 
       {selectedFamily && (
         <FamilyDetailPanel
-          family={selectedFamily}
+          family={selectedFamily as any}
           onClose={handleClosePanel}
           onFamilyUpdated={handleFamilyUpdated}
         />
@@ -299,7 +347,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
         isOpen={showAddFamily}
         onClose={() => setShowAddFamily(false)}
         onSuccess={() => {
-          fetchFamilies()
+          queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
         }}
       />
     </div>

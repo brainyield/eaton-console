@@ -1,25 +1,8 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState, useEffect, useMemo } from 'react'
 import { X, DollarSign, Calendar, AlertCircle } from 'lucide-react'
-
-interface Teacher {
-  id: string
-  display_name: string
-  email: string | null
-  default_hourly_rate: number | null
-}
-
-interface Assignment {
-  id: string
-  enrollment_id: string
-  hourly_rate_teacher: number | null
-  hours_per_week: number | null
-  student_name: string
-  family_name: string
-  service_id: string
-  service_name: string
-  service_code: string
-}
+import { supabase } from '../lib/supabase'
+import { useTeacherAssignmentsByTeacher, useTeacherPaymentMutations } from '../lib/hooks'
+import type { Teacher } from '../lib/hooks'
 
 interface LineItem {
   enrollment_id: string
@@ -34,7 +17,7 @@ interface RecordTeacherPaymentModalProps {
   isOpen: boolean
   teacher: Teacher
   onClose: () => void
-  onSuccess: () => void
+  onSuccess?: () => void
 }
 
 export function RecordTeacherPaymentModal({
@@ -43,10 +26,9 @@ export function RecordTeacherPaymentModal({
   onClose,
   onSuccess,
 }: RecordTeacherPaymentModalProps) {
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [assignments, setAssignments] = useState<Assignment[]>([])
   const [lineItems, setLineItems] = useState<LineItem[]>([])
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   
   // Form state
   const [payPeriodStart, setPayPeriodStart] = useState('')
@@ -55,6 +37,31 @@ export function RecordTeacherPaymentModal({
   const [paymentMethod, setPaymentMethod] = useState('Zelle')
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
+
+  // Fetch assignments using React Query
+  const { data: assignmentsData, isLoading: loading } = useTeacherAssignmentsByTeacher(
+    teacher.id,
+    { enabled: isOpen }
+  )
+
+  // Get create payment mutation
+  const { createPayment } = useTeacherPaymentMutations()
+
+  // Transform assignments data for display
+  const assignments = useMemo(() => {
+    if (!assignmentsData) return []
+    return assignmentsData.map((a: any) => ({
+      id: a.id,
+      enrollment_id: a.enrollment_id,
+      hourly_rate_teacher: a.hourly_rate_teacher,
+      hours_per_week: a.hours_per_week,
+      student_name: a.enrollment?.student?.full_name || 'Unknown',
+      family_name: a.enrollment?.family?.display_name || 'Unknown',
+      service_id: a.enrollment?.service?.id || '',
+      service_name: a.enrollment?.service?.name || 'Unknown',
+      service_code: a.enrollment?.service?.code || '',
+    }))
+  }, [assignmentsData])
 
   // Set default dates (current week)
   useEffect(() => {
@@ -73,50 +80,14 @@ export function RecordTeacherPaymentModal({
       setPayPeriodStart(monday.toISOString().split('T')[0])
       setPayPeriodEnd(friday.toISOString().split('T')[0])
       setPayDate(today.toISOString().split('T')[0])
-      
-      fetchAssignments()
+      setError(null)
     }
-  }, [isOpen, teacher.id])
+  }, [isOpen])
 
-  async function fetchAssignments() {
-    setLoading(true)
-    
-    const { data, error } = await supabase
-      .from('teacher_assignments')
-      .select(`
-        id,
-        enrollment_id,
-        hourly_rate_teacher,
-        hours_per_week,
-        enrollment:enrollments (
-          student:students (full_name),
-          family:families (display_name),
-          service:services (id, name, code)
-        )
-      `)
-      .eq('teacher_id', teacher.id)
-      .eq('is_active', true)
-
-    if (error) {
-      console.error('Error fetching assignments:', error)
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const formatted = ((data || []) as any[]).map((a) => ({
-        id: a.id,
-        enrollment_id: a.enrollment_id,
-        hourly_rate_teacher: a.hourly_rate_teacher,
-        hours_per_week: a.hours_per_week,
-        student_name: a.enrollment?.student?.full_name || 'Unknown',
-        family_name: a.enrollment?.family?.display_name || 'Unknown',
-        service_id: a.enrollment?.service?.id || '',
-        service_name: a.enrollment?.service?.name || 'Unknown',
-        service_code: a.enrollment?.service?.code || '',
-      }))
-      
-      setAssignments(formatted)
-      
-      // Auto-generate line items from assignments
-      const items: LineItem[] = formatted.map((a: Assignment) => {
+  // Auto-generate line items when assignments load
+  useEffect(() => {
+    if (assignments.length > 0) {
+      const items: LineItem[] = assignments.map((a) => {
         const hours = a.hours_per_week || 0
         const rate = a.hourly_rate_teacher || teacher.default_hourly_rate || 0
         return {
@@ -128,12 +99,9 @@ export function RecordTeacherPaymentModal({
           amount: hours * rate,
         }
       })
-      
       setLineItems(items)
     }
-    
-    setLoading(false)
-  }
+  }, [assignments, teacher.default_hourly_rate])
 
   function updateLineItem(index: number, field: 'hours' | 'hourly_rate', value: number) {
     setLineItems(prev => {
@@ -197,44 +165,39 @@ export function RecordTeacherPaymentModal({
       })
 
       console.log('n8n webhook response:', response.status)
-    } catch (error) {
-      console.error('Failed to trigger payroll notification:', error)
+    } catch (err) {
+      console.error('Failed to trigger payroll notification:', err)
       // Don't throw - notification failure shouldn't block payment
     }
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setError(null)
     
     if (lineItems.length === 0 || totalAmount === 0) {
-      alert('No line items to record')
+      setError('No line items to record')
       return
     }
     
     setSaving(true)
     
     try {
-      // 1. Create the teacher_payments record
-      const { data: paymentData, error: paymentError } = await (supabase
-        .from('teacher_payments') as any)
-        .insert({
-          teacher_id: teacher.id,
-          pay_period_start: payPeriodStart,
-          pay_period_end: payPeriodEnd,
-          pay_date: payDate,
-          total_amount: totalAmount,
-          payment_method: paymentMethod || null,
-          reference: reference || null,
-          notes: notes || null,
-        })
-        .select('id')
-        .single()
-
-      if (paymentError) throw paymentError
+      // 1. Create the teacher_payments record using mutation
+      const paymentData = await createPayment.mutateAsync({
+        teacher_id: teacher.id,
+        pay_period_start: payPeriodStart,
+        pay_period_end: payPeriodEnd,
+        pay_date: payDate,
+        total_amount: totalAmount,
+        payment_method: paymentMethod || null,
+        reference: reference || null,
+        notes: notes || null,
+      })
 
       const paymentId = paymentData.id
 
-      // 2. Create line items
+      // 2. Create line items (still using direct supabase - no hook for this)
       const lineItemsToInsert = lineItems
         .filter(item => item.amount > 0)
         .map(item => ({
@@ -255,14 +218,14 @@ export function RecordTeacherPaymentModal({
         if (lineItemsError) throw lineItemsError
       }
 
-      // 3. Trigger n8n notification
+      // 3. Trigger n8n notification (fire and forget)
       await triggerPayrollNotification(paymentId)
 
-      onSuccess()
+      onSuccess?.()
       onClose()
-    } catch (error) {
-      console.error('Error recording payment:', error)
-      alert('Failed to record payment. Please try again.')
+    } catch (err) {
+      console.error('Error recording payment:', err)
+      setError(err instanceof Error ? err.message : 'Failed to record payment. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -279,16 +242,16 @@ export function RecordTeacherPaymentModal({
       />
       
       {/* Modal */}
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-background border border-border rounded-lg shadow-xl overflow-hidden flex flex-col">
+      <div className="relative w-full max-w-2xl max-h-[90vh] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-border">
+        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-zinc-700">
           <div>
-            <h2 className="text-lg font-semibold">Record Payment</h2>
-            <p className="text-sm text-muted-foreground">{teacher.display_name}</p>
+            <h2 className="text-lg font-semibold text-zinc-100">Record Payment</h2>
+            <p className="text-sm text-zinc-400">{teacher.display_name}</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1 hover:bg-accent rounded-md"
+            className="p-1 hover:bg-zinc-800 rounded-md"
           >
             <X className="w-5 h-5" />
           </button>
@@ -297,10 +260,16 @@ export function RecordTeacherPaymentModal({
         {/* Content */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
+            {error && (
+              <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
+                {error}
+              </div>
+            )}
+
             {/* Pay Period */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">
+                <label className="block text-sm font-medium text-zinc-400 mb-1">
                   <Calendar className="w-4 h-4 inline mr-1" />
                   Period Start
                 </label>
@@ -309,17 +278,17 @@ export function RecordTeacherPaymentModal({
                   value={payPeriodStart}
                   onChange={(e) => setPayPeriodStart(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Period End</label>
+                <label className="block text-sm font-medium text-zinc-400 mb-1">Period End</label>
                 <input
                   type="date"
                   value={payPeriodEnd}
                   onChange={(e) => setPayPeriodEnd(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
             </div>
@@ -327,21 +296,21 @@ export function RecordTeacherPaymentModal({
             {/* Pay Date & Method */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Pay Date</label>
+                <label className="block text-sm font-medium text-zinc-400 mb-1">Pay Date</label>
                 <input
                   type="date"
                   value={payDate}
                   onChange={(e) => setPayDate(e.target.value)}
                   required
-                  className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Payment Method</label>
+                <label className="block text-sm font-medium text-zinc-400 mb-1">Payment Method</label>
                 <select
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value)}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="Zelle">Zelle</option>
                   <option value="Check">Check</option>
@@ -354,47 +323,47 @@ export function RecordTeacherPaymentModal({
 
             {/* Reference */}
             <div>
-              <label className="block text-sm font-medium mb-1">Reference / Confirmation #</label>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Reference / Confirmation #</label>
               <input
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="e.g., Zelle confirmation number"
-                className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             {/* Line Items */}
             <div>
-              <label className="block text-sm font-medium mb-2">
+              <label className="block text-sm font-medium text-zinc-400 mb-2">
                 <DollarSign className="w-4 h-4 inline mr-1" />
                 Payment Breakdown
               </label>
               
               {loading ? (
-                <div className="text-muted-foreground text-center py-4">Loading assignments...</div>
+                <div className="text-zinc-400 text-center py-4">Loading assignments...</div>
               ) : lineItems.length === 0 ? (
-                <div className="text-muted-foreground text-center py-4 bg-muted/20 rounded-lg border border-border">
+                <div className="text-zinc-400 text-center py-4 bg-zinc-800/50 rounded-lg border border-zinc-700">
                   <AlertCircle className="w-5 h-5 inline mr-2" />
                   No active assignments found for this teacher
                 </div>
               ) : (
-                <div className="border border-border rounded-lg overflow-hidden">
+                <div className="border border-zinc-700 rounded-lg overflow-hidden">
                   <table className="w-full text-sm">
-                    <thead className="bg-muted/50">
+                    <thead className="bg-zinc-800/50">
                       <tr>
-                        <th className="text-left p-2 font-medium">Student / Service</th>
-                        <th className="text-right p-2 font-medium w-20">Hours</th>
-                        <th className="text-right p-2 font-medium w-24">Rate</th>
-                        <th className="text-right p-2 font-medium w-24">Amount</th>
+                        <th className="text-left p-2 font-medium text-zinc-400">Student / Service</th>
+                        <th className="text-right p-2 font-medium text-zinc-400 w-20">Hours</th>
+                        <th className="text-right p-2 font-medium text-zinc-400 w-24">Rate</th>
+                        <th className="text-right p-2 font-medium text-zinc-400 w-24">Amount</th>
                       </tr>
                     </thead>
                     <tbody>
                       {lineItems.map((item, index) => (
-                        <tr key={index} className="border-t border-border">
+                        <tr key={index} className="border-t border-zinc-700">
                           <td className="p-2">
-                            <div className="font-medium">{assignments[index]?.student_name}</div>
-                            <div className="text-xs text-muted-foreground">{assignments[index]?.service_name}</div>
+                            <div className="font-medium text-zinc-100">{assignments[index]?.student_name}</div>
+                            <div className="text-xs text-zinc-400">{assignments[index]?.service_name}</div>
                           </td>
                           <td className="p-2">
                             <input
@@ -403,32 +372,32 @@ export function RecordTeacherPaymentModal({
                               onChange={(e) => updateLineItem(index, 'hours', parseFloat(e.target.value) || 0)}
                               step="0.5"
                               min="0"
-                              className="w-full px-2 py-1 text-right bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                              className="w-full px-2 py-1 text-right bg-zinc-800 border border-zinc-700 rounded text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             />
                           </td>
                           <td className="p-2">
                             <div className="flex items-center">
-                              <span className="text-muted-foreground mr-1">$</span>
+                              <span className="text-zinc-400 mr-1">$</span>
                               <input
                                 type="number"
                                 value={item.hourly_rate}
                                 onChange={(e) => updateLineItem(index, 'hourly_rate', parseFloat(e.target.value) || 0)}
                                 step="5"
                                 min="0"
-                                className="w-full px-2 py-1 text-right bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                                className="w-full px-2 py-1 text-right bg-zinc-800 border border-zinc-700 rounded text-zinc-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
                               />
                             </div>
                           </td>
-                          <td className="p-2 text-right font-medium">
+                          <td className="p-2 text-right font-medium text-zinc-100">
                             ${item.amount.toFixed(2)}
                           </td>
                         </tr>
                       ))}
                     </tbody>
-                    <tfoot className="bg-muted/30">
-                      <tr className="border-t border-border">
-                        <td colSpan={3} className="p-2 text-right font-medium">Total:</td>
-                        <td className="p-2 text-right font-bold text-lg">${totalAmount.toFixed(2)}</td>
+                    <tfoot className="bg-zinc-800/30">
+                      <tr className="border-t border-zinc-700">
+                        <td colSpan={3} className="p-2 text-right font-medium text-zinc-400">Total:</td>
+                        <td className="p-2 text-right font-bold text-lg text-zinc-100">${totalAmount.toFixed(2)}</td>
                       </tr>
                     </tfoot>
                   </table>
@@ -438,30 +407,30 @@ export function RecordTeacherPaymentModal({
 
             {/* Notes */}
             <div>
-              <label className="block text-sm font-medium mb-1">Notes (optional)</label>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">Notes (optional)</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={2}
                 placeholder="Any additional notes..."
-                className="w-full px-3 py-2 bg-background border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary resize-none"
+                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
             </div>
           </div>
 
           {/* Footer */}
-          <div className="flex-shrink-0 flex items-center justify-end gap-3 p-4 border-t border-border bg-muted/20">
+          <div className="flex-shrink-0 flex items-center justify-end gap-3 p-4 border-t border-zinc-700 bg-zinc-800/20">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={saving || totalAmount === 0}
-              className="px-4 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {saving ? 'Recording...' : `Record Payment ($${totalAmount.toFixed(2)})`}
             </button>

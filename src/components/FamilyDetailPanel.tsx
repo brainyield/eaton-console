@@ -1,17 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import type { Family, Student, Enrollment, Service, CustomerStatus, EnrollmentStatus } from '../types/database'
+import { useEnrollmentsByFamily } from '../lib/hooks'
+import type { Family, Student, CustomerStatus, EnrollmentStatus } from '../types/database'
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
 
 interface FamilyWithStudents extends Family {
   students: Student[]
-}
-
-interface EnrollmentWithService extends Enrollment {
-  service: Service
 }
 
 interface FamilyDetailPanelProps {
@@ -35,11 +31,8 @@ const ENROLLMENT_STATUS_COLORS: Record<EnrollmentStatus, string> = {
   ended: 'bg-zinc-500/20 text-zinc-400',
 }
 
-export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpdated }: FamilyDetailPanelProps) {
-  const [family, setFamily] = useState<FamilyWithStudents>(initialFamily)
+export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'enrollments' | 'invoices' | 'history'>('overview')
-  const [enrollments, setEnrollments] = useState<EnrollmentWithService[]>([])
-  const [loadingEnrollments, setLoadingEnrollments] = useState(true)
 
   // Modal states
   const [showEditFamily, setShowEditFamily] = useState(false)
@@ -47,54 +40,20 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
   const [showEditStudent, setShowEditStudent] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
 
-  // Update local family when prop changes
-  useEffect(() => {
-    setFamily(initialFamily)
-  }, [initialFamily])
+  // React Query - fetch enrollments for this family
+ const { 
+  data: enrollments = [] as any[], 
+  isLoading: loadingEnrollments 
+} = useEnrollmentsByFamily(family.id)
 
+  // Reset selected student when family changes
   useEffect(() => {
-    fetchEnrollments()
+    setSelectedStudent(null)
   }, [family.id])
 
-  async function fetchFamilyDetails() {
-    try {
-      const { data, error } = await supabase
-        .from('families')
-        .select(`*, students (*)`)
-        .eq('id', family.id)
-        .single()
-
-      if (!error && data) {
-        setFamily(data as FamilyWithStudents)
-      }
-    } catch (err) {
-      console.error('Error fetching family details:', err)
-    }
-  }
-
-  async function fetchEnrollments() {
-    setLoadingEnrollments(true)
-    try {
-      const { data, error } = await supabase
-        .from('enrollments')
-        .select(`
-          *,
-          service:services(*)
-        `)
-        .eq('family_id', family.id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setEnrollments(data as EnrollmentWithService[] || [])
-    } catch (err) {
-      console.error('Error fetching enrollments:', err)
-    } finally {
-      setLoadingEnrollments(false)
-    }
-  }
-
   const handleFamilyEditSuccess = () => {
-    fetchFamilyDetails()
+    // Modal handles mutation and cache invalidation
+    // Parent will receive updated data via React Query
     onFamilyUpdated?.()
   }
 
@@ -104,7 +63,7 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
   }
 
   const handleStudentSuccess = () => {
-    fetchFamilyDetails()
+    // Modal handles mutation and cache invalidation
     onFamilyUpdated?.()
   }
 
@@ -119,6 +78,9 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
     { id: 'invoices', label: 'Invoices' },
     { id: 'history', label: 'History' },
   ] as const
+
+  // Count active enrollments from React Query data
+  const activeEnrollmentCount = enrollments.filter(e => e.status === 'active').length
 
   return (
     <>
@@ -208,7 +170,7 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">
-                    Students ({family.students.length})
+                    Students ({family.students?.length || 0})
                   </h3>
                   <button 
                     onClick={() => setShowAddStudent(true)}
@@ -219,7 +181,7 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {family.students.length === 0 ? (
+                  {!family.students || family.students.length === 0 ? (
                     <p className="text-sm text-zinc-500 py-3">No students yet</p>
                   ) : (
                     family.students.map((student) => (
@@ -259,7 +221,7 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
                 <div className="grid grid-cols-2 gap-3">
                   <div className="p-3 bg-zinc-800 rounded-lg">
                     <div className="text-2xl font-semibold text-white">
-                      {enrollments.filter(e => e.status === 'active').length}
+                      {activeEnrollmentCount}
                     </div>
                     <div className="text-xs text-zinc-400">Active Enrollments</div>
                   </div>
@@ -293,7 +255,7 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
               ) : enrollments.length === 0 ? (
                 <p className="text-sm text-zinc-400 text-center py-8">No enrollments found</p>
               ) : (
-                enrollments.map((enrollment) => (
+                enrollments.map((enrollment: any) => (
                   <div
                     key={enrollment.id}
                     className="p-4 bg-zinc-800 rounded-lg"
@@ -307,7 +269,7 @@ export function FamilyDetailPanel({ family: initialFamily, onClose, onFamilyUpda
                           <div className="text-xs text-zinc-400">{enrollment.class_title}</div>
                         )}
                       </div>
-                      <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${ENROLLMENT_STATUS_COLORS[enrollment.status]}`}>
+                      <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${ENROLLMENT_STATUS_COLORS[enrollment.status as EnrollmentStatus]}`}>
                         {enrollment.status}
                       </span>
                     </div>

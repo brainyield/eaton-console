@@ -1,26 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { queryKeys } from '../lib/queryClient'
+import { useTeacher } from '../lib/hooks'
+import type { Teacher } from '../lib/hooks'
 import TeacherDetailPanel from './TeacherDetailPanel'
 import { AddTeacherModal } from './AddTeacherModal'
 import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
-import { Search, Plus, Filter, ChevronLeft, ChevronRight, DollarSign, Check, Download, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { 
+  Search, 
+  Plus, 
+  ChevronLeft, 
+  ChevronRight, 
+  DollarSign, 
+  Check, 
+  Download, 
+  ChevronDown, 
+  Loader2 
+} from 'lucide-react'
 
-interface Teacher {
-  id: string
-  display_name: string
-  email: string | null
-  phone: string | null
-  role: string | null
-  skillset: string | null
-  preferred_comm_method: string | null
-  status: 'active' | 'reserve' | 'inactive'
-  default_hourly_rate: number | null
-  max_hours_per_week: number | null
-  payment_info_on_file: boolean
-  hire_date: string | null
-  notes: string | null
-  created_at: string
-  // Computed from assignments
+interface TeacherWithLoad extends Teacher {
   active_assignments?: number
   assigned_hours?: number
 }
@@ -66,12 +65,145 @@ interface TeachersProps {
 
 type TabFilter = 'all' | 'active' | 'reserve' | 'payroll'
 
+// Hook for teachers with their assignment load
+function useTeachersWithLoad() {
+  return useQuery({
+    queryKey: [...queryKeys.teachers.all, 'withLoad'],
+    queryFn: async () => {
+      // Fetch teachers
+      const { data: teacherData, error: teacherError } = await supabase
+        .from('teachers')
+        .select('*')
+        .order('display_name')
+
+      if (teacherError) throw teacherError
+
+      // Fetch active assignments
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from('teacher_assignments')
+        .select('teacher_id, hours_per_week, is_active')
+        .eq('is_active', true)
+
+      if (assignmentError) throw assignmentError
+
+      const teachers = (teacherData || []) as Teacher[]
+      const assignments = (assignmentData || []) as { teacher_id: string; hours_per_week: number | null; is_active: boolean }[]
+
+      // Merge assignment data into teachers
+      const teachersWithLoad: TeacherWithLoad[] = teachers.map((teacher) => {
+        const teacherAssignments = assignments.filter((a) => a.teacher_id === teacher.id)
+        return {
+          ...teacher,
+          active_assignments: teacherAssignments.length,
+          assigned_hours: teacherAssignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
+        }
+      })
+
+      return teachersWithLoad
+    },
+  })
+}
+
+// Hook for payroll data
+function usePayrollData(payPeriodStart: string, payPeriodEnd: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ['payroll', payPeriodStart, payPeriodEnd],
+    queryFn: async () => {
+      // Fetch all active teachers
+      const { data: teacherData } = await supabase
+        .from('teachers')
+        .select('id, display_name, email, default_hourly_rate')
+        .in('status', ['active', 'reserve'])
+        .order('display_name')
+
+      if (!teacherData) return []
+
+      // Fetch all active assignments with rates AND student/service info
+      const { data: assignmentData } = await supabase
+        .from('teacher_assignments')
+        .select(`
+          teacher_id, 
+          hours_per_week, 
+          hourly_rate_teacher, 
+          is_active,
+          enrollment_id,
+          enrollment:enrollments (
+            student:students (full_name),
+            service:services (id, name)
+          )
+        `)
+        .eq('is_active', true)
+
+      // Fetch payments for this period
+      const { data: paymentData } = await supabase
+        .from('teacher_payments')
+        .select('id, teacher_id')
+        .gte('pay_period_start', payPeriodStart)
+        .lte('pay_period_end', payPeriodEnd)
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const typedAssignments = ((assignmentData || []) as any[]).map(a => ({
+        teacher_id: a.teacher_id,
+        hours_per_week: a.hours_per_week,
+        hourly_rate_teacher: a.hourly_rate_teacher,
+        is_active: a.is_active,
+        enrollment_id: a.enrollment_id,
+        student_name: a.enrollment?.student?.full_name || 'Unknown',
+        service_name: a.enrollment?.service?.name || 'Unknown',
+        service_id: a.enrollment?.service?.id || '',
+      }))
+      
+      const payments = (paymentData || []) as { id: string; teacher_id: string }[]
+
+      // Build payroll data with line items
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payroll: PayrollTeacher[] = (teacherData as any[]).map((teacher) => {
+        const assignments = typedAssignments.filter((a) => a.teacher_id === teacher.id)
+        const payment = payments.find((p) => p.teacher_id === teacher.id)
+        
+        const lineItems: PayrollLineItem[] = assignments.map((a) => {
+          const hours = a.hours_per_week || 0
+          const rate = a.hourly_rate_teacher || teacher.default_hourly_rate || 0
+          return {
+            enrollment_id: a.enrollment_id,
+            student_name: a.student_name,
+            service_name: a.service_name,
+            service_id: a.service_id,
+            hours,
+            rate,
+            amount: hours * rate,
+          }
+        })
+
+        const totalHours = lineItems.reduce((sum, li) => sum + li.hours, 0)
+        const totalAmount = lineItems.reduce((sum, li) => sum + li.amount, 0)
+
+        return {
+          id: teacher.id,
+          display_name: teacher.display_name,
+          email: teacher.email,
+          default_hourly_rate: teacher.default_hourly_rate,
+          studentCount: assignments.length,
+          totalHours,
+          totalAmount,
+          isPaid: !!payment,
+          paymentId: payment?.id,
+          lineItems,
+        }
+      }).filter((t) => t.studentCount > 0)
+
+      return payroll
+    },
+    enabled,
+  })
+}
+
 export default function Teachers({ selectedTeacherId, onSelectTeacher }: TeachersProps) {
-  const [teachers, setTeachers] = useState<Teacher[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
+  
   const [searchQuery, setSearchQuery] = useState('')
   const [activeTab, setActiveTab] = useState<TabFilter>('all')
-  const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null)
+  const [selectedTeacher, setSelectedTeacher] = useState<TeacherWithLoad | null>(null)
 
   // Modal state
   const [showAddTeacher, setShowAddTeacher] = useState(false)
@@ -79,10 +211,22 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   const [payrollTeacher, setPayrollTeacher] = useState<Teacher | null>(null)
 
   // Payroll state
-  const [payrollData, setPayrollData] = useState<PayrollTeacher[]>([])
-  const [payrollLoading, setPayrollLoading] = useState(false)
-  const [payPeriodStart, setPayPeriodStart] = useState('')
-  const [payPeriodEnd, setPayPeriodEnd] = useState('')
+  const [payPeriodStart, setPayPeriodStart] = useState(() => {
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
+    return monday.toISOString().split('T')[0]
+  })
+  const [payPeriodEnd, setPayPeriodEnd] = useState(() => {
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const monday = new Date(today)
+    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
+    const friday = new Date(monday)
+    friday.setDate(monday.getDate() + 4)
+    return friday.toISOString().split('T')[0]
+  })
   const [selectedPayrollIds, setSelectedPayrollIds] = useState<Set<string>>(new Set())
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set())
   const [bulkPayingIds, setBulkPayingIds] = useState<Set<string>>(new Set())
@@ -90,32 +234,34 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   const [showBulkPayModal, setShowBulkPayModal] = useState(false)
   const [bulkPayProcessing, setBulkPayProcessing] = useState(false)
 
-  useEffect(() => {
-    fetchTeachers()
-    initializePayPeriod()
-  }, [])
+  // Fetch teachers with load data
+  const { data: teachers = [], isLoading } = useTeachersWithLoad()
 
+  // Fetch payroll data when on payroll tab
+  const { data: payrollData = [], isLoading: payrollLoading } = usePayrollData(
+    payPeriodStart, 
+    payPeriodEnd, 
+    activeTab === 'payroll'
+  )
+
+  // Fetch single teacher for external selection
+  const { data: externalTeacher } = useTeacher(
+    selectedTeacherId && !teachers.find(t => t.id === selectedTeacherId) 
+      ? selectedTeacherId 
+      : ''
+  )
+
+  // Handle external selection (from CommandPalette)
   useEffect(() => {
-    if (activeTab === 'payroll' && payPeriodStart && payPeriodEnd) {
-      fetchPayrollData()
+    if (selectedTeacherId && teachers.length > 0) {
+      const teacher = teachers.find(t => t.id === selectedTeacherId)
+      if (teacher) {
+        setSelectedTeacher(teacher)
+      } else if (externalTeacher) {
+        setSelectedTeacher(externalTeacher as TeacherWithLoad)
+      }
     }
-  }, [activeTab, payPeriodStart, payPeriodEnd])
-
-  function initializePayPeriod() {
-    const today = new Date()
-    const dayOfWeek = today.getDay()
-    
-    // Get Monday of current week
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-    
-    // Get Friday of current week
-    const friday = new Date(monday)
-    friday.setDate(monday.getDate() + 4)
-    
-    setPayPeriodStart(monday.toISOString().split('T')[0])
-    setPayPeriodEnd(friday.toISOString().split('T')[0])
-  }
+  }, [selectedTeacherId, teachers, externalTeacher])
 
   function shiftPayPeriod(direction: 'prev' | 'next') {
     const start = new Date(payPeriodStart)
@@ -130,177 +276,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
     setExpandedRows(new Set())
   }
 
-  // Handle external selection (from CommandPalette)
-  useEffect(() => {
-    if (selectedTeacherId && teachers.length > 0) {
-      const teacher = teachers.find(t => t.id === selectedTeacherId)
-      if (teacher) {
-        setSelectedTeacher(teacher)
-      } else {
-        fetchTeacherById(selectedTeacherId)
-      }
-    }
-  }, [selectedTeacherId, teachers])
-
-  async function fetchTeacherById(id: string) {
-    const { data, error } = await supabase
-      .from('teachers')
-      .select('*')
-      .eq('id', id)
-      .single()
-
-    if (!error && data) {
-      const teacherData = data as Teacher
-      
-      const { data: assignmentData } = await supabase
-        .from('teacher_assignments')
-        .select('teacher_id, hours_per_week, is_active')
-        .eq('teacher_id', id)
-        .eq('is_active', true)
-
-      const assignments = (assignmentData || []) as AssignmentData[]
-      const teacherWithLoad: Teacher = {
-        ...teacherData,
-        active_assignments: assignments.length,
-        assigned_hours: assignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
-      }
-      setSelectedTeacher(teacherWithLoad)
-    }
-  }
-
-  async function fetchTeachers() {
-    setLoading(true)
-    
-    const { data: teacherData, error: teacherError } = await supabase
-      .from('teachers')
-      .select('*')
-      .order('display_name')
-
-    if (teacherError) {
-      console.error('Error fetching teachers:', teacherError)
-      setLoading(false)
-      return
-    }
-
-    const { data: assignmentData, error: assignmentError } = await supabase
-      .from('teacher_assignments')
-      .select('teacher_id, hours_per_week, is_active')
-      .eq('is_active', true)
-
-    if (assignmentError) {
-      console.error('Error fetching assignments:', assignmentError)
-    }
-
-    const typedTeachers = (teacherData || []) as Teacher[]
-    const typedAssignments = (assignmentData || []) as AssignmentData[]
-
-    const teachersWithLoad: Teacher[] = typedTeachers.map((teacher) => {
-      const assignments = typedAssignments.filter((a) => a.teacher_id === teacher.id)
-      return {
-        ...teacher,
-        active_assignments: assignments.length,
-        assigned_hours: assignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
-      }
-    })
-
-    setTeachers(teachersWithLoad)
-    setLoading(false)
-  }
-
-  async function fetchPayrollData() {
-    setPayrollLoading(true)
-    
-    // Fetch all active teachers
-    const { data: teacherData } = await supabase
-      .from('teachers')
-      .select('id, display_name, email, default_hourly_rate')
-      .in('status', ['active', 'reserve'])
-      .order('display_name')
-
-    if (!teacherData) {
-      setPayrollLoading(false)
-      return
-    }
-
-    // Fetch all active assignments with rates AND student/service info
-    const { data: assignmentData } = await supabase
-      .from('teacher_assignments')
-      .select(`
-        teacher_id, 
-        hours_per_week, 
-        hourly_rate_teacher, 
-        is_active,
-        enrollment_id,
-        enrollment:enrollments (
-          student:students (full_name),
-          service:services (id, name)
-        )
-      `)
-      .eq('is_active', true)
-
-    // Fetch payments for this period
-    const { data: paymentData } = await supabase
-      .from('teacher_payments')
-      .select('id, teacher_id')
-      .gte('pay_period_start', payPeriodStart)
-      .lte('pay_period_end', payPeriodEnd)
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const typedAssignments = ((assignmentData || []) as any[]).map(a => ({
-      teacher_id: a.teacher_id,
-      hours_per_week: a.hours_per_week,
-      hourly_rate_teacher: a.hourly_rate_teacher,
-      is_active: a.is_active,
-      enrollment_id: a.enrollment_id,
-      student_name: a.enrollment?.student?.full_name || 'Unknown',
-      service_name: a.enrollment?.service?.name || 'Unknown',
-      service_id: a.enrollment?.service?.id || '',
-    }))
-    
-    const payments = (paymentData || []) as { id: string; teacher_id: string }[]
-
-    // Build payroll data with line items
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const payroll: PayrollTeacher[] = (teacherData as any[]).map((teacher) => {
-      const assignments = typedAssignments.filter((a) => a.teacher_id === teacher.id)
-      const payment = payments.find((p) => p.teacher_id === teacher.id)
-      
-      const lineItems: PayrollLineItem[] = assignments.map((a) => {
-        const hours = a.hours_per_week || 0
-        const rate = a.hourly_rate_teacher || teacher.default_hourly_rate || 0
-        return {
-          enrollment_id: a.enrollment_id,
-          student_name: a.student_name,
-          service_name: a.service_name,
-          service_id: a.service_id,
-          hours,
-          rate,
-          amount: hours * rate,
-        }
-      })
-
-      const totalHours = lineItems.reduce((sum, li) => sum + li.hours, 0)
-      const totalAmount = lineItems.reduce((sum, li) => sum + li.amount, 0)
-
-      return {
-        id: teacher.id,
-        display_name: teacher.display_name,
-        email: teacher.email,
-        default_hourly_rate: teacher.default_hourly_rate,
-        studentCount: assignments.length,
-        totalHours,
-        totalAmount,
-        isPaid: !!payment,
-        paymentId: payment?.id,
-        lineItems,
-      }
-    }).filter((t) => t.studentCount > 0)
-
-    setPayrollData(payroll)
-    setPayrollLoading(false)
-  }
-
-  const handleSelectTeacher = (teacher: Teacher | null) => {
+  const handleSelectTeacher = (teacher: TeacherWithLoad | null) => {
     setSelectedTeacher(teacher)
     onSelectTeacher?.(teacher?.id || null)
   }
@@ -311,12 +287,9 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   }
 
   const handleTeacherUpdated = () => {
-    fetchTeachers()
-    if (selectedTeacher) {
-      fetchTeacherById(selectedTeacher.id)
-    }
+    queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
     if (activeTab === 'payroll') {
-      fetchPayrollData()
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
     }
   }
 
@@ -329,7 +302,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   }
 
   const handlePaymentSuccess = () => {
-    fetchPayrollData()
+    queryClient.invalidateQueries({ queryKey: ['payroll'] })
     setPayrollTeacher(null)
   }
 
@@ -379,7 +352,8 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         setBulkPayingIds(prev => new Set(prev).add(teacher.id))
         
         // Create payment record
-        const { data: paymentData, error: paymentError } = await (supabase
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data: paymentResult, error: paymentError } = await (supabase
           .from('teacher_payments') as any)
           .insert({
             teacher_id: teacher.id,
@@ -399,7 +373,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         const lineItemsToInsert = teacher.lineItems
           .filter(li => li.amount > 0)
           .map(li => ({
-            teacher_payment_id: paymentData.id,
+            teacher_payment_id: paymentResult.id,
             service_id: li.service_id || null,
             enrollment_id: li.enrollment_id || null,
             description: `${li.student_name} - ${li.service_name}: ${li.hours} hrs × $${li.rate.toFixed(2)}`,
@@ -409,15 +383,16 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
           }))
 
         if (lineItemsToInsert.length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (supabase.from('teacher_payment_line_items') as any).insert(lineItemsToInsert)
         }
 
         // Trigger n8n notification
-        await triggerPayrollNotification(teacher, paymentData.id)
+        await triggerPayrollNotification(teacher, paymentResult.id)
       }
 
       // Refresh data
-      await fetchPayrollData()
+      queryClient.invalidateQueries({ queryKey: ['payroll'] })
       setSelectedPayrollIds(new Set())
       setShowBulkPayModal(false)
     } catch (error) {
@@ -519,22 +494,24 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   }
 
   // Filter teachers based on search and tab
-  const filteredTeachers = teachers.filter(teacher => {
-    if (activeTab === 'active' && teacher.status !== 'active') return false
-    if (activeTab === 'reserve' && teacher.status !== 'reserve') return false
+  const filteredTeachers = useMemo(() => {
+    return teachers.filter(teacher => {
+      if (activeTab === 'active' && teacher.status !== 'active') return false
+      if (activeTab === 'reserve' && teacher.status !== 'reserve') return false
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      return (
-        teacher.display_name.toLowerCase().includes(query) ||
-        teacher.email?.toLowerCase().includes(query) ||
-        teacher.role?.toLowerCase().includes(query) ||
-        teacher.skillset?.toLowerCase().includes(query)
-      )
-    }
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        return (
+          teacher.display_name.toLowerCase().includes(query) ||
+          teacher.email?.toLowerCase().includes(query) ||
+          teacher.role?.toLowerCase().includes(query) ||
+          teacher.skillset?.toLowerCase().includes(query)
+        )
+      }
 
-    return true
-  })
+      return true
+    })
+  }, [teachers, activeTab, searchQuery])
 
   const tabs: { key: TabFilter; label: string; count?: number }[] = [
     { key: 'all', label: 'All Teachers', count: teachers.length },
@@ -544,15 +521,18 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   ]
 
   // Payroll summary
-  const payrollSummary = {
+  const payrollSummary = useMemo(() => ({
     total: payrollData.reduce((sum, t) => sum + t.totalAmount, 0),
     pending: payrollData.filter(t => !t.isPaid).reduce((sum, t) => sum + t.totalAmount, 0),
     paid: payrollData.filter(t => t.isPaid).reduce((sum, t) => sum + t.totalAmount, 0),
-  }
+  }), [payrollData])
 
-  const selectedTotal = payrollData
-    .filter(t => selectedPayrollIds.has(t.id) && !t.isPaid)
-    .reduce((sum, t) => sum + t.totalAmount, 0)
+  const selectedTotal = useMemo(() => 
+    payrollData
+      .filter(t => selectedPayrollIds.has(t.id) && !t.isPaid)
+      .reduce((sum, t) => sum + t.totalAmount, 0),
+    [payrollData, selectedPayrollIds]
+  )
 
   return (
     <div className="h-full flex flex-col">
@@ -593,10 +573,6 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
                 className="w-full pl-9 pr-4 py-2 bg-background border border-border rounded-md text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               />
             </div>
-            <button className="flex items-center gap-2 px-3 py-2 border border-border rounded-md text-sm hover:bg-accent">
-              <Filter className="w-4 h-4" />
-              Filters
-            </button>
           </div>
         )}
 
@@ -658,20 +634,17 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
                 </button>
               </div>
 
-              {selectedPayrollIds.size > 0 && (
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-muted-foreground">
-                    {selectedPayrollIds.size} selected (${selectedTotal.toFixed(2)})
-                  </span>
+              <div className="flex items-center gap-2">
+                {selectedPayrollIds.size > 0 && (
                   <button
                     onClick={() => setShowBulkPayModal(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm transition-colors"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-md text-sm"
                   >
                     <DollarSign className="w-4 h-4" />
-                    Pay Selected
+                    Pay Selected ({selectedPayrollIds.size}) - ${selectedTotal.toFixed(2)}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Payroll Table */}
@@ -681,142 +654,58 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
               </div>
             ) : payrollData.length === 0 ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
-                No teachers with active assignments
+                No payroll data for this period
               </div>
             ) : (
               <div className="border border-border rounded-lg overflow-hidden">
-                <table className="w-full text-sm">
+                <table className="w-full">
                   <thead className="bg-muted/50">
-                    <tr>
-                      <th className="w-10 p-3">
+                    <tr className="border-b border-border">
+                      <th className="w-10 px-3 py-2">
                         <input
                           type="checkbox"
                           checked={selectedPayrollIds.size === payrollData.filter(t => !t.isPaid).length && payrollData.filter(t => !t.isPaid).length > 0}
                           onChange={toggleAllPayroll}
-                          className="rounded border-border"
+                          className="rounded bg-background border-border"
                         />
                       </th>
-                      <th className="w-8 p-3"></th>
-                      <th className="text-left p-3 font-medium">Teacher</th>
-                      <th className="text-center p-3 font-medium">Students</th>
-                      <th className="text-right p-3 font-medium">Hours</th>
-                      <th className="text-right p-3 font-medium">Amount</th>
-                      <th className="text-center p-3 font-medium">Status</th>
-                      <th className="w-24 p-3"></th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Teacher</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Students</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase">Hours</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase">Amount</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground uppercase">Status</th>
+                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase">Actions</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {payrollData.map((teacher) => (
-                      <>
-                        <tr 
-                          key={teacher.id} 
-                          className={`border-t border-border hover:bg-accent/50 ${
-                            teacher.isPaid ? 'opacity-60' : ''
-                          } ${bulkPayingIds.has(teacher.id) ? 'bg-emerald-500/10' : ''}`}
-                        >
-                          <td className="p-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedPayrollIds.has(teacher.id)}
-                              onChange={() => togglePayrollSelection(teacher.id)}
-                              disabled={teacher.isPaid || bulkPayingIds.has(teacher.id)}
-                              className="rounded border-border disabled:opacity-50"
-                            />
-                          </td>
-                          <td className="p-3">
-                            <button
-                              onClick={() => toggleRowExpanded(teacher.id)}
-                              className="p-0.5 hover:bg-accent rounded"
-                            >
-                              {expandedRows.has(teacher.id) ? (
-                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                              ) : (
-                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </button>
-                          </td>
-                          <td className="p-3 font-medium">{teacher.display_name}</td>
-                          <td className="p-3 text-center text-muted-foreground">{teacher.studentCount}</td>
-                          <td className="p-3 text-right">{teacher.totalHours} hrs</td>
-                          <td className="p-3 text-right font-medium">${teacher.totalAmount.toFixed(2)}</td>
-                          <td className="p-3 text-center">
-                            {bulkPayingIds.has(teacher.id) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                                Processing
-                              </span>
-                            ) : teacher.isPaid ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-status-active/20 text-status-active text-xs rounded-full">
-                                <Check className="w-3 h-3" />
-                                Paid
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-status-paused/20 text-status-paused text-xs rounded-full">
-                                Pending
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3">
-                            {!teacher.isPaid && !bulkPayingIds.has(teacher.id) && (
-                              <button
-                                onClick={() => handleRecordPaymentFromPayroll(teacher.id)}
-                                className="flex items-center gap-1 px-2 py-1 text-xs text-primary hover:bg-accent rounded transition-colors"
-                              >
-                                <DollarSign className="w-3 h-3" />
-                                Pay
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                        {/* Expanded Row - Line Items */}
-                        {expandedRows.has(teacher.id) && (
-                          <tr key={`${teacher.id}-details`} className="bg-muted/30">
-                            <td colSpan={8} className="p-0">
-                              <div className="px-12 py-3">
-                                <table className="w-full text-xs">
-                                  <thead>
-                                    <tr className="text-muted-foreground">
-                                      <th className="text-left py-1 font-medium">Student</th>
-                                      <th className="text-left py-1 font-medium">Service</th>
-                                      <th className="text-right py-1 font-medium">Hours</th>
-                                      <th className="text-right py-1 font-medium">Rate</th>
-                                      <th className="text-right py-1 font-medium">Amount</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {teacher.lineItems.map((li, idx) => (
-                                      <tr key={idx} className="border-t border-border/50">
-                                        <td className="py-1.5">{li.student_name}</td>
-                                        <td className="py-1.5 text-muted-foreground">{li.service_name}</td>
-                                        <td className="py-1.5 text-right">{li.hours}</td>
-                                        <td className="py-1.5 text-right">${li.rate.toFixed(2)}</td>
-                                        <td className="py-1.5 text-right font-medium">${li.amount.toFixed(2)}</td>
-                                      </tr>
-                                    ))}
-                                  </tbody>
-                                </table>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </>
+                  <tbody className="divide-y divide-border">
+                    {payrollData.map(teacher => (
+                      <PayrollRow
+                        key={teacher.id}
+                        teacher={teacher}
+                        isSelected={selectedPayrollIds.has(teacher.id)}
+                        isExpanded={expandedRows.has(teacher.id)}
+                        isPaying={bulkPayingIds.has(teacher.id)}
+                        onToggleSelect={() => togglePayrollSelection(teacher.id)}
+                        onToggleExpand={() => toggleRowExpanded(teacher.id)}
+                        onRecordPayment={() => handleRecordPaymentFromPayroll(teacher.id)}
+                      />
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
 
-            {/* Summary */}
+            {/* Payroll Summary */}
             {payrollData.length > 0 && (
-              <div className="flex items-center justify-between text-sm pt-2 border-t border-border">
+              <div className="flex items-center justify-between text-sm p-3 bg-muted/30 rounded-lg">
                 <div className="flex items-center gap-6">
                   <span>
-                    Period Total: <span className="font-medium">${payrollSummary.total.toFixed(2)}</span>
+                    Total: <span className="font-medium">${payrollSummary.total.toFixed(2)}</span>
                   </span>
-                  <span className="text-status-paused">
+                  <span className="text-amber-400">
                     Pending: <span className="font-medium">${payrollSummary.pending.toFixed(2)}</span>
                   </span>
-                  <span className="text-status-active">
+                  <span className="text-green-400">
                     Paid: <span className="font-medium">${payrollSummary.paid.toFixed(2)}</span>
                   </span>
                 </div>
@@ -829,7 +718,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         ) : (
           // Teacher Cards Grid
           <>
-            {loading ? (
+            {isLoading ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
                 Loading teachers...
               </div>
@@ -867,7 +756,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         isOpen={showAddTeacher}
         onClose={() => setShowAddTeacher(false)}
         onSuccess={() => {
-          fetchTeachers()
+          queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
         }}
       />
 
@@ -960,13 +849,105 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
   )
 }
 
+// Payroll Row Component (extracted to avoid React Fragment issues)
+function PayrollRow({
+  teacher,
+  isSelected,
+  isExpanded,
+  isPaying,
+  onToggleSelect,
+  onToggleExpand,
+  onRecordPayment,
+}: {
+  teacher: PayrollTeacher
+  isSelected: boolean
+  isExpanded: boolean
+  isPaying: boolean
+  onToggleSelect: () => void
+  onToggleExpand: () => void
+  onRecordPayment: () => void
+}) {
+  return (
+    <>
+      <tr className={`hover:bg-muted/30 ${isPaying ? 'opacity-50' : ''}`}>
+        <td className="px-3 py-2">
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={onToggleSelect}
+            disabled={teacher.isPaid || isPaying}
+            className="rounded bg-background border-border disabled:opacity-50"
+          />
+        </td>
+        <td className="px-3 py-2">
+          <button
+            onClick={onToggleExpand}
+            className="flex items-center gap-2 text-left hover:text-foreground"
+          >
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            )}
+            <span className="font-medium">{teacher.display_name}</span>
+          </button>
+        </td>
+        <td className="px-3 py-2 text-muted-foreground">{teacher.studentCount}</td>
+        <td className="px-3 py-2 text-right">{teacher.totalHours}</td>
+        <td className="px-3 py-2 text-right font-medium">${teacher.totalAmount.toFixed(2)}</td>
+        <td className="px-3 py-2 text-center">
+          {isPaying ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-blue-500/20 text-blue-400">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Processing
+            </span>
+          ) : teacher.isPaid ? (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-green-500/20 text-green-400">
+              <Check className="w-3 h-3" />
+              Paid
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full text-xs bg-amber-500/20 text-amber-400">
+              Pending
+            </span>
+          )}
+        </td>
+        <td className="px-3 py-2 text-right">
+          {!teacher.isPaid && !isPaying && (
+            <button
+              onClick={onRecordPayment}
+              className="text-xs text-primary hover:underline"
+            >
+              Record Payment
+            </button>
+          )}
+        </td>
+      </tr>
+      {isExpanded && (
+        <tr>
+          <td colSpan={7} className="px-3 py-2 bg-muted/20">
+            <div className="ml-8 space-y-1">
+              {teacher.lineItems.map((li, idx) => (
+                <div key={idx} className="flex justify-between text-sm text-muted-foreground">
+                  <span>{li.student_name} - {li.service_name}</span>
+                  <span>{li.hours} hrs × ${li.rate.toFixed(2)} = ${li.amount.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 // Teacher Card Component
 function TeacherCard({ 
   teacher, 
   isSelected,
   onClick 
 }: { 
-  teacher: Teacher
+  teacher: TeacherWithLoad
   isSelected?: boolean
   onClick: () => void 
 }) {
@@ -1012,9 +993,9 @@ function TeacherCard({
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               className={`h-full transition-all ${
-                loadPercent >= 90 ? 'bg-status-churned' :
-                loadPercent >= 70 ? 'bg-status-paused' :
-                'bg-status-active'
+                loadPercent >= 90 ? 'bg-red-500' :
+                loadPercent >= 70 ? 'bg-amber-500' :
+                'bg-green-500'
               }`}
               style={{ width: `${loadPercent}%` }}
             />
@@ -1030,9 +1011,9 @@ function TeacherCard({
             : 'Rate TBD'}
         </span>
         {teacher.payment_info_on_file ? (
-          <span className="text-status-active text-xs">✓ Payment info</span>
+          <span className="text-green-400 text-xs">✓ Payment info</span>
         ) : (
-          <span className="text-status-paused text-xs">⚠ Need docs</span>
+          <span className="text-amber-400 text-xs">⚠ Need docs</span>
         )}
       </div>
     </div>
@@ -1042,8 +1023,8 @@ function TeacherCard({
 // Status Badge Component
 function StatusBadge({ status }: { status: Teacher['status'] }) {
   const styles = {
-    active: 'bg-status-active/20 text-status-active',
-    reserve: 'bg-status-trial/20 text-status-trial',
+    active: 'bg-green-500/20 text-green-400',
+    reserve: 'bg-blue-500/20 text-blue-400',
     inactive: 'bg-muted text-muted-foreground',
   }
 

@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState } from 'react'
 import { X, Mail, Phone, MessageSquare, Pencil, Plus } from 'lucide-react'
+import { useTeacherAssignmentsByTeacher, useTeacherPaymentsByTeacher } from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
 import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
 
@@ -44,16 +44,10 @@ interface Payment {
   notes: string | null
 }
 
-interface AssignmentQueryResult {
-  teacher_id: string
-  hours_per_week: number | null
-  is_active: boolean
-}
-
 type Tab = 'overview' | 'assignments' | 'payroll'
 
 export default function TeacherDetailPanel({
-  teacher: initialTeacher,
+  teacher,
   onClose,
   onTeacherUpdated,
 }: {
@@ -61,131 +55,55 @@ export default function TeacherDetailPanel({
   onClose: () => void
   onTeacherUpdated?: () => void
 }) {
-  const [teacher, setTeacher] = useState<Teacher>(initialTeacher)
   const [activeTab, setActiveTab] = useState<Tab>('overview')
-  const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [payments, setPayments] = useState<Payment[]>([])
-  const [loading, setLoading] = useState(false)
 
   // Modal state
   const [showEditTeacher, setShowEditTeacher] = useState(false)
   const [showRecordPayment, setShowRecordPayment] = useState(false)
 
-  // Update local teacher when prop changes
-  useEffect(() => {
-    setTeacher(initialTeacher)
-  }, [initialTeacher])
+  // React Query - fetch assignments (enabled when on assignments tab)
+  const { 
+    data: rawAssignments = [], 
+    isLoading: loadingAssignments 
+  } = useTeacherAssignmentsByTeacher(teacher.id, {
+    enabled: activeTab === 'assignments' || activeTab === 'overview'
+  })
 
-  useEffect(() => {
-    if (activeTab === 'assignments') {
-      fetchAssignments()
-    } else if (activeTab === 'payroll') {
-      fetchPayments()
-    }
-  }, [activeTab, teacher.id])
+  // React Query - fetch payments (enabled when on payroll tab)
+  const { 
+    data: payments = [], 
+    isLoading: loadingPayments 
+  } = useTeacherPaymentsByTeacher(teacher.id, {
+    enabled: activeTab === 'payroll'
+  })
 
-  async function fetchTeacherDetails() {
-    const { data: rawData, error } = await supabase
-      .from('teachers')
-      .select('*')
-      .eq('id', teacher.id)
-      .single()
+  // Transform assignments to match the Assignment interface
+  const assignments: Assignment[] = rawAssignments.map((a: any) => ({
+    id: a.id,
+    enrollment_id: a.enrollment_id,
+    hourly_rate_teacher: a.hourly_rate_teacher,
+    hours_per_week: a.hours_per_week,
+    is_active: a.is_active,
+    student_name: a.enrollment?.student?.full_name || 'Unknown',
+    family_name: a.enrollment?.family?.display_name || 'Unknown',
+    service_name: a.enrollment?.service?.name || 'Unknown',
+  }))
 
-    if (!error && rawData) {
-      // Cast to Teacher type first to avoid 'never' type issues
-      const teacherData = rawData as unknown as Teacher
-      
-      // Also fetch assignment data
-      const { data: assignmentData } = await supabase
-        .from('teacher_assignments')
-        .select('teacher_id, hours_per_week, is_active')
-        .eq('teacher_id', teacher.id)
-        .eq('is_active', true)
+  // Calculate stats from assignments
+  const activeAssignmentCount = assignments.filter(a => a.is_active).length
+  const assignedHours = assignments
+    .filter(a => a.is_active)
+    .reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
 
-      const assignmentsList = (assignmentData || []) as AssignmentQueryResult[]
-      
-      // Build the updated teacher object
-      const updatedTeacher: Teacher = {
-        id: teacherData.id,
-        display_name: teacherData.display_name,
-        email: teacherData.email,
-        phone: teacherData.phone,
-        role: teacherData.role,
-        skillset: teacherData.skillset,
-        preferred_comm_method: teacherData.preferred_comm_method,
-        status: teacherData.status,
-        default_hourly_rate: teacherData.default_hourly_rate,
-        max_hours_per_week: teacherData.max_hours_per_week,
-        payment_info_on_file: teacherData.payment_info_on_file,
-        hire_date: teacherData.hire_date,
-        notes: teacherData.notes,
-        created_at: teacherData.created_at,
-        active_assignments: assignmentsList.length,
-        assigned_hours: assignmentsList.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
-      }
-      
-      setTeacher(updatedTeacher)
-    }
-  }
-
-  async function fetchAssignments() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('teacher_assignments')
-      .select(`
-        id,
-        enrollment_id,
-        hourly_rate_teacher,
-        hours_per_week,
-        is_active,
-        enrollment:enrollments (
-          student:students (full_name),
-          family:families (display_name),
-          service:services (name)
-        )
-      `)
-      .eq('teacher_id', teacher.id)
-      .eq('is_active', true)
-      .order('created_at', { ascending: false })
-
-    if (error) {
-      console.error('Error fetching assignments:', error)
-    } else {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const formatted = ((data || []) as any[]).map((a) => ({
-        id: a.id,
-        enrollment_id: a.enrollment_id,
-        hourly_rate_teacher: a.hourly_rate_teacher,
-        hours_per_week: a.hours_per_week,
-        is_active: a.is_active,
-        student_name: a.enrollment?.student?.full_name || 'Unknown',
-        family_name: a.enrollment?.family?.display_name || 'Unknown',
-        service_name: a.enrollment?.service?.name || 'Unknown',
-      }))
-      setAssignments(formatted)
-    }
-    setLoading(false)
-  }
-
-  async function fetchPayments() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('teacher_payments')
-      .select('*')
-      .eq('teacher_id', teacher.id)
-      .order('pay_date', { ascending: false })
-      .limit(10)
-
-    if (error) {
-      console.error('Error fetching payments:', error)
-    } else {
-      setPayments((data || []) as Payment[])
-    }
-    setLoading(false)
+  // Merge computed stats with teacher data
+  const teacherWithStats: Teacher = {
+    ...teacher,
+    active_assignments: activeAssignmentCount,
+    assigned_hours: assignedHours,
   }
 
   const handleEditSuccess = () => {
-    fetchTeacherDetails()
+    // Modal handles mutation and cache invalidation
     onTeacherUpdated?.()
   }
 
@@ -195,7 +113,8 @@ export default function TeacherDetailPanel({
   }
 
   const handlePaymentSuccess = () => {
-    fetchPayments()
+    // Modal handles mutation and cache invalidation
+    // React Query will refetch payments automatically
     onTeacherUpdated?.()
   }
 
@@ -245,14 +164,12 @@ export default function TeacherDetailPanel({
             )}
           </div>
 
-          {/* Status & Role Row */}
-          <div className="flex items-center gap-3 mb-4">
-            <span className={`px-2 py-0.5 text-xs rounded-full ${
-              teacher.status === 'active' 
-                ? 'bg-status-active/20 text-status-active'
-                : teacher.status === 'reserve'
-                ? 'bg-status-trial/20 text-status-trial'
-                : 'bg-muted text-muted-foreground'
+          {/* Status Badge & Role */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
+              teacher.status === 'active' ? 'bg-green-500/20 text-green-400' :
+              teacher.status === 'reserve' ? 'bg-blue-500/20 text-blue-400' :
+              'bg-zinc-500/20 text-zinc-400'
             }`}>
               {teacher.status}
             </span>
@@ -287,14 +204,14 @@ export default function TeacherDetailPanel({
 
         {/* Tab Content */}
         <div className="flex-1 overflow-auto p-4">
-          {activeTab === 'overview' && <OverviewTab teacher={teacher} />}
+          {activeTab === 'overview' && <OverviewTab teacher={teacherWithStats} />}
           {activeTab === 'assignments' && (
-            <AssignmentsTab assignments={assignments} loading={loading} />
+            <AssignmentsTab assignments={assignments} loading={loadingAssignments} />
           )}
           {activeTab === 'payroll' && (
             <PayrollTab 
-              payments={payments} 
-              loading={loading} 
+              payments={payments as Payment[]} 
+              loading={loadingPayments} 
               onRecordPayment={() => setShowRecordPayment(true)}
             />
           )}
