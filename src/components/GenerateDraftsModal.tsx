@@ -4,6 +4,9 @@ import {
   AlertTriangle,
   Check,
   Loader2,
+  ChevronUp,
+  ChevronDown,
+  Edit2,
 } from 'lucide-react'
 import {
   useBillableEnrollments,
@@ -19,13 +22,25 @@ import type { BillableEnrollment } from '../lib/hooks'
 // ============================================================================
 
 type InvoiceType = 'weekly' | 'monthly'
+type SortField = 'family' | 'amount'
+type SortDirection = 'asc' | 'desc'
 
 interface DraftPreviewItem {
   enrollment: BillableEnrollment
   selected: boolean
   hasExisting: boolean
-  amount: number
+  baseAmount: number      // Original calculated amount
+  quantity: number        // Multiplier (weeks, sessions, etc.)
+  unitPrice: number       // Per-unit price
+  finalAmount: number     // quantity × unitPrice
   description: string
+  isEdited: boolean       // Has custom override
+}
+
+interface LineItemOverride {
+  quantity?: number
+  unit_price?: number
+  description_override?: string
 }
 
 // ============================================================================
@@ -54,40 +69,39 @@ function ServiceBadge({ code }: { code: string }) {
 // Helper Functions
 // ============================================================================
 
-function calculateAmount(enrollment: BillableEnrollment): number {
+function getBaseValues(enrollment: BillableEnrollment): { quantity: number; unitPrice: number } {
   const service = enrollment.service
+  const serviceCode = service?.code
+  const billingFreq = service?.billing_frequency
 
-  switch (service?.code) {
-    case 'academic_coaching':
-      return (enrollment.hours_per_week || 0) * (enrollment.hourly_rate_customer || 0)
-    case 'eaton_online':
-      return enrollment.weekly_tuition || 0
-    case 'learning_pod':
-    case 'learning_pod':
-    case 'consulting':
-    case 'elective_classes':
-      return enrollment.monthly_rate || 0
-      return enrollment.daily_rate || 100
-    default:
-      return enrollment.monthly_rate || 0
+  // Academic Coaching: hours × rate
+  if (serviceCode === 'academic_coaching') {
+    return {
+      quantity: enrollment.hours_per_week || 0,
+      unitPrice: enrollment.hourly_rate_customer || 0,
+    }
   }
-}
 
-function buildDescription(enrollment: BillableEnrollment): string {
-  const studentName = enrollment.student?.full_name || 'Unknown'
-  const serviceName = enrollment.service?.name || 'Service'
-  const serviceCode = enrollment.service?.code
+  // Eaton Online: weekly tuition (default 1 week)
+  if (serviceCode === 'eaton_online' || billingFreq === 'weekly') {
+    return {
+      quantity: 1,
+      unitPrice: enrollment.weekly_tuition || 0,
+    }
+  }
 
-  switch (serviceCode) {
-    case 'academic_coaching':
-      const hours = enrollment.hours_per_week || 0
-      const rate = enrollment.hourly_rate_customer || 0
-      return `${studentName} - ${serviceName}: ${hours} hrs × $${rate.toFixed(2)}`
-    case 'eaton_online':
-      const weeklyRate = enrollment.weekly_tuition || 0
-      return `${studentName} - ${serviceName}: $${weeklyRate.toFixed(2)}/week`
-    default:
-      return `${studentName} - ${serviceName}`
+  // Learning Pod: daily rate × sessions (default 4 sessions/month)
+  if (serviceCode === 'learning_pod') {
+    return {
+      quantity: 4, // Default 4 sessions per month
+      unitPrice: enrollment.daily_rate || 100,
+    }
+  }
+
+  // Everything else: monthly rate
+  return {
+    quantity: 1,
+    unitPrice: enrollment.monthly_rate || 0,
   }
 }
 
@@ -119,6 +133,21 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   const [periodNote, setPeriodNote] = useState<string>('')
   const [selectedEnrollments, setSelectedEnrollments] = useState<Set<string>>(new Set())
   const [serviceFilter, setServiceFilter] = useState<string>('')
+  
+  // NEW: Sorting state
+  const [sortField, setSortField] = useState<SortField>('family')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  
+  // NEW: Global multipliers for bulk edit
+  const [globalWeeks, setGlobalWeeks] = useState<number>(1)
+  const [globalSessions, setGlobalSessions] = useState<number>(4)
+  
+  // NEW: Per-enrollment overrides { enrollmentId: { quantity, unit_price } }
+  const [overrides, setOverrides] = useState<Record<string, LineItemOverride>>({})
+  
+  // NEW: Inline edit state
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editValue, setEditValue] = useState<string>('')
 
   // Initialize dates based on invoice type
   useEffect(() => {
@@ -139,6 +168,9 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       const endStr = end.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
       setPeriodNote(`For the week of ${startStr} - ${endStr}`)
       
+      // Reset global weeks
+      setGlobalWeeks(1)
+      
     } else {
       // Monthly: current month bounds
       const { start, end } = getMonthBounds(today)
@@ -152,7 +184,13 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       // Note format
       const monthYear = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
       setPeriodNote(`For ${monthYear}`)
+      
+      // Reset global sessions
+      setGlobalSessions(4)
     }
+    
+    // Clear overrides when switching type
+    setOverrides({})
   }, [invoiceType])
 
   // Data fetching
@@ -164,7 +202,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
 
   const { generateDrafts } = useInvoiceMutations()
 
-  // Build preview items
+  // Build preview items with overrides applied
   const previewItems = useMemo(() => {
     const existingFamilyIds = new Set(existingInvoices.map(i => i.family_id))
 
@@ -176,21 +214,74 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         if (e.family?.status !== 'active') return false
         return true
       })
-      .map(enrollment => ({
-        enrollment,
-        selected: selectedEnrollments.has(enrollment.id),
-        hasExisting: existingFamilyIds.has(enrollment.family?.id || ''),
-        amount: calculateAmount(enrollment),
-        description: buildDescription(enrollment),
-      }))
-      .sort((a, b) => {
-        // Sort: non-existing first, then by family name
-        if (a.hasExisting !== b.hasExisting) return a.hasExisting ? 1 : -1
-        return (a.enrollment.family?.display_name || '').localeCompare(
-          b.enrollment.family?.display_name || ''
-        )
+      .map(enrollment => {
+        const { quantity: baseQuantity, unitPrice: baseUnitPrice } = getBaseValues(enrollment)
+        const override = overrides[enrollment.id]
+        
+        // Apply global multipliers based on service type
+        let quantity = baseQuantity
+        let unitPrice = baseUnitPrice
+        
+        const serviceCode = enrollment.service?.code
+        
+        // For Eaton Online, apply global weeks multiplier
+        if (serviceCode === 'eaton_online') {
+          quantity = globalWeeks
+        }
+        
+        // For Learning Pod, apply global sessions multiplier  
+        if (serviceCode === 'learning_pod') {
+          quantity = globalSessions
+        }
+        
+        // Apply individual override if exists (overrides global)
+        if (override?.quantity !== undefined) {
+          quantity = override.quantity
+        }
+        if (override?.unit_price !== undefined) {
+          unitPrice = override.unit_price
+        }
+        
+        const finalAmount = quantity * unitPrice
+        const baseAmount = baseQuantity * baseUnitPrice
+        const isEdited = override?.quantity !== undefined || override?.unit_price !== undefined
+        
+        return {
+          enrollment,
+          selected: selectedEnrollments.has(enrollment.id),
+          hasExisting: existingFamilyIds.has(enrollment.family?.id || ''),
+          baseAmount,
+          quantity,
+          unitPrice,
+          finalAmount,
+          description: buildDescription(enrollment, quantity, unitPrice),
+          isEdited,
+        }
       })
-  }, [enrollments, existingInvoices, serviceFilter, selectedEnrollments])
+  }, [enrollments, existingInvoices, serviceFilter, selectedEnrollments, overrides, globalWeeks, globalSessions])
+
+  // Sort preview items
+  const sortedPreviewItems = useMemo(() => {
+    const sorted = [...previewItems]
+    sorted.sort((a, b) => {
+      // Always put existing invoices last
+      if (a.hasExisting !== b.hasExisting) return a.hasExisting ? 1 : -1
+      
+      let comparison = 0
+      switch (sortField) {
+        case 'family':
+          comparison = (a.enrollment.family?.display_name || '').localeCompare(
+            b.enrollment.family?.display_name || ''
+          )
+          break
+        case 'amount':
+          comparison = a.finalAmount - b.finalAmount
+          break
+      }
+      return sortDirection === 'asc' ? comparison : -comparison
+    })
+    return sorted
+  }, [previewItems, sortField, sortDirection])
 
   // Auto-select non-existing enrollments when preview changes
   useEffect(() => {
@@ -207,7 +298,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   const groupedByFamily = useMemo(() => {
     const grouped = new Map<string, DraftPreviewItem[]>()
     
-    previewItems.forEach(item => {
+    sortedPreviewItems.forEach(item => {
       const familyId = item.enrollment.family?.id || 'unknown'
       if (!grouped.has(familyId)) {
         grouped.set(familyId, [])
@@ -219,20 +310,20 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       familyId,
       familyName: items[0].enrollment.family?.display_name || 'Unknown',
       items,
-      totalAmount: items.reduce((sum, i) => sum + (selectedEnrollments.has(i.enrollment.id) ? i.amount : 0), 0),
+      totalAmount: items.reduce((sum, i) => sum + (selectedEnrollments.has(i.enrollment.id) ? i.finalAmount : 0), 0),
       hasExisting: items.some(i => i.hasExisting),
       allSelected: items.every(i => selectedEnrollments.has(i.enrollment.id)),
       someSelected: items.some(i => selectedEnrollments.has(i.enrollment.id)),
     }))
-  }, [previewItems, selectedEnrollments])
+  }, [sortedPreviewItems, selectedEnrollments])
 
   // Counts
   const selectedCount = selectedEnrollments.size
-  const totalAmount = previewItems
+  const totalAmount = sortedPreviewItems
     .filter(i => selectedEnrollments.has(i.enrollment.id))
-    .reduce((sum, i) => sum + i.amount, 0)
+    .reduce((sum, i) => sum + i.finalAmount, 0)
   const familyCount = new Set(
-    previewItems
+    sortedPreviewItems
       .filter(i => selectedEnrollments.has(i.enrollment.id))
       .map(i => i.enrollment.family?.id)
   ).size
@@ -251,7 +342,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   }, [])
 
   const handleToggleFamily = useCallback((familyId: string) => {
-    const familyEnrollments = previewItems
+    const familyEnrollments = sortedPreviewItems
       .filter(i => i.enrollment.family?.id === familyId)
       .map(i => i.enrollment.id)
     
@@ -268,22 +359,98 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       })
       return next
     })
-  }, [previewItems, selectedEnrollments])
+  }, [sortedPreviewItems, selectedEnrollments])
 
   const handleSelectAll = useCallback(() => {
-    if (selectedCount === previewItems.filter(i => !i.hasExisting).length) {
+    if (selectedCount === sortedPreviewItems.filter(i => !i.hasExisting).length) {
       setSelectedEnrollments(new Set())
     } else {
       setSelectedEnrollments(new Set(
-        previewItems.filter(i => !i.hasExisting).map(i => i.enrollment.id)
+        sortedPreviewItems.filter(i => !i.hasExisting).map(i => i.enrollment.id)
       ))
     }
-  }, [previewItems, selectedCount])
+  }, [sortedPreviewItems, selectedCount])
+
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }, [sortField])
+
+  // Inline amount editing
+  const startEdit = useCallback((item: DraftPreviewItem) => {
+    setEditingId(item.enrollment.id)
+    setEditValue(item.finalAmount.toFixed(2))
+  }, [])
+
+  const saveEdit = useCallback(() => {
+    if (!editingId) return
+    
+    const newAmount = parseFloat(editValue)
+    if (isNaN(newAmount) || newAmount < 0) {
+      setEditingId(null)
+      return
+    }
+    
+    // Find the item to get current quantity
+    const item = sortedPreviewItems.find(i => i.enrollment.id === editingId)
+    if (!item) {
+      setEditingId(null)
+      return
+    }
+    
+    // Calculate what unit_price would give this amount
+    const newUnitPrice = item.quantity > 0 ? newAmount / item.quantity : newAmount
+    
+    setOverrides(prev => ({
+      ...prev,
+      [editingId]: {
+        ...prev[editingId],
+        unit_price: newUnitPrice,
+      },
+    }))
+    
+    setEditingId(null)
+  }, [editingId, editValue, sortedPreviewItems])
+
+  const cancelEdit = useCallback(() => {
+    setEditingId(null)
+    setEditValue('')
+  }, [])
+
+  // Clear override for an item
+  const clearOverride = useCallback((enrollmentId: string) => {
+    setOverrides(prev => {
+      const next = { ...prev }
+      delete next[enrollmentId]
+      return next
+    })
+  }, [])
 
   const handleGenerate = useCallback(async () => {
     if (selectedCount === 0) return
 
     try {
+      // Build line_item_overrides for the mutation
+      const lineItemOverrides: Record<string, LineItemOverride> = {}
+      
+      sortedPreviewItems
+        .filter(item => selectedEnrollments.has(item.enrollment.id))
+        .forEach(item => {
+          const { quantity: baseQuantity, unitPrice: baseUnitPrice } = getBaseValues(item.enrollment)
+          
+          // Only include override if values differ from base
+          if (item.quantity !== baseQuantity || item.unitPrice !== baseUnitPrice) {
+            lineItemOverrides[item.enrollment.id] = {
+              quantity: item.quantity,
+              unit_price: item.unitPrice,
+            }
+          }
+        })
+
       await generateDrafts.mutateAsync({
         period_start: periodStart,
         period_end: periodEnd,
@@ -291,13 +458,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         due_date: dueDate,
         enrollment_ids: Array.from(selectedEnrollments),
         invoice_type: invoiceType,
+        line_item_overrides: Object.keys(lineItemOverrides).length > 0 ? lineItemOverrides : undefined,
       })
       onSuccess()
     } catch (error) {
       console.error('Failed to generate drafts:', error)
       alert('Failed to generate drafts. Check console for details.')
     }
-  }, [selectedCount, generateDrafts, periodStart, periodEnd, periodNote, dueDate, selectedEnrollments, invoiceType, onSuccess])
+  }, [selectedCount, generateDrafts, periodStart, periodEnd, periodNote, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess])
 
   // Service filter options based on invoice type
   const serviceOptions = invoiceType === 'weekly'
@@ -313,7 +481,13 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         { value: 'elective_classes', label: 'Elective Classes' },
       ]
 
-  const existingCount = previewItems.filter(i => i.hasExisting).length
+  const existingCount = sortedPreviewItems.filter(i => i.hasExisting).length
+  
+  // Show multiplier controls based on service filter or if those services exist in list
+  const hasEatonOnline = sortedPreviewItems.some(i => i.enrollment.service?.code === 'eaton_online')
+  const hasLearningPod = sortedPreviewItems.some(i => i.enrollment.service?.code === 'learning_pod')
+  const showWeeksControl = invoiceType === 'weekly' && (serviceFilter === 'eaton_online' || (!serviceFilter && hasEatonOnline))
+  const showSessionsControl = invoiceType === 'monthly' && (serviceFilter === 'learning_pod' || (!serviceFilter && hasLearningPod))
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -425,9 +599,50 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 </select>
               </div>
             </div>
+
+            {/* Bulk Multiplier Controls */}
+            {(showWeeksControl || showSessionsControl) && (
+              <div className="mt-4 p-3 bg-zinc-900/50 rounded-lg border border-zinc-700">
+                <div className="flex items-center gap-4">
+                  {showWeeksControl && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-zinc-400">
+                        Weeks to bill (Eaton Online):
+                      </label>
+                      <select
+                        value={globalWeeks}
+                        onChange={e => setGlobalWeeks(parseInt(e.target.value))}
+                        className="px-2 py-1 bg-zinc-800 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-cyan-500"
+                      >
+                        {[1, 2, 3, 4, 5].map(n => (
+                          <option key={n} value={n}>{n} week{n > 1 ? 's' : ''}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  
+                  {showSessionsControl && (
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm text-zinc-400">
+                        Sessions this month (Learning Pod):
+                      </label>
+                      <select
+                        value={globalSessions}
+                        onChange={e => setGlobalSessions(parseInt(e.target.value))}
+                        className="px-2 py-1 bg-zinc-800 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-green-500"
+                      >
+                        {[2, 3, 4, 5].map(n => (
+                          <option key={n} value={n}>{n} sessions</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Preview Header */}
+          {/* Preview Header with Sort Controls */}
           <div className="px-6 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-800/20">
             <div className="flex items-center gap-4">
               <span className="text-sm text-zinc-400">
@@ -445,12 +660,37 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 </span>
               )}
             </div>
-            <button
-              onClick={handleSelectAll}
-              className="text-sm text-blue-400 hover:text-blue-300"
-            >
-              {selectedCount === previewItems.filter(i => !i.hasExisting).length ? 'Deselect All' : 'Select All'}
-            </button>
+            <div className="flex items-center gap-4">
+              {/* Sort Controls */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-zinc-500">Sort:</span>
+                <button
+                  onClick={() => handleSort('family')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'family' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  Name
+                  {sortField === 'family' && (
+                    sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                  )}
+                </button>
+                <button
+                  onClick={() => handleSort('amount')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'amount' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+                >
+                  Amount
+                  {sortField === 'amount' && (
+                    sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                  )}
+                </button>
+              </div>
+              
+              <button
+                onClick={handleSelectAll}
+                className="text-sm text-blue-400 hover:text-blue-300"
+              >
+                {selectedCount === sortedPreviewItems.filter(i => !i.hasExisting).length ? 'Deselect All' : 'Select All'}
+              </button>
+            </div>
           </div>
 
           {/* Preview List */}
@@ -459,7 +699,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
               <div className="flex items-center justify-center h-full">
                 <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
               </div>
-            ) : previewItems.length === 0 ? (
+            ) : sortedPreviewItems.length === 0 ? (
               <div className="flex items-center justify-center h-full text-zinc-500">
                 No active enrollments found for {invoiceType} billing
               </div>
@@ -521,15 +761,64 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                             <span className="text-sm text-zinc-300">
                               {item.enrollment.student?.full_name}
                             </span>
+                            {item.isEdited && (
+                              <button
+                                onClick={() => clearOverride(item.enrollment.id)}
+                                className="text-xs text-amber-400 hover:text-amber-300"
+                                title="Clear custom amount"
+                              >
+                                (edited - click to reset)
+                              </button>
+                            )}
                           </div>
-                          <div className="text-right">
-                            <div className="text-sm text-white">
-                              ${item.amount.toFixed(2)}
-                            </div>
-                            {item.enrollment.service?.code === 'academic_coaching' && (
-                              <div className="text-xs text-zinc-500">
-                                {item.enrollment.hours_per_week} hrs × ${item.enrollment.hourly_rate_customer?.toFixed(2)}
+                          <div className="text-right flex items-center gap-2">
+                            {editingId === item.enrollment.id ? (
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm text-zinc-500">$</span>
+                                <input
+                                  type="number"
+                                  value={editValue}
+                                  onChange={e => setEditValue(e.target.value)}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Enter') saveEdit()
+                                    if (e.key === 'Escape') cancelEdit()
+                                  }}
+                                  autoFocus
+                                  className="w-20 px-2 py-1 bg-zinc-700 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-blue-500"
+                                />
+                                <button
+                                  onClick={saveEdit}
+                                  className="p-1 text-green-400 hover:text-green-300"
+                                >
+                                  <Check className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={cancelEdit}
+                                  className="p-1 text-zinc-400 hover:text-white"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
                               </div>
+                            ) : (
+                              <>
+                                <div>
+                                  <div className={`text-sm ${item.isEdited ? 'text-amber-400' : 'text-white'}`}>
+                                    ${item.finalAmount.toFixed(2)}
+                                  </div>
+                                  <div className="text-xs text-zinc-500">
+                                    {item.quantity} × ${item.unitPrice.toFixed(2)}
+                                  </div>
+                                </div>
+                                {!item.hasExisting && (
+                                  <button
+                                    onClick={() => startEdit(item)}
+                                    className="p-1 text-zinc-500 hover:text-white"
+                                    title="Edit amount"
+                                  >
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </div>
@@ -581,4 +870,31 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       </div>
     </div>
   )
+}
+
+// Build description with quantity info
+function buildDescription(enrollment: BillableEnrollment, quantity: number, unitPrice: number): string {
+  const studentName = enrollment.student?.full_name || 'Unknown'
+  const serviceName = enrollment.service?.name || 'Service'
+  const serviceCode = enrollment.service?.code
+
+  switch (serviceCode) {
+    case 'academic_coaching':
+      return `${studentName} - ${serviceName}: ${quantity} hrs × $${unitPrice.toFixed(2)}`
+    case 'eaton_online':
+      if (quantity === 1) {
+        return `${studentName} - ${serviceName}: $${unitPrice.toFixed(2)}/week`
+      }
+      return `${studentName} - ${serviceName}: ${quantity} weeks × $${unitPrice.toFixed(2)}`
+    case 'learning_pod':
+      if (quantity === 1) {
+        return `${studentName} - ${serviceName}`
+      }
+      return `${studentName} - ${serviceName}: ${quantity} sessions × $${unitPrice.toFixed(2)}`
+    default:
+      if (quantity !== 1) {
+        return `${studentName} - ${serviceName}: ${quantity} × $${unitPrice.toFixed(2)}`
+      }
+      return `${studentName} - ${serviceName}`
+  }
 }

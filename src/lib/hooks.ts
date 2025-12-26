@@ -504,35 +504,41 @@ export function useActiveServices() {
 // ENROLLMENTS HOOKS
 // =============================================================================
 
-export function useEnrollments(filters?: { status?: string; serviceId?: string }) {
+export interface EnrollmentWithDetails extends Enrollment {
+  student: Student | null
+  family: Family | null
+  service: Service
+  teacher_assignments: (TeacherAssignment & { teacher: Teacher })[]
+}
+
+export function useEnrollments(filters?: { status?: EnrollmentStatus; serviceId?: string }) {
   return useQuery({
     queryKey: queryKeys.enrollments.list(filters),
     queryFn: async () => {
-      let query = supabase
-        .from('enrollments')
+      let query = (supabase.from('enrollments') as any)
         .select(`
           *,
-          service:services(*),
-          student:students(*),
-          family:families(id, display_name, primary_email, primary_phone),
+          student:students(id, full_name, grade_level),
+          family:families(id, display_name, primary_email, status),
+          service:services(id, code, name, billing_frequency),
           teacher_assignments(
             *,
-            teacher:teachers(*)
+            teacher:teachers(id, display_name, email, status)
           )
         `)
         .order('created_at', { ascending: false })
 
-      if (filters?.status && filters.status !== 'all') {
+      if (filters?.status) {
         query = query.eq('status', filters.status)
       }
 
-      if (filters?.serviceId && filters.serviceId !== 'all') {
+      if (filters?.serviceId) {
         query = query.eq('service_id', filters.serviceId)
       }
 
       const { data, error } = await query
       if (error) throw error
-      return data
+      return data as EnrollmentWithDetails[]
     },
   })
 }
@@ -541,18 +547,21 @@ export function useEnrollmentsByFamily(familyId: string) {
   return useQuery({
     queryKey: queryKeys.enrollments.byFamily(familyId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('enrollments')
+      const { data, error } = await (supabase.from('enrollments') as any)
         .select(`
           *,
-          service:services(*),
-          student:students(*)
+          student:students(id, full_name, grade_level),
+          service:services(id, code, name, billing_frequency),
+          teacher_assignments(
+            *,
+            teacher:teachers(id, display_name, email)
+          )
         `)
         .eq('family_id', familyId)
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      return data
+      return data as EnrollmentWithDetails[]
     },
     enabled: !!familyId,
   })
@@ -562,23 +571,22 @@ export function useEnrollment(id: string) {
   return useQuery({
     queryKey: queryKeys.enrollments.detail(id),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('enrollments')
+      const { data, error } = await (supabase.from('enrollments') as any)
         .select(`
           *,
-          service:services(*),
-          student:students(*),
-          family:families(*),
+          student:students(id, full_name, grade_level),
+          family:families(id, display_name, primary_email),
+          service:services(id, code, name, billing_frequency),
           teacher_assignments(
             *,
-            teacher:teachers(*)
+            teacher:teachers(id, display_name, email, default_hourly_rate)
           )
         `)
         .eq('id', id)
         .single()
 
       if (error) throw error
-      return data
+      return data as EnrollmentWithDetails
     },
     enabled: !!id,
   })
@@ -588,19 +596,36 @@ export function useEnrollmentMutations() {
   const queryClient = useQueryClient()
 
   const createEnrollment = useMutation({
-    mutationFn: async (data: Partial<Enrollment>) => {
+    mutationFn: async (data: Partial<Enrollment> & { teacher_id?: string; hourly_rate_teacher?: number }) => {
+      const { teacher_id, hourly_rate_teacher, ...enrollmentData } = data
+
+      // Create enrollment
       const { data: enrollment, error } = await (supabase.from('enrollments') as any)
-        .insert(data)
+        .insert(enrollmentData)
         .select()
         .single()
       if (error) throw error
+
+      // Create teacher assignment if provided
+      if (teacher_id) {
+        const { error: assignError } = await (supabase.from('teacher_assignments') as any)
+          .insert({
+            enrollment_id: enrollment.id,
+            teacher_id,
+            hourly_rate_teacher: hourly_rate_teacher || null,
+            hours_per_week: enrollmentData.hours_per_week || null,
+            is_active: true,
+            start_date: enrollmentData.start_date,
+          })
+        if (assignError) throw assignError
+      }
+
       return enrollment
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(data.family_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() })
     },
   })
 
@@ -614,25 +639,20 @@ export function useEnrollmentMutations() {
       if (error) throw error
       return enrollment
     },
-    onSuccess: (data, variables) => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.detail(variables.id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(data.family_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() })
     },
   })
 
   const deleteEnrollment = useMutation({
-    mutationFn: async ({ id, familyId }: { id: string; familyId: string }) => {
+    mutationFn: async (id: string) => {
       const { error } = await supabase.from('enrollments').delete().eq('id', id)
       if (error) throw error
-      return { familyId }
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(data.familyId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() })
     },
   })
 
@@ -647,49 +667,43 @@ export function useTeacherAssignmentsByEnrollment(enrollmentId: string) {
   return useQuery({
     queryKey: queryKeys.teacherAssignments.byEnrollment(enrollmentId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('teacher_assignments')
+      const { data, error } = await (supabase.from('teacher_assignments') as any)
         .select(`
           *,
-          teacher:teachers(*)
+          teacher:teachers(id, display_name, email, status)
         `)
         .eq('enrollment_id', enrollmentId)
-        .order('is_active', { ascending: false })
-        .order('start_date', { ascending: false })
+        .order('created_at', { ascending: false })
+
       if (error) throw error
-      return data
+      return data as (TeacherAssignment & { teacher: Teacher })[]
     },
     enabled: !!enrollmentId,
   })
 }
 
-export function useTeacherAssignmentsByTeacher(
-  teacherId: string, 
-  options?: { enabled?: boolean }
-) {
+export function useTeacherAssignmentsByTeacher(teacherId: string) {
   return useQuery({
     queryKey: queryKeys.teacherAssignments.byTeacher(teacherId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('teacher_assignments')
+      const { data, error } = await (supabase.from('teacher_assignments') as any)
         .select(`
           *,
-          enrollment:enrollments (
-            id,
-            hourly_rate_customer,
-            hours_per_week,
-            student:students (id, full_name),
-            family:families (id, display_name),
-            service:services (id, name, code)
+          enrollment:enrollments(
+            *,
+            student:students(id, full_name, grade_level),
+            family:families(id, display_name),
+            service:services(id, code, name)
           )
         `)
         .eq('teacher_id', teacherId)
         .eq('is_active', true)
         .order('created_at', { ascending: false })
+
       if (error) throw error
-      return data
+      return data as (TeacherAssignment & { enrollment: EnrollmentWithDetails })[]
     },
-    enabled: (options?.enabled !== false) && !!teacherId,
+    enabled: !!teacherId,
   })
 }
 
@@ -705,10 +719,8 @@ export function useTeacherAssignmentMutations() {
       if (error) throw error
       return assignment
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byEnrollment(data.enrollment_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byTeacher(data.teacher_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
     },
   })
@@ -723,51 +735,40 @@ export function useTeacherAssignmentMutations() {
       if (error) throw error
       return assignment
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byEnrollment(data.enrollment_id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byTeacher(data.teacher_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
     },
   })
 
   const transferTeacher = useMutation({
-    mutationFn: async ({ 
-      currentAssignmentId, 
-      enrollmentId, 
+    mutationFn: async ({
+      enrollmentId,
+      oldTeacherId,
       newTeacherId,
-      newRate,
-      hoursPerWeek,
-      effectiveDate,
-      endPrevious
-    }: { 
-      currentAssignmentId?: string
+      hourlyRate,
+    }: {
       enrollmentId: string
+      oldTeacherId: string
       newTeacherId: string
-      newRate?: number
-      hoursPerWeek?: number
-      effectiveDate: string
-      endPrevious: boolean
+      hourlyRate?: number
     }) => {
-      // End current assignment if requested
-      if (currentAssignmentId && endPrevious) {
-        await (supabase.from('teacher_assignments') as any)
-          .update({ is_active: false, end_date: effectiveDate })
-          .eq('id', currentAssignmentId)
-      }
+      // End old assignment
+      await (supabase.from('teacher_assignments') as any)
+        .update({ is_active: false, end_date: new Date().toISOString().split('T')[0] })
+        .eq('enrollment_id', enrollmentId)
+        .eq('teacher_id', oldTeacherId)
+        .eq('is_active', true)
 
       // Create new assignment
-      const newAssignment: Partial<TeacherAssignment> = {
-        enrollment_id: enrollmentId,
-        teacher_id: newTeacherId,
-        is_active: true,
-        start_date: effectiveDate,
-      }
-      if (newRate) newAssignment.hourly_rate_teacher = newRate
-      if (hoursPerWeek) newAssignment.hours_per_week = hoursPerWeek
-
       const { data, error } = await (supabase.from('teacher_assignments') as any)
-        .insert(newAssignment)
+        .insert({
+          enrollment_id: enrollmentId,
+          teacher_id: newTeacherId,
+          hourly_rate_teacher: hourlyRate,
+          is_active: true,
+          start_date: new Date().toISOString().split('T')[0],
+        })
         .select()
         .single()
 
@@ -780,27 +781,17 @@ export function useTeacherAssignmentMutations() {
     },
   })
 
-  // NEW: End all active assignments for an enrollment
   const endAssignmentsByEnrollment = useMutation({
-    mutationFn: async ({ 
-      enrollmentId, 
-      endDate 
-    }: { 
-      enrollmentId: string
-      endDate: string 
-    }) => {
-      const { data, error } = await (supabase.from('teacher_assignments') as any)
-        .update({ is_active: false, end_date: endDate })
+    mutationFn: async (enrollmentId: string) => {
+      const { error } = await (supabase.from('teacher_assignments') as any)
+        .update({ is_active: false, end_date: new Date().toISOString().split('T')[0] })
         .eq('enrollment_id', enrollmentId)
         .eq('is_active', true)
-        .select()
 
       if (error) throw error
-      return data
     },
-    onSuccess: (_, variables) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byEnrollment(variables.enrollmentId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
     },
   })
@@ -809,32 +800,137 @@ export function useTeacherAssignmentMutations() {
 }
 
 // =============================================================================
-// INVOICES HOOKS
+// TEACHER PAYMENTS HOOKS
 // =============================================================================
 
-export function useInvoices(filters?: { status?: string; familyId?: string }) {
+export function useTeacherPaymentsByTeacher(teacherId: string) {
+  return useQuery({
+    queryKey: queryKeys.teacherPayments.byTeacher(teacherId),
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('teacher_payments') as any)
+        .select(`
+          *,
+          line_items:teacher_payment_line_items(*)
+        `)
+        .eq('teacher_id', teacherId)
+        .order('pay_date', { ascending: false })
+
+      if (error) throw error
+      return data as (TeacherPayment & { line_items: any[] })[]
+    },
+    enabled: !!teacherId,
+  })
+}
+
+export function useTeacherPaymentMutations() {
+  const queryClient = useQueryClient()
+
+  const createPayment = useMutation({
+    mutationFn: async (data: {
+      teacher_id: string
+      pay_period_start: string
+      pay_period_end: string
+      pay_date: string
+      total_amount: number
+      payment_method?: string
+      reference?: string
+      notes?: string
+      line_items: {
+        description: string
+        hours?: number
+        hourly_rate?: number
+        amount: number
+        service_id?: string
+        enrollment_id?: string
+      }[]
+    }) => {
+      const { line_items, ...paymentData } = data
+
+      // Create payment
+      const { data: payment, error } = await (supabase.from('teacher_payments') as any)
+        .insert(paymentData)
+        .select()
+        .single()
+      if (error) throw error
+
+      // Create line items
+      if (line_items.length > 0) {
+        const { error: itemsError } = await (supabase.from('teacher_payment_line_items') as any)
+          .insert(line_items.map(li => ({
+            ...li,
+            teacher_payment_id: payment.id,
+          })))
+        if (itemsError) throw itemsError
+      }
+
+      return payment
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherPayments.all })
+    },
+  })
+
+  return { createPayment }
+}
+
+// =============================================================================
+// INVOICE TYPES
+// =============================================================================
+
+export interface BillableEnrollment extends Enrollment {
+  student: Student | null
+  family: Family | null
+  service: Service
+  teacher_assignments: (TeacherAssignment & { teacher: Teacher })[]
+}
+
+export interface InvoiceWithDetails extends Invoice {
+  family: Family | null
+  line_items: InvoiceLineItem[]
+  services?: string[] // derived from line items
+}
+
+interface GenerateDraftsParams {
+  period_start: string
+  period_end: string
+  period_note: string
+  due_date: string
+  enrollment_ids: string[]
+  invoice_type: 'weekly' | 'monthly'
+  // NEW: Per-enrollment overrides for quantity and unit_price
+  line_item_overrides?: Record<string, {
+    quantity?: number
+    unit_price?: number
+    description_override?: string
+  }>
+}
+
+// =============================================================================
+// INVOICE QUERIES
+// =============================================================================
+
+export function useInvoices(filters?: { status?: InvoiceStatus | InvoiceStatus[] }) {
   return useQuery({
     queryKey: queryKeys.invoices.list(filters),
     queryFn: async () => {
-      let query = supabase
-        .from('invoices')
+      let query = (supabase.from('invoices') as any)
         .select(`
           *,
           family:families(id, display_name, primary_email)
         `)
         .order('invoice_date', { ascending: false })
 
-      if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status)
-      }
-
-      if (filters?.familyId) {
-        query = query.eq('family_id', filters.familyId)
+      if (filters?.status) {
+        if (Array.isArray(filters.status)) {
+          query = query.in('status', filters.status)
+        } else {
+          query = query.eq('status', filters.status)
+        }
       }
 
       const { data, error } = await query
       if (error) throw error
-      return data
+      return data as (Invoice & { family: Family })[]
     },
   })
 }
@@ -843,210 +939,26 @@ export function useInvoicesByFamily(familyId: string) {
   return useQuery({
     queryKey: queryKeys.invoices.byFamily(familyId),
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('*')
+      const { data, error } = await (supabase.from('invoices') as any)
+        .select(`
+          *,
+          line_items:invoice_line_items(*)
+        `)
         .eq('family_id', familyId)
         .order('invoice_date', { ascending: false })
 
       if (error) throw error
-      return data as Invoice[]
+      return data as (Invoice & { line_items: InvoiceLineItem[] })[]
     },
     enabled: !!familyId,
   })
 }
 
-// =============================================================================
-// TEACHER PAYMENTS HOOKS
-// =============================================================================
-
-export function useTeacherPaymentsByTeacher(
-  teacherId: string,
-  options?: { enabled?: boolean }
-) {
-  return useQuery({
-    queryKey: queryKeys.teacherPayments.byTeacher(teacherId),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('teacher_payments')
-        .select('*')
-        .eq('teacher_id', teacherId)
-        .order('pay_date', { ascending: false })
-
-      if (error) throw error
-      return data as TeacherPayment[]
-    },
-    enabled: (options?.enabled !== false) && !!teacherId,
-  })
-}
-
-export function useTeacherPaymentMutations() {
-  const queryClient = useQueryClient()
-
-  const createPayment = useMutation({
-    mutationFn: async (data: Partial<TeacherPayment>) => {
-      const { data: payment, error } = await (supabase.from('teacher_payments') as any)
-        .insert(data)
-        .select()
-        .single()
-      if (error) throw error
-      return payment
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherPayments.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherPayments.byTeacher(data.teacher_id) })
-    },
-  })
-
-  return { createPayment }
-}
-
-// =============================================================================
-// SETTINGS HOOKS
-// =============================================================================
-
-export function useSettings() {
-  return useQuery({
-    queryKey: queryKeys.settings.all,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('*')
-
-      if (error) throw error
-      
-      // Convert to key-value map
-      const settings: Record<string, any> = {}
-      // Cast data since app_settings may not be in generated types
-      const rows = data as { key: string; value: any }[] | null
-      rows?.forEach(row => {
-        settings[row.key] = row.value
-      })
-      return settings
-    },
-    staleTime: 5 * 60 * 1000, // Cache settings for 5 minutes
-  })
-}
-
-export function useSettingMutations() {
-  const queryClient = useQueryClient()
-
-  const updateSetting = useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: any }) => {
-      const { error } = await (supabase.from('app_settings') as any)
-        .upsert({ key, value, updated_at: new Date().toISOString() })
-      if (error) throw error
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
-    },
-  })
-
-  return { updateSetting }
-}
-
-// =============================================================================
-// TAGS HOOKS
-// =============================================================================
-
-export function useTags() {
-  return useQuery({
-    queryKey: queryKeys.tags.all,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tags')
-        .select('*')
-        .order('name')
-
-      if (error) throw error
-      // Cast since tags may not be in generated types
-      return data as { id: string; name: string; color: string }[] | null
-    },
-    staleTime: 5 * 60 * 1000,
-  })
-}
-
-// =============================================================================
-// UTILITY: Manual invalidation for complex scenarios
-// =============================================================================
-
-export function useInvalidateQueries() {
-  const queryClient = useQueryClient()
-
-  return {
-    invalidateAll: () => {
-      queryClient.invalidateQueries()
-    },
-    invalidateFamilies: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
-    },
-    invalidateTeachers: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
-    },
-    invalidateEnrollments: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
-    },
-    invalidateInvoices: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
-    },
-    invalidateDashboard: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
-    },
-  }
-}
-
-// =============================================================================
-// ENHANCED INVOICING TYPES
-// =============================================================================
-
-export interface InvoiceWithDetails extends Invoice {
-  family: Family
-  line_items: InvoiceLineItem[]
-  services?: string[] // Derived from line items
-}
-
-export interface BillableEnrollment extends Enrollment {
-  student: Student
-  family: Family
-  service: Service
-  teacher_assignments?: {
-    teacher: { display_name: string }
-    hourly_rate_teacher: number
-  }[]
-}
-
-export interface DraftPreviewItem {
-  enrollment_id: string
-  family_id: string
-  family_name: string
-  student_name: string
-  service_code: string
-  service_name: string
-  description: string
-  amount: number
-  hours?: number
-  rate?: number
-  has_existing_invoice: boolean
-}
-
-export interface GenerateDraftsParams {
-  period_start: string
-  period_end: string
-  period_note: string
-  due_date: string
-  enrollment_ids: string[]
-  invoice_type: 'weekly' | 'monthly'
-}
-
-// =============================================================================
-// ENHANCED INVOICE QUERIES
-// =============================================================================
-
 /**
- * Fetch invoices with full details including line items and derived service list
+ * Get invoices with full details including line items and derived service list
  */
 export function useInvoicesWithDetails(filters?: {
-  status?: string | string[]
+  status?: InvoiceStatus | InvoiceStatus[]
   service_code?: string
   search?: string
   date_from?: string
@@ -1217,7 +1129,7 @@ export function useInvoiceMutations() {
 
   const generateDrafts = useMutation({
     mutationFn: async (params: GenerateDraftsParams) => {
-      const { period_start, period_end, period_note, due_date, enrollment_ids } = params
+      const { period_start, period_end, period_note, due_date, enrollment_ids, line_item_overrides } = params
 
       // Fetch enrollments with all needed data
       const { data: enrollments, error: enrollError } = await (supabase.from('enrollments') as any)
@@ -1254,17 +1166,39 @@ export function useInvoiceMutations() {
 
       // Create one invoice per family
       for (const [familyId, familyEnrollments] of byFamily) {
-        // Calculate line items
+        // Calculate line items with potential overrides
         const lineItems = familyEnrollments.map((e: any) => {
-          const amount = calculateEnrollmentAmount(e as BillableEnrollment, params.invoice_type)
-          const description = buildLineItemDescription(e as BillableEnrollment, params.invoice_type)
+          const override = line_item_overrides?.[e.id]
+          
+          // Get base values
+          let baseAmount = calculateEnrollmentAmount(e as BillableEnrollment, params.invoice_type)
+          let quantity = e.service?.code === 'academic_coaching' ? (e.hours_per_week || 0) : 1
+          let unitPrice = e.service?.code === 'academic_coaching' 
+            ? (e.hourly_rate_customer || 0) 
+            : baseAmount
+          
+          // Apply overrides if present
+          if (override) {
+            if (override.quantity !== undefined) {
+              quantity = override.quantity
+            }
+            if (override.unit_price !== undefined) {
+              unitPrice = override.unit_price
+            }
+          }
+          
+          // Calculate final amount
+          const amount = quantity * unitPrice
+          
+          // Build description (with override support)
+          let description = override?.description_override || 
+            buildLineItemDescriptionWithQuantity(e as BillableEnrollment, quantity, unitPrice, params.invoice_type)
+          
           return {
             enrollment_id: e.id,
             description,
-            quantity: e.service?.code === 'academic_coaching' ? (e.hours_per_week || 0) : 1,
-            unit_price: e.service?.code === 'academic_coaching' 
-              ? (e.hourly_rate_customer || 0) 
-              : amount,
+            quantity,
+            unit_price: unitPrice,
             amount,
           }
         })
@@ -1397,6 +1331,37 @@ export function useInvoiceMutations() {
     },
   })
 
+  // NEW: Void a single invoice (for sent/outstanding invoices)
+  const voidInvoice = useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await (supabase.from('invoices') as any)
+        .update({ status: 'void' })
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  // NEW: Void multiple invoices at once
+  const bulkVoidInvoices = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await (supabase.from('invoices') as any)
+        .update({ status: 'void' })
+        .in('id', ids)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
   const sendInvoice = useMutation({
     mutationFn: async (invoiceId: string) => {
       // Fetch full invoice data for webhook
@@ -1489,6 +1454,8 @@ export function useInvoiceMutations() {
     updateLineItem,
     deleteInvoice,
     bulkDeleteInvoices,
+    voidInvoice,
+    bulkVoidInvoices,
     sendInvoice,
     bulkSendInvoices,
   }
@@ -1508,6 +1475,7 @@ function extractServiceCodeFromDescription(description: string): string | null {
   if (lower.includes('elective')) return 'elective_classes'
   return null
 }
+
 function calculateEnrollmentAmount(
   enrollment: BillableEnrollment,
   _invoiceType: 'weekly' | 'monthly'
@@ -1516,7 +1484,6 @@ function calculateEnrollmentAmount(
   const billingFreq = service?.billing_frequency
 
   // Special case: Academic Coaching always uses hours × rate
-  // (even if billing_frequency changes, this service is hour-based)
   if (service?.code === 'academic_coaching') {
     return (enrollment.hours_per_week || 0) * (enrollment.hourly_rate_customer || 0)
   }
@@ -1527,7 +1494,6 @@ function calculateEnrollmentAmount(
   }
 
   // Use billing frequency to determine which rate field to use
-  // This allows changing a service from weekly to monthly without code changes
   if (billingFreq === 'weekly') {
     return enrollment.weekly_tuition || 0
   } else {
@@ -1536,8 +1502,11 @@ function calculateEnrollmentAmount(
   }
 }
 
-function buildLineItemDescription(
+// NEW: Build description with quantity for multiplier support
+function buildLineItemDescriptionWithQuantity(
   enrollment: BillableEnrollment,
+  quantity: number,
+  unitPrice: number,
   _invoiceType: 'weekly' | 'monthly'
 ): string {
   const studentName = enrollment.student?.full_name || 'Unknown Student'
@@ -1547,19 +1516,115 @@ function buildLineItemDescription(
 
   // Academic Coaching always shows hours × rate breakdown
   if (serviceCode === 'academic_coaching') {
-    const hours = enrollment.hours_per_week || 0
-    const rate = enrollment.hourly_rate_customer || 0
-    return `${studentName} - ${serviceName}: ${hours} hrs × $${rate.toFixed(2)}`
+    return `${studentName} - ${serviceName}: ${quantity} hrs × $${unitPrice.toFixed(2)}`
   }
 
-  // Weekly billed services show weekly rate
-  if (billingFreq === 'weekly') {
-    const weeklyRate = enrollment.weekly_tuition || 0
-    return `${studentName} - ${serviceName}: $${weeklyRate.toFixed(2)}/week`
+  // Eaton Online: show weeks × rate
+  if (serviceCode === 'eaton_online' || billingFreq === 'weekly') {
+    if (quantity === 1) {
+      return `${studentName} - ${serviceName}: $${unitPrice.toFixed(2)}/week`
+    }
+    return `${studentName} - ${serviceName}: ${quantity} weeks × $${unitPrice.toFixed(2)}`
+  }
+
+  // Learning Pod: show sessions × rate if quantity > 1
+  if (serviceCode === 'learning_pod') {
+    if (quantity === 1) {
+      return `${studentName} - ${serviceName}`
+    }
+    return `${studentName} - ${serviceName}: ${quantity} sessions × $${unitPrice.toFixed(2)}`
   }
 
   // Everything else (monthly, etc.) just shows service name
+  // But if there's a custom quantity, show it
+  if (quantity !== 1) {
+    return `${studentName} - ${serviceName}: ${quantity} × $${unitPrice.toFixed(2)}`
+  }
   return `${studentName} - ${serviceName}`
+}
+
+// =============================================================================
+// SETTINGS HOOKS
+// =============================================================================
+
+export function useSettings() {
+  return useQuery({
+    queryKey: queryKeys.settings.all,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('*')
+
+      if (error) throw error
+
+      // Convert array to key-value map
+      const settings: Record<string, any> = {}
+      ;(data || []).forEach((s: any) => {
+        settings[s.key] = s.value
+      })
+      return settings
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+export function useSettingMutations() {
+  const queryClient = useQueryClient()
+
+  const updateSetting = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: any }) => {
+      const { error } = await (supabase.from('app_settings') as any)
+        .upsert({
+          key,
+          value,
+          updated_at: new Date().toISOString(),
+        })
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
+    },
+  })
+
+  return { updateSetting }
+}
+
+// =============================================================================
+// TAGS HOOKS
+// =============================================================================
+
+export function useTags() {
+  return useQuery({
+    queryKey: queryKeys.tags.all,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tags')
+        .select('*')
+        .order('name')
+
+      if (error) throw error
+      return data
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// =============================================================================
+// UTILITY HOOKS
+// =============================================================================
+
+export function useInvalidateQueries() {
+  const queryClient = useQueryClient()
+
+  return {
+    invalidateFamilies: () => queryClient.invalidateQueries({ queryKey: queryKeys.families.all }),
+    invalidateStudents: () => queryClient.invalidateQueries({ queryKey: queryKeys.students.all }),
+    invalidateTeachers: () => queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all }),
+    invalidateEnrollments: () => queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all }),
+    invalidateInvoices: () => queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all }),
+    invalidateAll: () => queryClient.invalidateQueries(),
+  }
 }
 
 // =============================================================================

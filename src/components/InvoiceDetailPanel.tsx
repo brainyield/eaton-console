@@ -8,6 +8,7 @@ import {
   User,
   Phone,
   Loader2,
+  Ban,
 } from 'lucide-react'
 import type { InvoiceWithDetails } from '../lib/hooks'
 
@@ -21,7 +22,9 @@ interface Props {
   onEdit: () => void
   onSend: () => void
   onDelete: () => void
+  onVoid: () => void
   isSending?: boolean
+  isVoiding?: boolean
 }
 
 // ============================================================================
@@ -47,7 +50,9 @@ export default function InvoiceDetailPanel({
   onEdit,
   onSend,
   onDelete,
+  onVoid,
   isSending = false,
+  isVoiding = false,
 }: Props) {
   const statusConfig = STATUS_CONFIG[invoice.status] || STATUS_CONFIG.draft
 
@@ -75,7 +80,10 @@ export default function InvoiceDetailPanel({
   const publicUrl = `${window.location.origin}/invoice/${invoice.public_id}`
 
   const isDraft = invoice.status === 'draft'
+  const isVoid = invoice.status === 'void'
   const canSend = isDraft && invoice.family?.primary_email
+  const canVoid = ['sent', 'partial', 'overdue'].includes(invoice.status)
+  const canEdit = isDraft
 
   return (
     <>
@@ -109,6 +117,16 @@ export default function InvoiceDetailPanel({
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
+          {/* Void Banner */}
+          {isVoid && (
+            <div className="px-6 py-3 bg-zinc-800 border-b border-zinc-700">
+              <div className="flex items-center gap-2 text-zinc-400">
+                <Ban className="w-4 h-4" />
+                <span className="text-sm">This invoice has been voided and is excluded from revenue calculations.</span>
+              </div>
+            </div>
+          )}
+
           {/* Family Info */}
           <div className="px-6 py-4 border-b border-zinc-800">
             <div className="flex items-center gap-3 mb-3">
@@ -174,7 +192,7 @@ export default function InvoiceDetailPanel({
                     <span className="text-zinc-500">
                       {item.quantity} × {formatCurrency(item.unit_price)}
                     </span>
-                    <span className="text-white font-medium">
+                    <span className={`font-medium ${isVoid ? 'text-zinc-500 line-through' : 'text-white'}`}>
                       {formatCurrency(item.amount)}
                     </span>
                   </div>
@@ -192,7 +210,9 @@ export default function InvoiceDetailPanel({
           <div className="px-6 py-4 border-b border-zinc-800 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Subtotal</span>
-              <span className="text-white">{formatCurrency(invoice.subtotal)}</span>
+              <span className={isVoid ? 'text-zinc-500 line-through' : 'text-white'}>
+                {formatCurrency(invoice.subtotal)}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Amount Paid</span>
@@ -203,7 +223,9 @@ export default function InvoiceDetailPanel({
             <div className="flex justify-between text-base pt-2 border-t border-zinc-700">
               <span className="text-white font-medium">Balance Due</span>
               <span className={`font-bold ${
-                (invoice.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'
+                isVoid 
+                  ? 'text-zinc-500 line-through'
+                  : (invoice.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'
               }`}>
                 {formatCurrency(invoice.balance_due)}
               </span>
@@ -249,7 +271,7 @@ export default function InvoiceDetailPanel({
             View Public Invoice
           </button>
 
-          {isDraft && (
+          {canEdit && (
             <button
               onClick={onEdit}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
@@ -270,6 +292,28 @@ export default function InvoiceDetailPanel({
             Download PDF
           </button>
 
+          {/* Void button for outstanding invoices */}
+          {canVoid && (
+            <button
+              onClick={onVoid}
+              disabled={isVoiding}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-zinc-400 hover:text-zinc-300 hover:bg-zinc-800 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isVoiding ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Voiding...
+                </>
+              ) : (
+                <>
+                  <Ban className="w-4 h-4" />
+                  Void Invoice
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Delete button for drafts only */}
           {isDraft && (
             <button
               onClick={onDelete}

@@ -12,6 +12,7 @@ import {
   Clock,
   AlertCircle,
   RefreshCw,
+  Ban,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
@@ -23,7 +24,7 @@ import EditInvoiceModal from './EditInvoiceModal'
 // Types
 // ============================================================================
 
-type TabKey = 'drafts' | 'outstanding' | 'paid' | 'all'
+type TabKey = 'drafts' | 'outstanding' | 'paid' | 'voided' | 'all'
 type SortField = 'invoice_number' | 'family' | 'period' | 'due_date' | 'amount' | 'balance' | 'status'
 type SortDirection = 'asc' | 'desc'
 
@@ -64,7 +65,7 @@ const STATUS_CONFIG: Record<string, { bg: string; text: string; icon: typeof Clo
   paid: { bg: 'bg-green-500/20', text: 'text-green-400', icon: Check },
   partial: { bg: 'bg-amber-500/20', text: 'text-amber-400', icon: Clock },
   overdue: { bg: 'bg-red-500/20', text: 'text-red-400', icon: AlertCircle },
-  void: { bg: 'bg-zinc-700/50', text: 'text-zinc-500', icon: X },
+  void: { bg: 'bg-zinc-700/50', text: 'text-zinc-500', icon: Ban },
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -128,7 +129,14 @@ export default function Invoicing() {
 
   // Data fetching - get all invoices, filter in component
   const { data: allInvoices = [], isLoading, refetch } = useInvoicesWithDetails()
-  const { deleteInvoice, bulkDeleteInvoices, sendInvoice, bulkSendInvoices } = useInvoiceMutations()
+  const { 
+    deleteInvoice, 
+    bulkDeleteInvoices, 
+    sendInvoice, 
+    bulkSendInvoices,
+    voidInvoice,
+    bulkVoidInvoices,
+  } = useInvoiceMutations()
 
   // Tab counts
   const counts = useMemo(() => {
@@ -136,7 +144,8 @@ export default function Invoicing() {
       drafts: allInvoices.filter(i => i.status === 'draft').length,
       outstanding: allInvoices.filter(i => ['sent', 'partial', 'overdue'].includes(i.status)).length,
       paid: allInvoices.filter(i => i.status === 'paid').length,
-      all: allInvoices.length,
+      voided: allInvoices.filter(i => i.status === 'void').length,
+      all: allInvoices.filter(i => i.status !== 'void').length, // Exclude voided from "All" count
     }
   }, [allInvoices])
 
@@ -149,8 +158,11 @@ export default function Invoicing() {
         return allInvoices.filter(i => ['sent', 'partial', 'overdue'].includes(i.status))
       case 'paid':
         return allInvoices.filter(i => i.status === 'paid')
+      case 'voided':
+        return allInvoices.filter(i => i.status === 'void')
+      case 'all':
       default:
-        return allInvoices
+        return allInvoices.filter(i => i.status !== 'void') // Exclude voided from "All"
     }
   }, [allInvoices, activeTab])
 
@@ -247,6 +259,18 @@ export default function Invoicing() {
     setSelectedIds(new Set())
   }, [bulkDeleteInvoices, selectedIds])
 
+  const handleVoid = useCallback(async (id: string) => {
+    if (!confirm('Void this invoice? This will mark it as void but preserve the record.')) return
+    await voidInvoice.mutateAsync(id)
+    setSelectedInvoice(null)
+  }, [voidInvoice])
+
+  const handleBulkVoid = useCallback(async () => {
+    if (!confirm(`Void ${selectedIds.size} invoices? This will mark them as void but preserve the records.`)) return
+    await bulkVoidInvoices.mutateAsync(Array.from(selectedIds))
+    setSelectedIds(new Set())
+  }, [bulkVoidInvoices, selectedIds])
+
   const handleSend = useCallback(async (id: string) => {
     await sendInvoice.mutateAsync(id)
     setSelectedInvoice(null)
@@ -288,7 +312,7 @@ export default function Invoicing() {
     return `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}`
   }
 
-  // Outstanding balance total
+  // Outstanding balance total (exclude voided)
   const outstandingTotal = useMemo(() => {
     return allInvoices
       .filter(i => ['sent', 'partial', 'overdue'].includes(i.status))
@@ -300,6 +324,7 @@ export default function Invoicing() {
     { key: 'drafts', label: 'Drafts', count: counts.drafts },
     { key: 'outstanding', label: 'Outstanding', count: counts.outstanding },
     { key: 'paid', label: 'Paid', count: counts.paid },
+    { key: 'voided', label: 'Voided', count: counts.voided },
     { key: 'all', label: 'All', count: counts.all },
   ]
 
@@ -402,6 +427,7 @@ export default function Invoicing() {
             {selectedIds.size} selected
           </span>
           <div className="flex items-center gap-2">
+            {/* Draft actions */}
             {activeTab === 'drafts' && (
               <>
                 <button
@@ -421,6 +447,18 @@ export default function Invoicing() {
                   Delete
                 </button>
               </>
+            )}
+            
+            {/* Outstanding actions - NEW: Void button */}
+            {activeTab === 'outstanding' && (
+              <button
+                onClick={handleBulkVoid}
+                disabled={bulkVoidInvoices.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+              >
+                <Ban className="w-4 h-4" />
+                Void Selected
+              </button>
             )}
           </div>
           <button
@@ -477,6 +515,8 @@ export default function Invoicing() {
                         Generate drafts →
                       </button>
                     </div>
+                  ) : activeTab === 'voided' ? (
+                    'No voided invoices'
                   ) : (
                     'No invoices found'
                   )}
@@ -490,7 +530,9 @@ export default function Invoicing() {
                   className={`cursor-pointer transition-colors ${
                     selectedInvoice?.id === invoice.id
                       ? 'bg-zinc-800'
-                      : 'hover:bg-zinc-800/50'
+                      : invoice.status === 'void' 
+                        ? 'hover:bg-zinc-800/30 opacity-60' 
+                        : 'hover:bg-zinc-800/50'
                   }`}
                 >
                   <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
@@ -528,7 +570,9 @@ export default function Invoicing() {
                     {formatCurrency(invoice.total_amount)}
                   </td>
                   <td className={`px-4 py-3 text-sm text-right font-medium ${
-                    (invoice.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'
+                    invoice.status === 'void' 
+                      ? 'text-zinc-500 line-through'
+                      : (invoice.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'
                   }`}>
                     {formatCurrency(invoice.balance_due)}
                   </td>
@@ -547,7 +591,9 @@ export default function Invoicing() {
           onEdit={() => setEditingInvoice(selectedInvoice)}
           onSend={() => handleSend(selectedInvoice.id)}
           onDelete={() => handleDelete(selectedInvoice.id)}
+          onVoid={() => handleVoid(selectedInvoice.id)}
           isSending={sendInvoice.isPending}
+          isVoiding={voidInvoice.isPending}
         />
       )}
 

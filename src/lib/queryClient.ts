@@ -66,13 +66,14 @@ export const queryKeys = {
 },
   
   // Invoices
-  invoices: {
-    all: ['invoices'] as const,
-    list: (filters?: { status?: string; familyId?: string }) => 
-      ['invoices', 'list', filters] as const,
-    detail: (id: string) => ['invoices', 'detail', id] as const,
-    byFamily: (familyId: string) => ['invoices', 'byFamily', familyId] as const,
-  },
+  // Invoices
+invoices: {
+  all: ['invoices'] as const,
+  list: (filters?: { status?: string | string[]; familyId?: string }) =>
+    ['invoices', 'list', filters] as const,
+  detail: (id: string) => ['invoices', 'detail', id] as const,
+  byFamily: (familyId: string) => ['invoices', 'byFamily', familyId] as const,
+},
   
   // Teacher Payments
   teacherPayments: {
