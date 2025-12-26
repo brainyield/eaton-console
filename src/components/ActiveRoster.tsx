@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { 
   Search, 
@@ -14,7 +14,10 @@ import {
   ChevronRight,
   Clock,
   DollarSign,
-  Plus
+  Plus,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react'
 import { useEnrollments, useActiveServices } from '../lib/hooks'
 import type { Service, Enrollment } from '../lib/hooks'
@@ -27,6 +30,13 @@ import { EndEnrollmentModal } from './EndEnrollmentModal'
 
 // Types
 type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
+type SortField = 'student' | 'family' | 'teacher' | 'hours' | 'rate' | 'status'
+type SortDirection = 'asc' | 'desc'
+
+interface SortConfig {
+  field: SortField
+  direction: SortDirection
+}
 
 interface Student {
   id: string
@@ -102,11 +112,14 @@ export default function ActiveRoster() {
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedStatus, setSelectedStatus] = useState<'all' | EnrollmentStatus>('active')
-  const [selectedService, setSelectedService] = useState('all')
+  const [selectedServiceCode, setSelectedServiceCode] = useState('all')
   const [groupBy, setGroupBy] = useState<'service' | 'teacher' | 'none'>('service')
   
-  // UI State
+  // UI State - FIX #1: Initialize as EMPTY set (all groups collapsed)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
+  
+  // FIX #2: Sorting state per group
+  const [sortConfigs, setSortConfigs] = useState<Record<string, SortConfig>>({})
   
   // Modal/Panel State
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentWithRelations | null>(null)
@@ -117,35 +130,30 @@ export default function ActiveRoster() {
   const [showEndModal, setShowEndModal] = useState(false)
   const [currentAssignment, setCurrentAssignment] = useState<TeacherAssignment | null>(null)
 
-  // Fetch data using React Query hooks
+  // Fetch services for the filter dropdown
   const { data: services = [] } = useActiveServices()
+  
+  // FIX #3 & #4: Get service ID from service code for the query
+  const selectedServiceId = useMemo(() => {
+    if (selectedServiceCode === 'all') return undefined
+    const service = services.find(s => s.code === selectedServiceCode)
+    return service?.id
+  }, [selectedServiceCode, services])
+  
+  // Fetch enrollments - now passing actual service ID
   const { 
     data: enrollmentsData, 
     isLoading, 
     error 
   } = useEnrollments({ 
     status: selectedStatus !== 'all' ? selectedStatus : undefined,
-    serviceId: selectedService !== 'all' ? selectedService : undefined
+    serviceId: selectedServiceId
   })
   
   const enrollments = (enrollmentsData || []) as EnrollmentWithRelations[]
 
-  // Initialize expanded groups when data loads
-  useEffect(() => {
-    if (enrollments.length > 0 && expandedGroups.size === 0) {
-      const allGroups = new Set<string>()
-      enrollments.forEach(e => {
-        allGroups.add(e.service?.name || 'Unknown')
-        const activeAssignment = e.teacher_assignments?.find((a: TeacherAssignment) => a.is_active)
-        if (activeAssignment) {
-          allGroups.add(activeAssignment.teacher?.display_name || 'Unassigned')
-        } else {
-          allGroups.add('Unassigned')
-        }
-      })
-      setExpandedGroups(allGroups)
-    }
-  }, [enrollments, expandedGroups.size])
+  // FIX #1: REMOVED the useEffect that auto-expands all groups
+  // Groups now start collapsed by default
 
   // Filter enrollments (search is client-side)
   const filteredEnrollments = useMemo(() => {
@@ -235,6 +243,82 @@ export default function ActiveRoster() {
     })
   }
 
+  // FIX #2: Handle sorting within a group
+  function handleSort(groupKey: string, field: SortField) {
+    setSortConfigs(prev => {
+      const currentConfig = prev[groupKey]
+      let newDirection: SortDirection = 'asc'
+      
+      if (currentConfig?.field === field) {
+        newDirection = currentConfig.direction === 'asc' ? 'desc' : 'asc'
+      }
+      
+      return {
+        ...prev,
+        [groupKey]: { field, direction: newDirection }
+      }
+    })
+  }
+
+  // FIX #2: Get sorted enrollments for a group
+  function getSortedEnrollments(groupKey: string, enrollments: EnrollmentWithRelations[]) {
+    const config = sortConfigs[groupKey]
+    if (!config) return enrollments
+
+    return [...enrollments].sort((a, b) => {
+      let aValue: string | number = ''
+      let bValue: string | number = ''
+
+      switch (config.field) {
+        case 'student':
+          aValue = a.student?.full_name || a.family?.display_name || ''
+          bValue = b.student?.full_name || b.family?.display_name || ''
+          break
+        case 'family':
+          aValue = a.family?.display_name || ''
+          bValue = b.family?.display_name || ''
+          break
+        case 'teacher':
+          aValue = a.teacher_assignments?.find(ta => ta.is_active)?.teacher?.display_name || 'zzz'
+          bValue = b.teacher_assignments?.find(ta => ta.is_active)?.teacher?.display_name || 'zzz'
+          break
+        case 'hours':
+          aValue = a.hours_per_week || 0
+          bValue = b.hours_per_week || 0
+          break
+        case 'rate':
+          aValue = a.hourly_rate_customer || a.monthly_rate || a.weekly_tuition || a.daily_rate || 0
+          bValue = b.hourly_rate_customer || b.monthly_rate || b.weekly_tuition || b.daily_rate || 0
+          break
+        case 'status':
+          aValue = a.status || ''
+          bValue = b.status || ''
+          break
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return config.direction === 'asc' 
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue)
+      }
+
+      return config.direction === 'asc' 
+        ? (aValue as number) - (bValue as number)
+        : (bValue as number) - (aValue as number)
+    })
+  }
+
+  // FIX #2: Render sort icon
+  function renderSortIcon(groupKey: string, field: SortField) {
+    const config = sortConfigs[groupKey]
+    if (config?.field !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-gray-500" />
+    }
+    return config.direction === 'asc' 
+      ? <ArrowUp className="w-3 h-3 text-blue-400" />
+      : <ArrowDown className="w-3 h-3 text-blue-400" />
+  }
+
   function formatRate(enrollment: EnrollmentWithRelations): string {
     if (enrollment.hourly_rate_customer) {
       return `$${enrollment.hourly_rate_customer}/hr`
@@ -261,7 +345,6 @@ export default function ActiveRoster() {
     setShowEditModal(true)
   }
 
-  // Handle transfer teacher - accepts any assignment-like object
   function handleTransferTeacher(assignment: any) {
     if (!assignment) return
     setCurrentAssignment(assignment as TeacherAssignment)
@@ -288,7 +371,12 @@ export default function ActiveRoster() {
         <div>
           <h1 className="text-xl font-semibold text-white">Active Roster</h1>
           <p className="text-sm text-gray-400 mt-1">
-            {stats.enrollments} enrollments • {stats.families} families • {stats.hoursPerWeek} hrs/week
+            {stats.enrollments} enrollments • {stats.families} families
+            {stats.hoursPerWeek > 0 && (
+              <span className="ml-2 px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs">
+                {stats.hoursPerWeek.toFixed(2)} hrs/week
+              </span>
+            )}
           </p>
         </div>
         <button
@@ -327,10 +415,10 @@ export default function ActiveRoster() {
           <option value="ended">Ended</option>
         </select>
 
-        {/* Service Filter */}
+        {/* Service Filter - FIX #3: Use service.code as value */}
         <select
-          value={selectedService}
-          onChange={(e) => setSelectedService(e.target.value)}
+          value={selectedServiceCode}
+          onChange={(e) => setSelectedServiceCode(e.target.value)}
           className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
         >
           <option value="all">All Services</option>
@@ -374,6 +462,7 @@ export default function ActiveRoster() {
             const ServiceIcon = groupBy === 'service' 
               ? serviceIcons[services.find(s => s.name === groupName)?.code || ''] || BookOpen
               : User
+            const sortedEnrollments = getSortedEnrollments(groupName, groupEnrollments)
 
             return (
               <div key={groupName} className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
@@ -398,78 +487,124 @@ export default function ActiveRoster() {
                   </button>
                 )}
 
-                {/* Enrollments */}
+                {/* FIX #2: Sortable Table Header + Enrollments */}
                 {isExpanded && (
-                  <div className="divide-y divide-gray-700">
-                    {groupEnrollments.map((enrollment) => {
-                      const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
-                      
-                      return (
-                        <div
-                          key={enrollment.id}
-                          onClick={() => handleEnrollmentClick(enrollment)}
-                          className="px-4 py-3 hover:bg-gray-750 cursor-pointer transition-colors"
+                  <div>
+                    {/* Table Header with Sort Controls */}
+                    <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-900/50 border-b border-gray-700 text-xs text-gray-400 uppercase tracking-wider">
+                      <button 
+                        className="col-span-3 flex items-center gap-1 hover:text-white text-left"
+                        onClick={() => handleSort(groupName, 'student')}
+                      >
+                        Student/Family {renderSortIcon(groupName, 'student')}
+                      </button>
+                      {groupBy !== 'service' && (
+                        <div className="col-span-2">Service</div>
+                      )}
+                      {groupBy !== 'teacher' && (
+                        <button 
+                          className={`${groupBy === 'service' ? 'col-span-2' : 'col-span-2'} flex items-center gap-1 hover:text-white text-left`}
+                          onClick={() => handleSort(groupName, 'teacher')}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              {/* Student/Family Info */}
-                              <div className="min-w-[200px]">
-                                <p className="font-medium text-white">
-                                  {enrollment.student?.full_name || enrollment.family.display_name}
-                                </p>
-                                <p className="text-sm text-gray-400">
-                                  {enrollment.student ? enrollment.family.display_name : ''}
-                                  {enrollment.student?.grade_level && ` • ${enrollment.student.grade_level}`}
-                                </p>
+                          Teacher {renderSortIcon(groupName, 'teacher')}
+                        </button>
+                      )}
+                      <button 
+                        className="col-span-1 flex items-center gap-1 hover:text-white text-left"
+                        onClick={() => handleSort(groupName, 'status')}
+                      >
+                        Status {renderSortIcon(groupName, 'status')}
+                      </button>
+                      <button 
+                        className="col-span-2 flex items-center gap-1 hover:text-white text-right justify-end"
+                        onClick={() => handleSort(groupName, 'rate')}
+                      >
+                        Rate {renderSortIcon(groupName, 'rate')}
+                      </button>
+                      <button 
+                        className="col-span-1 flex items-center gap-1 hover:text-white text-right justify-end"
+                        onClick={() => handleSort(groupName, 'hours')}
+                      >
+                        Hrs/Wk {renderSortIcon(groupName, 'hours')}
+                      </button>
+                    </div>
+
+                    {/* Enrollment Rows */}
+                    <div className="divide-y divide-gray-700">
+                      {sortedEnrollments.map((enrollment) => {
+                        const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
+                        
+                        return (
+                          <div
+                            key={enrollment.id}
+                            onClick={() => handleEnrollmentClick(enrollment)}
+                            className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-750 cursor-pointer transition-colors items-center"
+                          >
+                            {/* Student/Family Info */}
+                            <div className="col-span-3">
+                              <p className="font-medium text-white truncate">
+                                {enrollment.student?.full_name || enrollment.family.display_name}
+                              </p>
+                              <p className="text-sm text-gray-400 truncate">
+                                {enrollment.student ? enrollment.family.display_name : ''}
+                                {enrollment.student?.grade_level && ` • ${enrollment.student.grade_level}`}
+                              </p>
+                            </div>
+
+                            {/* Service (if not grouped by service) */}
+                            {groupBy !== 'service' && (
+                              <div className="col-span-2">
+                                <p className="text-sm text-gray-300 truncate">{enrollment.service?.name}</p>
+                                {enrollment.class_title && (
+                                  <p className="text-xs text-gray-500 truncate">{enrollment.class_title}</p>
+                                )}
                               </div>
+                            )}
 
-                              {/* Service (if not grouped by service) */}
-                              {groupBy !== 'service' && (
-                                <div className="min-w-[150px]">
-                                  <p className="text-sm text-gray-300">{enrollment.service?.name}</p>
-                                  {enrollment.class_title && (
-                                    <p className="text-xs text-gray-500">{enrollment.class_title}</p>
-                                  )}
-                                </div>
-                              )}
+                            {/* Teacher (if not grouped by teacher) */}
+                            {groupBy !== 'teacher' && (
+                              <div className={groupBy === 'service' ? 'col-span-2' : 'col-span-2'}>
+                                {activeAssignment ? (
+                                  <div className="flex items-center gap-2 text-sm text-gray-300">
+                                    <User className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{activeAssignment.teacher?.display_name}</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-sm text-gray-500 italic">Unassigned</span>
+                                )}
+                              </div>
+                            )}
 
-                              {/* Teacher (if not grouped by teacher) */}
-                              {groupBy !== 'teacher' && (
-                                <div className="min-w-[150px]">
-                                  {activeAssignment ? (
-                                    <div className="flex items-center gap-2 text-sm text-gray-300">
-                                      <User className="w-3 h-3" />
-                                      {activeAssignment.teacher?.display_name}
-                                    </div>
-                                  ) : (
-                                    <span className="text-sm text-gray-500 italic">Unassigned</span>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Status */}
+                            {/* Status */}
+                            <div className="col-span-1">
                               <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[enrollment.status]}`}>
                                 {enrollment.status}
                               </span>
                             </div>
 
-                            {/* Rate & Hours */}
-                            <div className="text-right">
-                              <div className="flex items-center gap-1 text-gray-300">
+                            {/* Rate */}
+                            <div className="col-span-2 text-right">
+                              <div className="flex items-center gap-1 text-gray-300 justify-end">
                                 <DollarSign className="w-3 h-3" />
                                 <span className="text-sm">{formatRate(enrollment)}</span>
                               </div>
-                              {enrollment.hours_per_week && (
-                                <div className="flex items-center gap-1 text-gray-500 text-xs mt-1 justify-end">
+                            </div>
+
+                            {/* Hours */}
+                            <div className="col-span-1 text-right">
+                              {enrollment.hours_per_week ? (
+                                <div className="flex items-center gap-1 text-gray-400 text-sm justify-end">
                                   <Clock className="w-3 h-3" />
-                                  {enrollment.hours_per_week} hrs/wk
+                                  {enrollment.hours_per_week}
                                 </div>
+                              ) : (
+                                <span className="text-gray-600">-</span>
                               )}
                             </div>
                           </div>
-                        </div>
-                      )
-                    })}
+                        )
+                      })}
+                    </div>
                   </div>
                 )}
               </div>

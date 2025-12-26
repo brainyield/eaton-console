@@ -60,6 +60,8 @@ interface FormData {
   weekly_tuition: string;
   daily_rate: string;
   billing_frequency: BillingFrequency | '';
+  // FIX #5: Add number_of_weeks for Eaton Online
+  number_of_weeks: string;
   // Teacher assignment
   teacher_id: string;
   hourly_rate_teacher: string;
@@ -81,6 +83,7 @@ const INITIAL_FORM: FormData = {
   weekly_tuition: '',
   daily_rate: '',
   billing_frequency: '',
+  number_of_weeks: '',
   teacher_id: '',
   hourly_rate_teacher: '',
   class_title: '',
@@ -155,12 +158,53 @@ export function AddEnrollmentModal({
     );
   }, [families, familySearch]);
 
-  // Determine which billing fields to show based on service
-  const showHourlyFields = selectedService?.billing_frequency === 'weekly' || 
-    selectedService?.code === 'academic_coaching' ||
-    selectedService?.code === 'eaton_online';
-  const showMonthlyField = selectedService?.billing_frequency === 'monthly';
+  // FIX #5: Determine which billing fields to show based on service
+  // Academic Coaching: hourly rate + hours/week
+  const showAcademicCoachingFields = selectedService?.code === 'academic_coaching';
+  
+  // Eaton Online: weekly tuition + hours/week + number of weeks
+  const showEatonOnlineFields = selectedService?.code === 'eaton_online';
+  
+  // Learning Pod: monthly rate + daily rate
+  const showLearningPodFields = selectedService?.code === 'learning_pod';
+  
+  // Monthly services: monthly rate only
+  const showMonthlyField = selectedService?.billing_frequency === 'monthly' && 
+    !showLearningPodFields;
+  
+  // Eaton Hub: daily rate only
   const showDailyField = selectedService?.code === 'eaton_hub';
+
+  // Calculate estimated billing display
+  const estimatedBilling = useMemo(() => {
+    if (!selectedService) return null;
+    
+    const code = selectedService.code;
+    
+    if (code === 'academic_coaching' && formData.hourly_rate_customer && formData.hours_per_week) {
+      const weekly = parseFloat(formData.hourly_rate_customer) * parseFloat(formData.hours_per_week);
+      return `$${weekly.toFixed(2)}/week`;
+    }
+    
+    if (code === 'eaton_online' && formData.weekly_tuition) {
+      const weekly = parseFloat(formData.weekly_tuition);
+      if (formData.number_of_weeks) {
+        const total = weekly * parseInt(formData.number_of_weeks);
+        return `$${weekly.toFixed(2)}/week × ${formData.number_of_weeks} weeks = $${total.toFixed(2)} total`;
+      }
+      return `$${weekly.toFixed(2)}/week`;
+    }
+    
+    if ((code === 'learning_pod' || code === 'consulting' || code === 'elective_classes') && formData.monthly_rate) {
+      return `$${parseFloat(formData.monthly_rate).toFixed(2)}/month`;
+    }
+    
+    if (code === 'eaton_hub' && formData.daily_rate) {
+      return `$${parseFloat(formData.daily_rate).toFixed(2)}/session`;
+    }
+    
+    return null;
+  }, [selectedService, formData]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
@@ -179,13 +223,42 @@ export function AddEnrollmentModal({
 
   function handleServiceChange(serviceId: string) {
     const service = services.find(s => s.id === serviceId);
-    setFormData(prev => ({
-      ...prev,
+    
+    // Reset billing fields and set defaults based on service
+    const updates: Partial<FormData> = {
       service_id: serviceId,
       billing_frequency: service?.billing_frequency || '',
-      // Set default rates if available
-      daily_rate: service?.code === 'eaton_hub' ? '100' : '',
-    }));
+      // Reset all billing fields
+      hourly_rate_customer: '',
+      hours_per_week: '',
+      monthly_rate: '',
+      weekly_tuition: '',
+      daily_rate: '',
+      number_of_weeks: '',
+    };
+    
+    // Set defaults based on service type
+    if (service) {
+      switch (service.code) {
+        case 'eaton_hub':
+          updates.daily_rate = '100';
+          break;
+        case 'eaton_online':
+          // FIX #5: Default values for Eaton Online
+          updates.weekly_tuition = '260';
+          updates.hours_per_week = '15';
+          break;
+        case 'learning_pod':
+          updates.monthly_rate = '400';
+          updates.daily_rate = '100';
+          break;
+        case 'elective_classes':
+          updates.monthly_rate = '250';
+          break;
+      }
+    }
+    
+    setFormData(prev => ({ ...prev, ...updates }));
     setError(null);
   }
 
@@ -251,8 +324,15 @@ export function AddEnrollmentModal({
     if (formData.schedule_notes.trim()) {
       enrollmentData.schedule_notes = formData.schedule_notes.trim();
     }
-    if (formData.notes.trim()) {
-      enrollmentData.notes = formData.notes.trim();
+    
+    // FIX #5: Include number of weeks in notes for Eaton Online
+    let notes = formData.notes.trim();
+    if (formData.number_of_weeks && selectedService?.code === 'eaton_online') {
+      const weeksNote = `${formData.number_of_weeks} weeks program`;
+      notes = notes ? `${notes} | ${weeksNote}` : weeksNote;
+    }
+    if (notes) {
+      enrollmentData.notes = notes;
     }
 
     createEnrollment.mutate(enrollmentData, {
@@ -483,7 +563,8 @@ export function AddEnrollmentModal({
                   Billing (Customer)
                 </h3>
                 
-                {showHourlyFields && (
+                {/* Academic Coaching: hourly rate + hours/week */}
+                {showAcademicCoachingFields && (
                   <div className="grid grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -518,6 +599,99 @@ export function AddEnrollmentModal({
                   </div>
                 )}
 
+                {/* FIX #5: Eaton Online: weekly tuition + hours/week + number of weeks */}
+                {showEatonOnlineFields && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Weekly Tuition ($)
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          name="weekly_tuition"
+                          value={formData.weekly_tuition}
+                          onChange={handleChange}
+                          placeholder="260.00"
+                          className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-300 mb-2">
+                          Number of Weeks
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          name="number_of_weeks"
+                          value={formData.number_of_weeks}
+                          onChange={handleChange}
+                          placeholder="36"
+                          className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Hours/Week
+                      </label>
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        name="hours_per_week"
+                        value={formData.hours_per_week}
+                        onChange={handleChange}
+                        placeholder="15"
+                        className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Used for teacher assignment and payroll calculations</p>
+                    </div>
+                  </>
+                )}
+
+                {/* Learning Pod: monthly rate + daily rate */}
+                {showLearningPodFields && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Monthly Rate ($)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        name="monthly_rate"
+                        value={formData.monthly_rate}
+                        onChange={handleChange}
+                        placeholder="400.00"
+                        className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Age 5 & under: $300 | Age 6+: $400</p>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Daily Rate ($)
+                      </label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        name="daily_rate"
+                        value={formData.daily_rate}
+                        onChange={handleChange}
+                        placeholder="100.00"
+                        className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">Age 5 & under: $75 | Age 6+: $100</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Monthly services (Consulting, Electives): monthly rate only */}
                 {showMonthlyField && (
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -536,6 +710,7 @@ export function AddEnrollmentModal({
                   </div>
                 )}
 
+                {/* Eaton Hub: daily rate only */}
                 {showDailyField && (
                   <div>
                     <label className="block text-sm font-medium text-gray-300 mb-2">
@@ -551,6 +726,15 @@ export function AddEnrollmentModal({
                       placeholder="100.00"
                       className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
+                  </div>
+                )}
+
+                {/* Estimated Billing Display */}
+                {estimatedBilling && (
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                    <p className="text-sm text-blue-400">
+                      <span className="font-medium">Estimated billing:</span> {estimatedBilling}
+                    </p>
                   </div>
                 )}
               </div>
