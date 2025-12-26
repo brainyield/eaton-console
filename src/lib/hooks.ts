@@ -126,9 +126,30 @@ export interface Invoice {
   balance_due: number
   status: InvoiceStatus
   sent_at: string | null
+  sent_to?: string | null
   notes: string | null
   created_at: string
   updated_at: string
+}
+
+export interface InvoiceLineItem {
+  id: string
+  invoice_id: string
+  enrollment_id: string | null
+  description: string
+  quantity: number
+  unit_price: number | null
+  amount: number | null
+  teacher_cost: number | null
+  profit: number | null
+  sort_order: number
+  created_at: string
+  enrollment?: {
+    service?: {
+      code: string
+      name: string
+    }
+  }
 }
 
 export interface TeacherPayment {
@@ -972,4 +993,631 @@ export function useInvalidateQueries() {
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   }
+}
+
+// =============================================================================
+// ENHANCED INVOICING TYPES
+// =============================================================================
+
+export interface InvoiceWithDetails extends Invoice {
+  family: Family
+  line_items: InvoiceLineItem[]
+  services?: string[] // Derived from line items
+}
+
+export interface BillableEnrollment extends Enrollment {
+  student: Student
+  family: Family
+  service: Service
+  teacher_assignments?: {
+    teacher: { display_name: string }
+    hourly_rate_teacher: number
+  }[]
+}
+
+export interface DraftPreviewItem {
+  enrollment_id: string
+  family_id: string
+  family_name: string
+  student_name: string
+  service_code: string
+  service_name: string
+  description: string
+  amount: number
+  hours?: number
+  rate?: number
+  has_existing_invoice: boolean
+}
+
+export interface GenerateDraftsParams {
+  period_start: string
+  period_end: string
+  period_note: string
+  due_date: string
+  enrollment_ids: string[]
+  invoice_type: 'weekly' | 'monthly'
+}
+
+// =============================================================================
+// ENHANCED INVOICE QUERIES
+// =============================================================================
+
+/**
+ * Fetch invoices with full details including line items and derived service list
+ */
+export function useInvoicesWithDetails(filters?: {
+  status?: string | string[]
+  service_code?: string
+  search?: string
+  date_from?: string
+  date_to?: string
+}) {
+  return useQuery({
+    queryKey: [...queryKeys.invoices.all, 'details', filters],
+    queryFn: async () => {
+      // First get invoices with family info
+      let query = (supabase.from('invoices') as any)
+        .select(`
+          *,
+          family:families!inner(
+            id,
+            display_name,
+            primary_email,
+            primary_phone,
+            status
+          )
+        `)
+        .order('invoice_date', { ascending: false })
+
+      // Apply status filter
+      if (filters?.status) {
+        if (Array.isArray(filters.status)) {
+          query = query.in('status', filters.status)
+        } else {
+          query = query.eq('status', filters.status)
+        }
+      }
+
+      // Apply date filters
+      if (filters?.date_from) {
+        query = query.gte('invoice_date', filters.date_from)
+      }
+      if (filters?.date_to) {
+        query = query.lte('invoice_date', filters.date_to)
+      }
+
+      const { data: invoices, error } = await query
+
+      if (error) throw error
+      if (!invoices) return []
+
+      // Fetch line items for all invoices
+      const invoiceIds = (invoices as any[]).map((inv: any) => inv.id)
+      const { data: lineItems, error: lineError } = await (supabase.from('invoice_line_items') as any)
+        .select(`
+          *,
+          enrollment:enrollments(
+            service:services(code, name)
+          )
+        `)
+        .in('invoice_id', invoiceIds)
+
+      if (lineError) throw lineError
+
+      // Group line items by invoice and extract service codes
+      const lineItemsByInvoice = new Map<string, any[]>()
+      const servicesByInvoice = new Map<string, Set<string>>()
+
+      ;(lineItems as any[] || []).forEach((item: any) => {
+        const invoiceId = item.invoice_id
+        if (!lineItemsByInvoice.has(invoiceId)) {
+          lineItemsByInvoice.set(invoiceId, [])
+          servicesByInvoice.set(invoiceId, new Set())
+        }
+        lineItemsByInvoice.get(invoiceId)!.push(item)
+        
+        // Extract service code from enrollment or description
+        const serviceCode = item.enrollment?.service?.code || 
+          extractServiceCodeFromDescription(item.description)
+        if (serviceCode) {
+          servicesByInvoice.get(invoiceId)!.add(serviceCode)
+        }
+      })
+
+      // Combine data
+      const result: InvoiceWithDetails[] = (invoices as any[]).map((inv: any) => ({
+        ...inv,
+        line_items: lineItemsByInvoice.get(inv.id) || [],
+        services: Array.from(servicesByInvoice.get(inv.id) || [])
+      }))
+
+      // Apply service filter (post-query since it's derived)
+      if (filters?.service_code) {
+        return result.filter(inv => 
+          inv.services?.includes(filters.service_code!)
+        )
+      }
+
+      // Apply search filter
+      if (filters?.search) {
+        const searchLower = filters.search.toLowerCase()
+        return result.filter(inv =>
+          inv.invoice_number?.toLowerCase().includes(searchLower) ||
+          inv.family?.display_name?.toLowerCase().includes(searchLower) ||
+          inv.family?.primary_email?.toLowerCase().includes(searchLower)
+        )
+      }
+
+      return result
+    },
+  })
+}
+
+/**
+ * Get billable enrollments for draft generation
+ */
+export function useBillableEnrollments(serviceFilter?: 'weekly' | 'monthly' | 'all') {
+  return useQuery({
+    queryKey: [...queryKeys.enrollments.all, 'billable', serviceFilter],
+    queryFn: async () => {
+      let query = (supabase.from('enrollments') as any)
+        .select(`
+          *,
+          student:students!inner(id, full_name, grade_level),
+          family:families!inner(id, display_name, primary_email, status),
+          service:services!inner(id, code, name, billing_frequency),
+          teacher_assignments(
+            teacher:teachers(display_name),
+            hourly_rate_teacher,
+            is_active
+          )
+        `)
+        .eq('status', 'active')
+
+      // Filter by billing frequency
+      if (serviceFilter === 'weekly') {
+        query = query.eq('service.billing_frequency', 'weekly')
+      } else if (serviceFilter === 'monthly') {
+        query = query.in('service.billing_frequency', ['monthly', 'bi_monthly', 'annual'])
+      }
+
+      const { data, error } = await query.order('family(display_name)')
+
+      if (error) throw error
+      return (data || []) as BillableEnrollment[]
+    },
+  })
+}
+
+/**
+ * Check for existing invoices in a period
+ */
+export function useExistingInvoicesForPeriod(periodStart: string, periodEnd: string) {
+  return useQuery({
+    queryKey: [...queryKeys.invoices.all, 'period', periodStart, periodEnd],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('invoices') as any)
+        .select('id, family_id, invoice_number')
+        .eq('period_start', periodStart)
+        .eq('period_end', periodEnd)
+
+      if (error) throw error
+      return (data || []) as { id: string; family_id: string; invoice_number: string }[]
+    },
+    enabled: !!periodStart && !!periodEnd,
+  })
+}
+
+// =============================================================================
+// INVOICE MUTATIONS
+// =============================================================================
+
+export function useInvoiceMutations() {
+  const queryClient = useQueryClient()
+
+  const generateDrafts = useMutation({
+    mutationFn: async (params: GenerateDraftsParams) => {
+      const { period_start, period_end, period_note, due_date, enrollment_ids } = params
+
+      // Fetch enrollments with all needed data
+      const { data: enrollments, error: enrollError } = await (supabase.from('enrollments') as any)
+        .select(`
+          *,
+          student:students(id, full_name),
+          family:families(id, display_name, primary_email),
+          service:services(id, code, name, billing_frequency)
+        `)
+        .in('id', enrollment_ids)
+
+      if (enrollError) throw enrollError
+      if (!enrollments?.length) throw new Error('No enrollments found')
+
+      // Get next invoice number
+      const { data: settings } = await (supabase.from('app_settings') as any)
+        .select('value')
+        .eq('key', 'invoice_defaults')
+        .single()
+
+      let nextNumber = settings?.value?.next_number || 1
+      const prefix = settings?.value?.number_prefix || 'INV-'
+
+      // Group enrollments by family
+      const byFamily = new Map<string, any[]>()
+      ;(enrollments as any[]).forEach((e: any) => {
+        const familyId = e.family?.id
+        if (!familyId) return
+        if (!byFamily.has(familyId)) byFamily.set(familyId, [])
+        byFamily.get(familyId)!.push(e)
+      })
+
+      const createdInvoices: string[] = []
+
+      // Create one invoice per family
+      for (const [familyId, familyEnrollments] of byFamily) {
+        // Calculate line items
+        const lineItems = familyEnrollments.map((e: any) => {
+          const amount = calculateEnrollmentAmount(e as BillableEnrollment, params.invoice_type)
+          const description = buildLineItemDescription(e as BillableEnrollment, params.invoice_type)
+          return {
+            enrollment_id: e.id,
+            description,
+            quantity: e.service?.code === 'academic_coaching' ? (e.hours_per_week || 0) : 1,
+            unit_price: e.service?.code === 'academic_coaching' 
+              ? (e.hourly_rate_customer || 0) 
+              : amount,
+            amount,
+          }
+        })
+
+        const subtotal = lineItems.reduce((sum: number, li: any) => sum + (li.amount || 0), 0)
+        const invoiceNumber = `${prefix}${String(nextNumber).padStart(4, '0')}`
+
+        // Create invoice
+        const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
+          .insert({
+            family_id: familyId,
+            invoice_number: invoiceNumber,
+            invoice_date: new Date().toISOString().split('T')[0],
+            due_date,
+            period_start,
+            period_end,
+            subtotal,
+            total_amount: subtotal,
+            status: 'draft',
+            notes: period_note,
+          })
+          .select()
+          .single()
+
+        if (invError) throw invError
+
+        // Create line items
+        const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
+          .insert(lineItems.map((li: any, idx: number) => ({
+            ...li,
+            invoice_id: invoice.id,
+            sort_order: idx,
+          })))
+
+        if (itemsError) throw itemsError
+
+        createdInvoices.push(invoice.id)
+        nextNumber++
+      }
+
+      // Update next invoice number
+      await (supabase.from('app_settings') as any)
+        .update({
+          value: { ...settings?.value, next_number: nextNumber },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('key', 'invoice_defaults')
+
+      return createdInvoices
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
+    },
+  })
+
+  const updateInvoice = useMutation({
+    mutationFn: async ({ id, ...data }: Partial<Invoice> & { id: string }) => {
+      const { data: result, error } = await (supabase.from('invoices') as any)
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  const updateLineItem = useMutation({
+    mutationFn: async ({ id, ...data }: Partial<InvoiceLineItem> & { id: string }) => {
+      const { data: result, error } = await (supabase.from('invoice_line_items') as any)
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Recalculate invoice totals
+      const { data: invoice } = await (supabase.from('invoices') as any)
+        .select('id')
+        .eq('id', result.invoice_id)
+        .single()
+
+      if (invoice) {
+        const { data: items } = await (supabase.from('invoice_line_items') as any)
+          .select('amount')
+          .eq('invoice_id', invoice.id)
+
+        const subtotal = (items as any[] || []).reduce((sum: number, i: any) => sum + (i.amount || 0), 0)
+        await (supabase.from('invoices') as any)
+          .update({ subtotal, total_amount: subtotal })
+          .eq('id', invoice.id)
+      }
+
+      return result
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  const deleteInvoice = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await (supabase.from('invoices') as any)
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  const bulkDeleteInvoices = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await (supabase.from('invoices') as any)
+        .delete()
+        .in('id', ids)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  const sendInvoice = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      // Fetch full invoice data for webhook
+      const { data: invoice, error } = await (supabase.from('invoices') as any)
+        .select(`
+          *,
+          family:families(id, display_name, primary_email, primary_contact_name, primary_phone),
+          line_items:invoice_line_items(description, amount)
+        `)
+        .eq('id', invoiceId)
+        .single()
+
+      if (error) throw error
+      if (!invoice.family?.primary_email) {
+        throw new Error('Family has no email address')
+      }
+
+      const invoiceUrl = `${window.location.origin}/invoice/${invoice.public_id}`
+
+      // Send via n8n webhook
+      await fetch('https://eatonacademic.app.n8n.cloud/webhook/invoice-send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_id: invoice.id,
+          invoice_number: invoice.invoice_number,
+          public_id: invoice.public_id,
+          invoice_url: invoiceUrl,
+          family: {
+            id: invoice.family.id,
+            name: invoice.family.display_name,
+            email: invoice.family.primary_email,
+            contact_name: invoice.family.primary_contact_name,
+          },
+          amounts: {
+            subtotal: invoice.subtotal,
+            total: invoice.total_amount,
+            amount_paid: invoice.amount_paid,
+            balance_due: invoice.balance_due,
+          },
+          dates: {
+            invoice_date: invoice.invoice_date,
+            due_date: invoice.due_date,
+            period_start: invoice.period_start,
+            period_end: invoice.period_end,
+          },
+          line_items: invoice.line_items,
+        }),
+      })
+
+      // Update invoice status
+      const { error: updateError } = await (supabase.from('invoices') as any)
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString(),
+          sent_to: invoice.family.primary_email,
+        })
+        .eq('id', invoiceId)
+
+      if (updateError) throw updateError
+
+      return invoice
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  const bulkSendInvoices = useMutation({
+    mutationFn: async (invoiceIds: string[]) => {
+      const results = []
+      for (const id of invoiceIds) {
+        try {
+          await sendInvoice.mutateAsync(id)
+          results.push({ id, success: true })
+        } catch (error) {
+          results.push({ id, success: false, error })
+        }
+      }
+      return results
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  return {
+    generateDrafts,
+    updateInvoice,
+    updateLineItem,
+    deleteInvoice,
+    bulkDeleteInvoices,
+    sendInvoice,
+    bulkSendInvoices,
+  }
+}
+
+// =============================================================================
+// INVOICE HELPER FUNCTIONS
+// =============================================================================
+
+function extractServiceCodeFromDescription(description: string): string | null {
+  const lower = description.toLowerCase()
+  if (lower.includes('academic coaching')) return 'academic_coaching'
+  if (lower.includes('learning pod')) return 'learning_pod'
+  if (lower.includes('consulting')) {
+    return lower.includes('teacher') ? 'consulting_with_teacher' : 'consulting_only'
+  }
+  if (lower.includes('hub')) return 'eaton_hub'
+  if (lower.includes('online')) return 'eaton_online'
+  if (lower.includes('elective')) return 'elective_classes'
+  return null
+}
+
+function calculateEnrollmentAmount(
+  enrollment: BillableEnrollment,
+  _invoiceType: 'weekly' | 'monthly'
+): number {
+  const service = enrollment.service
+  const billingFreq = service?.billing_frequency
+
+  // Special case: Academic Coaching always uses hours × rate
+  // (even if billing_frequency changes, this service is hour-based)
+  if (service?.code === 'academic_coaching') {
+    return (enrollment.hours_per_week || 0) * (enrollment.hourly_rate_customer || 0)
+  }
+
+  // Special case: Hub is per-session (tracked via hub_sessions table)
+  if (service?.code === 'eaton_hub' || billingFreq === 'per_session') {
+    return enrollment.daily_rate || 100
+  }
+
+  // Use billing frequency to determine which rate field to use
+  // This allows changing a service from weekly to monthly without code changes
+  if (billingFreq === 'weekly') {
+    return enrollment.weekly_tuition || 0
+  } else {
+    // monthly, bi_monthly, annual, one_time all use monthly_rate
+    return enrollment.monthly_rate || 0
+  }
+}
+
+function buildLineItemDescription(
+  enrollment: BillableEnrollment,
+  _invoiceType: 'weekly' | 'monthly'
+): string {
+  const studentName = enrollment.student?.full_name || 'Unknown Student'
+  const serviceName = enrollment.service?.name || 'Service'
+  const serviceCode = enrollment.service?.code
+  const billingFreq = enrollment.service?.billing_frequency
+
+  // Academic Coaching always shows hours × rate breakdown
+  if (serviceCode === 'academic_coaching') {
+    const hours = enrollment.hours_per_week || 0
+    const rate = enrollment.hourly_rate_customer || 0
+    return `${studentName} - ${serviceName}: ${hours} hrs × $${rate.toFixed(2)}`
+  }
+
+  // Weekly billed services show weekly rate
+  if (billingFreq === 'weekly') {
+    const weeklyRate = enrollment.weekly_tuition || 0
+    return `${studentName} - ${serviceName}: $${weeklyRate.toFixed(2)}/week`
+  }
+
+  // Everything else (monthly, etc.) just shows service name
+  return `${studentName} - ${serviceName}`
+}
+
+// =============================================================================
+// DATE HELPERS FOR INVOICE PERIODS
+// =============================================================================
+
+export function getWeekBounds(date: Date = new Date()): { start: Date; end: Date } {
+  const d = new Date(date)
+  const day = d.getDay()
+  
+  // Find Monday of this week
+  const monday = new Date(d)
+  monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
+  monday.setHours(0, 0, 0, 0)
+  
+  // Friday of this week
+  const friday = new Date(monday)
+  friday.setDate(monday.getDate() + 4)
+  
+  return { start: monday, end: friday }
+}
+
+export function getNextMonday(date: Date = new Date()): Date {
+  const d = new Date(date)
+  const day = d.getDay()
+  const diff = day === 0 ? 1 : 8 - day
+  d.setDate(d.getDate() + diff)
+  return d
+}
+
+export function getLastFridayOfMonth(year: number, month: number): Date {
+  // Start from last day of month
+  const lastDay = new Date(year, month + 1, 0)
+  const day = lastDay.getDay()
+  
+  // Work backwards to find Friday
+  const diff = day >= 5 ? day - 5 : day + 2
+  lastDay.setDate(lastDay.getDate() - diff)
+  
+  return lastDay
+}
+
+export function formatDateRange(start: string, end: string): string {
+  const s = new Date(start)
+  const e = new Date(end)
+  
+  const sMonth = s.toLocaleDateString('en-US', { month: 'short' })
+  const eMonth = e.toLocaleDateString('en-US', { month: 'short' })
+  
+  if (sMonth === eMonth) {
+    return `${sMonth} ${s.getDate()}-${e.getDate()}`
+  }
+  return `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}`
+}
+
+export function formatMonthYear(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
 }
