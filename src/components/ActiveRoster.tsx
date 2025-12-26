@@ -46,7 +46,17 @@ interface Teacher {
   display_name: string
   email: string | null
   phone: string | null
+  role: string | null
+  skillset: string | null
+  preferred_comm_method: string | null
+  status: 'active' | 'reserve' | 'inactive'
   default_hourly_rate: number | null
+  max_hours_per_week: number | null
+  payment_info_on_file: boolean
+  hire_date: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
 }
 
 interface TeacherAssignment {
@@ -509,7 +519,6 @@ export default function ActiveRoster() {
           onEdit={handleEditEnrollment}
           onTransferTeacher={handleTransferTeacher}
           onEndEnrollment={handleEndEnrollment}
-          onRefresh={handlePanelRefresh}
         />
       )}
 

@@ -8,14 +8,9 @@ import {
   ChevronUp,
   ChevronDown,
   Plus,
-  Download,
-  Eye,
-  MoreHorizontal,
   Check,
   Clock,
   AlertCircle,
-  Calendar,
-  Filter,
   RefreshCw,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'

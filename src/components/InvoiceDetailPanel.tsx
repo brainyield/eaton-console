@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import {
   X,
   Send,
@@ -6,15 +5,8 @@ import {
   Download,
   Edit2,
   Trash2,
-  Clock,
   User,
-  Mail,
   Phone,
-  Calendar,
-  FileText,
-  DollarSign,
-  CheckCircle,
-  AlertCircle,
   Loader2,
 } from 'lucide-react'
 import type { InvoiceWithDetails } from '../lib/hooks'
@@ -30,20 +22,6 @@ interface Props {
   onSend: () => void
   onDelete: () => void
   isSending?: boolean
-}
-
-// ============================================================================
-// Service Badge (inline)
-// ============================================================================
-
-const SERVICE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
-  academic_coaching: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'Academic Coaching' },
-  learning_pod: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Learning Pod' },
-  consulting_with_teacher: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consulting w/ Teacher' },
-  consulting_only: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consulting Only' },
-  eaton_hub: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Eaton Hub' },
-  eaton_online: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Eaton Online' },
-  elective_classes: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Elective Classes' },
 }
 
 // ============================================================================

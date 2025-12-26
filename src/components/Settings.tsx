@@ -165,7 +165,7 @@ export default function Settings() {
       
       return { previous }
     },
-    onError: (err, variables, context) => {
+    onError: (err, _variables, context) => {
       // Rollback on error
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.settings.all, context.previous)

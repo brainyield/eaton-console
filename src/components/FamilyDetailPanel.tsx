@@ -57,11 +57,6 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
     onFamilyUpdated?.()
   }
 
-  const handleFamilyDelete = () => {
-    onClose()
-    onFamilyUpdated?.()
-  }
-
   const handleStudentSuccess = () => {
     // Modal handles mutation and cache invalidation
     onFamilyUpdated?.()
@@ -310,7 +305,6 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
         family={family}
         onClose={() => setShowEditFamily(false)}
         onSuccess={handleFamilyEditSuccess}
-        onDelete={handleFamilyDelete}
       />
 
       {/* Add Student Modal */}
@@ -332,7 +326,6 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
           setSelectedStudent(null)
         }}
         onSuccess={handleStudentSuccess}
-        onDelete={handleStudentSuccess}
       />
     </>
   )

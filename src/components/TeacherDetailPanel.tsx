@@ -19,6 +19,7 @@ interface Teacher {
   hire_date: string | null
   notes: string | null
   created_at: string
+  updated_at: string
   active_assignments?: number
   assigned_hours?: number
 }

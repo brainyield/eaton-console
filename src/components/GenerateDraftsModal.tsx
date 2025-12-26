@@ -1,11 +1,9 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   X,
-  Calendar,
   AlertTriangle,
   Check,
   Loader2,
-  ChevronDown,
 } from 'lucide-react'
 import {
   useBillableEnrollments,
@@ -97,15 +95,6 @@ function buildDescription(enrollment: BillableEnrollment): string {
 
 function formatDate(date: Date): string {
   return date.toISOString().split('T')[0]
-}
-
-function formatDisplayDate(date: Date): string {
-  return date.toLocaleDateString('en-US', { 
-    weekday: 'short', 
-    month: 'short', 
-    day: 'numeric',
-    year: 'numeric'
-  })
 }
 
 function getMonthBounds(date: Date): { start: Date; end: Date } {

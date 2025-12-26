@@ -24,17 +24,6 @@ interface TeacherWithLoad extends Teacher {
   assigned_hours?: number
 }
 
-interface AssignmentData {
-  teacher_id: string
-  hours_per_week: number | null
-  is_active: boolean
-  hourly_rate_teacher: number | null
-  enrollment_id: string
-  student_name?: string
-  service_name?: string
-  service_id?: string
-}
-
 interface PayrollLineItem {
   enrollment_id: string
   student_name: string
