@@ -35,8 +35,7 @@ interface DraftPreviewItem {
 const SERVICE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   academic_coaching: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'AC' },
   learning_pod: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Pod' },
-  consulting_with_teacher: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consult' },
-  consulting_only: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consult' },
+  consulting: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consult' },
   eaton_hub: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Hub' },
   eaton_online: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Online' },
   elective_classes: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Elective' },
@@ -64,11 +63,10 @@ function calculateAmount(enrollment: BillableEnrollment): number {
     case 'eaton_online':
       return enrollment.weekly_tuition || 0
     case 'learning_pod':
-    case 'consulting_with_teacher':
-    case 'consulting_only':
+    case 'learning_pod':
+    case 'consulting':
     case 'elective_classes':
       return enrollment.monthly_rate || 0
-    case 'eaton_hub':
       return enrollment.daily_rate || 100
     default:
       return enrollment.monthly_rate || 0
@@ -311,8 +309,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     : [
         { value: '', label: 'All Monthly Services' },
         { value: 'learning_pod', label: 'Learning Pod' },
-        { value: 'consulting_with_teacher', label: 'Consulting w/ Teacher' },
-        { value: 'consulting_only', label: 'Consulting Only' },
+        { value: 'consulting', label: 'Consulting' },
         { value: 'elective_classes', label: 'Elective Classes' },
       ]
 

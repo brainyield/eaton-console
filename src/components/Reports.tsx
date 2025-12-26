@@ -103,8 +103,7 @@ const PIE_COLORS = [
 const SERVICE_COLORS: Record<string, string> = {
   academic_coaching: COLORS.primary,
   learning_pod: COLORS.secondary,
-  consulting_with_teacher: COLORS.accent,
-  consulting_only: COLORS.purple,
+  consulting: COLORS.accent,
   eaton_online: COLORS.pink,
   eaton_hub: COLORS.cyan,
   elective_classes: '#f97316',
@@ -145,8 +144,7 @@ function getStartDate(dateRange: string): string {
 const serviceNameMap: Record<string, string> = {
   academic_coaching: 'Academic Coaching',
   learning_pod: 'Learning Pod',
-  consulting_with_teacher: 'Consulting w/ Teacher',
-  consulting_only: 'Consulting Only',
+  consulting: 'Consulting',
   eaton_online: 'Eaton Online',
   eaton_hub: 'Eaton Hub',
   elective_classes: 'Electives',

@@ -9,11 +9,11 @@ export type CommDirection = 'inbound' | 'outbound'
 export type WorkflowStatus = 'queued' | 'running' | 'success' | 'error'
 
 // Service codes
+// Service codes
 export type ServiceCode = 
   | 'learning_pod'
   | 'academic_coaching'
-  | 'consulting_with_teacher'
-  | 'consulting_only'
+  | 'consulting'
   | 'eaton_online'
   | 'eaton_hub'
   | 'elective_classes'

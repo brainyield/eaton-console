@@ -90,8 +90,7 @@ const STATUS_COLORS: Record<EnrollmentStatus, string> = {
 const serviceIcons: Record<string, typeof BookOpen> = {
   learning_pod: Home,
   academic_coaching: GraduationCap,
-  consulting_with_teacher: Users,
-  consulting_only: Users,
+  consulting: Users,
   eaton_online: Monitor,
   eaton_hub: Star,
   elective_classes: Laptop,

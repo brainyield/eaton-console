@@ -1502,15 +1502,12 @@ function extractServiceCodeFromDescription(description: string): string | null {
   const lower = description.toLowerCase()
   if (lower.includes('academic coaching')) return 'academic_coaching'
   if (lower.includes('learning pod')) return 'learning_pod'
-  if (lower.includes('consulting')) {
-    return lower.includes('teacher') ? 'consulting_with_teacher' : 'consulting_only'
-  }
+  if (lower.includes('consulting')) return 'consulting'
   if (lower.includes('hub')) return 'eaton_hub'
   if (lower.includes('online')) return 'eaton_online'
   if (lower.includes('elective')) return 'elective_classes'
   return null
 }
-
 function calculateEnrollmentAmount(
   enrollment: BillableEnrollment,
   _invoiceType: 'weekly' | 'monthly'

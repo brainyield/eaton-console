@@ -39,8 +39,7 @@ interface SortConfig {
 const SERVICE_COLORS: Record<string, { bg: string; text: string; label: string }> = {
   academic_coaching: { bg: 'bg-blue-500/20', text: 'text-blue-400', label: 'AC' },
   learning_pod: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Pod' },
-  consulting_with_teacher: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consult' },
-  consulting_only: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consult' },
+  consulting: { bg: 'bg-purple-500/20', text: 'text-purple-400', label: 'Consult' },
   eaton_hub: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Hub' },
   eaton_online: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Online' },
   elective_classes: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Elective' },
@@ -346,7 +345,7 @@ export default function Invoicing() {
             />
           </div>
 
-          <select
+           <select
             value={serviceFilter}
             onChange={e => setServiceFilter(e.target.value)}
             className="px-3 py-2 bg-zinc-900 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
@@ -354,8 +353,7 @@ export default function Invoicing() {
             <option value="">All Services</option>
             <option value="academic_coaching">Academic Coaching</option>
             <option value="learning_pod">Learning Pod</option>
-            <option value="consulting_with_teacher">Consulting w/ Teacher</option>
-            <option value="consulting_only">Consulting Only</option>
+            <option value="consulting">Consulting</option>
             <option value="eaton_hub">Eaton Hub</option>
             <option value="eaton_online">Eaton Online</option>
             <option value="elective_classes">Elective Classes</option>
