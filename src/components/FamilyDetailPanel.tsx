@@ -320,6 +320,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
       <EditStudentModal
         isOpen={showEditStudent}
         student={selectedStudent}
+        familyId={family.id}
         familyName={family.display_name}
         onClose={() => {
           setShowEditStudent(false)

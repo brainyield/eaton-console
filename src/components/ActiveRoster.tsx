@@ -282,10 +282,6 @@ export default function ActiveRoster() {
     setCurrentAssignment(null)
   }
 
-  function handlePanelRefresh() {
-    queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
-  }
-
   return (
     <div className="h-full flex flex-col p-6">
       {/* Header */}

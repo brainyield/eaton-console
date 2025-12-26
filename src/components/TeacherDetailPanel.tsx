@@ -108,11 +108,6 @@ export default function TeacherDetailPanel({
     onTeacherUpdated?.()
   }
 
-  const handleDelete = () => {
-    onClose()
-    onTeacherUpdated?.()
-  }
-
   const handlePaymentSuccess = () => {
     // Modal handles mutation and cache invalidation
     // React Query will refetch payments automatically
@@ -225,7 +220,6 @@ export default function TeacherDetailPanel({
         teacher={teacher}
         onClose={() => setShowEditTeacher(false)}
         onSuccess={handleEditSuccess}
-        onDelete={handleDelete}
       />
 
       {/* Record Payment Modal */}
