@@ -221,7 +221,11 @@ export default function ActiveRoster() {
   const stats = useMemo(() => {
     const uniqueStudents = new Set(filteredEnrollments.map(e => e.student_id || e.family_id))
     const uniqueFamilies = new Set(filteredEnrollments.map(e => e.family_id))
-    const totalHours = filteredEnrollments.reduce((sum, e) => sum + (e.hours_per_week || 0), 0)
+    // Calculate total hours from active teacher assignments, not enrollments
+    const totalHours = filteredEnrollments.reduce((sum, e) => {
+      const activeAssignment = e.teacher_assignments?.find(a => a.is_active)
+      return sum + (activeAssignment?.hours_per_week || 0)
+    }, 0)
     
     return {
       enrollments: filteredEnrollments.length,
@@ -283,8 +287,9 @@ export default function ActiveRoster() {
           bValue = b.teacher_assignments?.find(ta => ta.is_active)?.teacher?.display_name || 'zzz'
           break
         case 'hours':
-          aValue = a.hours_per_week || 0
-          bValue = b.hours_per_week || 0
+          // Use assignment hours, not enrollment hours
+          aValue = a.teacher_assignments?.find(ta => ta.is_active)?.hours_per_week || 0
+          bValue = b.teacher_assignments?.find(ta => ta.is_active)?.hours_per_week || 0
           break
         case 'rate':
           aValue = a.hourly_rate_customer || a.monthly_rate || a.weekly_tuition || a.daily_rate || 0
@@ -590,16 +595,21 @@ export default function ActiveRoster() {
                               </div>
                             </div>
 
-                            {/* Hours */}
+                            {/* Hours - show from active assignment, not enrollment */}
                             <div className="col-span-1 text-right">
-                              {enrollment.hours_per_week ? (
-                                <div className="flex items-center gap-1 text-gray-400 text-sm justify-end">
-                                  <Clock className="w-3 h-3" />
-                                  {enrollment.hours_per_week}
-                                </div>
-                              ) : (
-                                <span className="text-gray-600">-</span>
-                              )}
+                              {(() => {
+                                // Get the active assignment's hours_per_week
+                                const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
+                                const hours = activeAssignment?.hours_per_week
+                                return hours ? (
+                                  <div className="flex items-center gap-1 text-gray-400 text-sm justify-end">
+                                    <Clock className="w-3 h-3" />
+                                    {hours}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-600">-</span>
+                                )
+                              })()}
                             </div>
                           </div>
                         )

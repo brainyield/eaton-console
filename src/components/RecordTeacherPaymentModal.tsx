@@ -33,7 +33,7 @@ export function RecordTeacherPaymentModal({
   const [payPeriodStart, setPayPeriodStart] = useState('')
   const [payPeriodEnd, setPayPeriodEnd] = useState('')
   const [payDate, setPayDate] = useState('')
-  const [paymentMethod, setPaymentMethod] = useState('Zelle')
+  const [paymentMethod, setPaymentMethod] = useState('ACH')
   const [reference, setReference] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -300,6 +300,7 @@ export function RecordTeacherPaymentModal({
                   onChange={(e) => setPaymentMethod(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-zinc-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
+                  <option value="ACH">ACH</option>
                   <option value="Zelle">Zelle</option>
                   <option value="Check">Check</option>
                   <option value="Cash">Cash</option>

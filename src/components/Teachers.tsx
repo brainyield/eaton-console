@@ -10,8 +10,9 @@ import {
   User,
   DollarSign,
   Clock,
+  X,
 } from 'lucide-react'
-import { useTeachersWithLoad, type TeacherWithLoad } from '../lib/hooks'
+import { useTeachersWithLoad, useActiveServices, type TeacherWithLoad } from '../lib/hooks'
 import { AddTeacherModal } from './AddTeacherModal'
 import TeacherDetailPanel from './TeacherDetailPanel'
 
@@ -31,15 +32,38 @@ export default function Teachers({
   const [showAddModal, setShowAddModal] = useState(false)
   const [internalSelectedId, setInternalSelectedId] = useState<string | null>(null)
   const [showFilters, setShowFilters] = useState(false)
+  const [serviceFilter, setServiceFilter] = useState<string | null>(null)
 
   // Use external state if provided, otherwise use internal state
   const selectedTeacherId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId
   const setSelectedTeacherId = externalSetSelectedId || setInternalSelectedId
 
+  // Fetch services for filter dropdown
+  const { data: services } = useActiveServices()
+
   // Use the new hook that includes load calculations
   const { data: teachers, isLoading, error } = useTeachersWithLoad(
     statusFilter !== 'all' ? { status: statusFilter } : undefined
   )
+
+  // Calculate service counts for filter dropdown
+  const serviceTeacherCounts = useMemo(() => {
+    if (!teachers || !services) return {}
+    const counts: Record<string, number> = {}
+    
+    services.forEach(service => {
+      counts[service.code] = teachers.filter(teacher => 
+        teacher.allAssignments.some(a => {
+          // Check both service-level assignments (service_id) and enrollment-level (service.code)
+          if (a.service_id && a.service?.code === service.code) return true
+          if (a.enrollment?.service?.code === service.code) return true
+          return false
+        })
+      ).length
+    })
+    
+    return counts
+  }, [teachers, services])
 
   // Filter and search
   const filteredTeachers = useMemo(() => {
@@ -58,11 +82,23 @@ export default function Teachers({
       )
     }
     
+    // Service filter
+    if (serviceFilter) {
+      result = result.filter(teacher => 
+        teacher.allAssignments.some(a => {
+          // Check both service-level assignments (service_id) and enrollment-level (service.code)
+          if (a.service_id && a.service?.code === serviceFilter) return true
+          if (a.enrollment?.service?.code === serviceFilter) return true
+          return false
+        })
+      )
+    }
+    
     // Sort by name
     result.sort((a, b) => a.display_name.localeCompare(b.display_name))
     
     return result
-  }, [teachers, searchQuery])
+  }, [teachers, searchQuery, serviceFilter])
 
   // Stats
   const stats = useMemo(() => {
@@ -140,19 +176,88 @@ export default function Teachers({
           ))}
         </div>
 
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
-            showFilters
-              ? 'bg-gray-700 border-gray-600 text-white'
-              : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
-          }`}
-        >
-          <Filter className="h-4 w-4" />
-          Filters
-          <ChevronDown className={`h-4 w-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${
+              showFilters || serviceFilter
+                ? 'bg-gray-700 border-gray-600 text-white'
+                : 'bg-gray-800 border-gray-700 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Filter className="h-4 w-4" />
+            Filters
+            {serviceFilter && (
+              <span className="bg-blue-600 text-white text-xs px-1.5 py-0.5 rounded">1</span>
+            )}
+            <ChevronDown className={`h-4 w-4 transition-transform ${showFilters ? 'rotate-180' : ''}`} />
+          </button>
+          
+          {/* Filter Dropdown */}
+          {showFilters && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50">
+              <div className="p-3 border-b border-gray-700">
+                <div className="text-sm font-medium text-gray-300">Filter by Service</div>
+              </div>
+              <div className="p-2 max-h-64 overflow-y-auto">
+                {services?.map(service => (
+                  <button
+                    key={service.code}
+                    onClick={() => {
+                      setServiceFilter(serviceFilter === service.code ? null : service.code)
+                      setShowFilters(false)
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded text-sm transition-colors ${
+                      serviceFilter === service.code
+                        ? 'bg-blue-600 text-white'
+                        : 'text-gray-300 hover:bg-gray-700'
+                    }`}
+                  >
+                    <span>{service.name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded ${
+                      serviceFilter === service.code
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-700 text-gray-400'
+                    }`}>
+                      {serviceTeacherCounts[service.code] || 0}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              {serviceFilter && (
+                <div className="p-2 border-t border-gray-700">
+                  <button
+                    onClick={() => {
+                      setServiceFilter(null)
+                      setShowFilters(false)
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-gray-700 rounded transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                    Clear Filter
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Active Filter Badge */}
+      {serviceFilter && (
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-gray-400">Filtering by:</span>
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-blue-900/50 text-blue-300 border border-blue-700 rounded-lg text-sm">
+            {services?.find(s => s.code === serviceFilter)?.name}
+            <button
+              onClick={() => setServiceFilter(null)}
+              className="hover:text-white transition-colors"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        </div>
+      )}
 
       {/* Teacher Grid */}
       {isLoading ? (
