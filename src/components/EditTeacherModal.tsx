@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { X, Trash2 } from 'lucide-react'
-import { useTeacherMutations } from '../lib/hooks'
+import { useState, useEffect, useMemo } from 'react'
+import { X, Trash2, AlertTriangle, Users, Briefcase, DollarSign, AlertCircle } from 'lucide-react'
+import { useTeacherMutations, useTeacherAssignments, useTeacherPaymentsByTeacher } from '../lib/hooks'
 import type { Teacher, EmployeeStatus } from '../lib/hooks'
 
 interface EditTeacherModalProps {
@@ -14,7 +14,6 @@ export function EditTeacherModal({
   isOpen,
   onClose,
   teacher,
-  onSuccess,
 }: EditTeacherModalProps) {
   const [formData, setFormData] = useState({
     display_name: '',
@@ -32,8 +31,39 @@ export function EditTeacherModal({
   })
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showStatusWarning, setShowStatusWarning] = useState(false)
+  const [pendingStatusChange, setPendingStatusChange] = useState<EmployeeStatus | null>(null)
 
   const { updateTeacher, deleteTeacher } = useTeacherMutations()
+  
+  // Fetch assignments and payments for validation
+  const { data: assignments } = useTeacherAssignments(teacher?.id)
+  const { data: payments } = useTeacherPaymentsByTeacher(teacher?.id || '')
+
+  // Calculate counts for validation messages
+  const validationCounts = useMemo(() => {
+    if (!assignments) return { activeEnrollment: 0, activeService: 0, total: 0, payments: 0 }
+    
+    const activeAssignments = assignments.filter(a => a.is_active)
+    const enrollmentAssignments = activeAssignments.filter(a => a.enrollment_id !== null)
+    const serviceAssignments = activeAssignments.filter(a => a.service_id !== null && a.enrollment_id === null)
+    
+    return {
+      activeEnrollment: enrollmentAssignments.length,
+      activeService: serviceAssignments.length,
+      total: activeAssignments.length,
+      payments: payments?.length || 0,
+    }
+  }, [assignments, payments])
+
+  // Get service names for service-level assignments
+  const serviceNames = useMemo(() => {
+    if (!assignments) return []
+    const activeServiceAssignments = assignments.filter(
+      a => a.is_active && a.service_id !== null && a.enrollment_id === null
+    )
+    return [...new Set(activeServiceAssignments.map(a => a.service?.name).filter(Boolean))]
+  }, [assignments])
 
   // Populate form when teacher changes
   useEffect(() => {
@@ -54,6 +84,32 @@ export function EditTeacherModal({
       })
     }
   }, [teacher])
+
+  // Handle status change - check for active assignments first
+  const handleStatusChange = (newStatus: EmployeeStatus) => {
+    // If changing FROM active TO something else, check for active assignments
+    if (teacher?.status === 'active' && newStatus !== 'active' && validationCounts.total > 0) {
+      setPendingStatusChange(newStatus)
+      setShowStatusWarning(true)
+    } else {
+      setFormData({ ...formData, status: newStatus })
+    }
+  }
+
+  // Confirm status change after warning
+  const confirmStatusChange = () => {
+    if (pendingStatusChange) {
+      setFormData({ ...formData, status: pendingStatusChange })
+    }
+    setShowStatusWarning(false)
+    setPendingStatusChange(null)
+  }
+
+  // Cancel status change
+  const cancelStatusChange = () => {
+    setShowStatusWarning(false)
+    setPendingStatusChange(null)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -89,7 +145,6 @@ export function EditTeacherModal({
       },
       {
         onSuccess: () => {
-          onSuccess?.()
           onClose()
         },
         onError: (err: Error & { code?: string }) => {
@@ -109,12 +164,11 @@ export function EditTeacherModal({
     deleteTeacher.mutate(teacher.id, {
       onSuccess: () => {
         setShowDeleteConfirm(false)
-        onSuccess?.()
         onClose()
       },
       onError: (err: Error & { code?: string }) => {
         if (err.code === '23503') {
-          setError('Cannot delete teacher with active assignments')
+          setError('Cannot delete teacher with active assignments. Please end or transfer all assignments first.')
         } else {
           setError(err.message || 'Failed to delete teacher')
         }
@@ -122,6 +176,9 @@ export function EditTeacherModal({
       },
     })
   }
+
+  // Can delete only if no active assignments
+  const canDelete = validationCounts.total === 0
 
   if (!isOpen || !teacher) return null
 
@@ -222,9 +279,7 @@ export function EditTeacherModal({
               </label>
               <select
                 value={formData.status}
-                onChange={(e) =>
-                  setFormData({ ...formData, status: e.target.value as EmployeeStatus })
-                }
+                onChange={(e) => handleStatusChange(e.target.value as EmployeeStatus)}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
               >
                 <option value="active">Active</option>
@@ -374,17 +429,149 @@ export function EditTeacherModal({
           </div>
         </form>
 
-        {/* Delete Confirmation Dialog */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md">
-              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
-                Delete Teacher?
-              </h3>
-              <p className="text-zinc-400 mb-4">
-                This will permanently delete {teacher.display_name} and cannot be
-                undone. Any active assignments must be ended first.
+        {/* Status Change Warning Dialog */}
+        {showStatusWarning && (
+          <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div 
+              className="bg-zinc-900 border border-amber-600/50 rounded-lg p-6 max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start gap-3 mb-4">
+                <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-lg font-semibold text-zinc-100">
+                    Active Assignments Warning
+                  </h3>
+                  <p className="text-zinc-400 text-sm mt-1">
+                    {teacher?.display_name} has active assignments:
+                  </p>
+                </div>
+              </div>
+              
+              <div className="bg-zinc-800/50 rounded-lg p-3 mb-4 space-y-2">
+                {validationCounts.activeEnrollment > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Users className="w-4 h-4 text-blue-400" />
+                    <span className="text-zinc-300">
+                      {validationCounts.activeEnrollment} student assignment{validationCounts.activeEnrollment !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                )}
+                {validationCounts.activeService > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Briefcase className="w-4 h-4 text-green-400" />
+                    <span className="text-zinc-300">
+                      {validationCounts.activeService} service assignment{validationCounts.activeService !== 1 ? 's' : ''}
+                      {serviceNames.length > 0 && (
+                        <span className="text-zinc-500 ml-1">
+                          ({serviceNames.join(', ')})
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <p className="text-amber-200/80 text-sm mb-4">
+                These assignments will remain linked to {teacher?.display_name}, but they won't appear in new assignment dropdowns. Continue?
               </p>
+              
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={cancelStatusChange}
+                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmStatusChange}
+                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors"
+                >
+                  Change Status Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Enhanced Delete Confirmation Dialog */}
+        {showDeleteConfirm && (
+          <div 
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div 
+              className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+                Delete {teacher.display_name}?
+              </h3>
+              
+              {/* Show what's blocking deletion or what will be affected */}
+              {(validationCounts.total > 0 || validationCounts.payments > 0) ? (
+                <div className="mb-4">
+                  <div className="bg-zinc-800/50 rounded-lg p-3 mb-3 space-y-2">
+                    {validationCounts.activeEnrollment > 0 && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Users className="w-4 h-4 text-blue-400" />
+                        <span className="text-zinc-300">
+                          {validationCounts.activeEnrollment} active student assignment{validationCounts.activeEnrollment !== 1 ? 's' : ''}
+                        </span>
+                        {validationCounts.total > 0 && (
+                          <span className="text-red-400 text-xs ml-auto">Blocking</span>
+                        )}
+                      </div>
+                    )}
+                    {validationCounts.activeService > 0 && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <Briefcase className="w-4 h-4 text-green-400" />
+                        <span className="text-zinc-300">
+                          {validationCounts.activeService} active service assignment{validationCounts.activeService !== 1 ? 's' : ''}
+                          {serviceNames.length > 0 && (
+                            <span className="text-zinc-500 ml-1">
+                              ({serviceNames.join(', ')})
+                            </span>
+                          )}
+                        </span>
+                        {validationCounts.total > 0 && (
+                          <span className="text-red-400 text-xs ml-auto">Blocking</span>
+                        )}
+                      </div>
+                    )}
+                    {validationCounts.payments > 0 && (
+                      <div className="flex items-center gap-2 text-sm">
+                        <DollarSign className="w-4 h-4 text-amber-400" />
+                        <span className="text-zinc-300">
+                          {validationCounts.payments} payment record{validationCounts.payments !== 1 ? 's' : ''}
+                        </span>
+                        <span className="text-amber-400 text-xs ml-auto">Will be deleted</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {validationCounts.total > 0 ? (
+                    <div className="flex items-start gap-2 text-amber-200/80 text-sm">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                      <span>
+                        End or transfer all active assignments before deleting this teacher.
+                      </span>
+                    </div>
+                  ) : (
+                    <p className="text-zinc-400 text-sm">
+                      This will permanently delete the teacher and their payment history. This cannot be undone.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-zinc-400 mb-4">
+                  This will permanently delete {teacher.display_name}. This action cannot be undone.
+                </p>
+              )}
+
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
@@ -394,10 +581,15 @@ export function EditTeacherModal({
                 </button>
                 <button
                   onClick={handleDelete}
-                  disabled={deleteTeacher.isPending}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+                  disabled={deleteTeacher.isPending || !canDelete}
+                  className={`px-4 py-2 rounded transition-colors ${
+                    canDelete
+                      ? 'bg-red-600 text-white hover:bg-red-700'
+                      : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
+                  } disabled:opacity-50`}
+                  title={!canDelete ? 'End all active assignments first' : ''}
                 >
-                  {deleteTeacher.isPending ? 'Deleting...' : 'Delete'}
+                  {deleteTeacher.isPending ? 'Deleting...' : canDelete ? 'Delete' : 'Cannot Delete'}
                 </button>
               </div>
             </div>

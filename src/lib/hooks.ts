@@ -599,7 +599,9 @@ export function useTeacherMutations() {
       return teacher
     },
     onSuccess: () => {
+      // Invalidate teacher lists and related data
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -614,8 +616,19 @@ export function useTeacherMutations() {
       return teacher
     },
     onSuccess: (_, variables) => {
+      // Invalidate teacher-specific data
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.detail(variables.id) })
+      
+      // Invalidate enrollments (they include nested teacher data in assignments)
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      
+      // Invalidate teacher assignments (they include teacher data)
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byTeacher(variables.id) })
+      
+      // Invalidate dashboard stats (teacher count)
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -625,7 +638,11 @@ export function useTeacherMutations() {
       if (error) throw error
     },
     onSuccess: () => {
+      // Invalidate teacher lists and related data
       queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
