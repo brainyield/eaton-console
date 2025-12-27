@@ -22,6 +22,10 @@ import {
 interface TeacherWithLoad extends Teacher {
   active_assignments?: number
   assigned_hours?: number
+  // NEW: Rate info from assignments
+  avgHourlyRate?: number | null
+  rateRange?: { min: number; max: number } | null
+  hasVariableAssignments?: boolean
 }
 
 interface PayrollLineItem {
@@ -54,7 +58,7 @@ interface TeachersProps {
 
 type TabFilter = 'all' | 'active' | 'reserve' | 'payroll'
 
-// Hook for teachers with their assignment load
+// Hook for teachers with their assignment load AND rate info
 function useTeachersWithLoad() {
   return useQuery({
     queryKey: [...queryKeys.teachers.all, 'withLoad'],
@@ -67,24 +71,81 @@ function useTeachersWithLoad() {
 
       if (teacherError) throw teacherError
 
-      // Fetch active assignments
+      // Fetch active assignments WITH rates
       const { data: assignmentData, error: assignmentError } = await supabase
         .from('teacher_assignments')
-        .select('teacher_id, hours_per_week, is_active')
+        .select('teacher_id, hours_per_week, hourly_rate_teacher, is_active')
         .eq('is_active', true)
 
       if (assignmentError) throw assignmentError
 
       const teachers = (teacherData || []) as Teacher[]
-      const assignments = (assignmentData || []) as { teacher_id: string; hours_per_week: number | null; is_active: boolean }[]
+      const assignments = (assignmentData || []) as { 
+        teacher_id: string
+        hours_per_week: number | null
+        hourly_rate_teacher: number | null
+        is_active: boolean 
+      }[]
 
-      // Merge assignment data into teachers
+      // Merge assignment data into teachers with rate calculations
       const teachersWithLoad: TeacherWithLoad[] = teachers.map((teacher) => {
         const teacherAssignments = assignments.filter((a) => a.teacher_id === teacher.id)
+        
+        // Calculate assigned hours
+        const assignedHours = teacherAssignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
+        
+        // Calculate rate info from assignments
+        // Split into assignments WITH hours (for weighted avg) and WITHOUT (rate-only, like Electives)
+        const assignmentsWithHours = teacherAssignments
+          .filter(a => a.hourly_rate_teacher != null && a.hours_per_week != null && a.hours_per_week > 0)
+        const assignmentsRateOnly = teacherAssignments
+          .filter(a => a.hourly_rate_teacher != null && a.hours_per_week == null)
+        
+        let avgHourlyRate: number | null = null
+        let rateRange: { min: number; max: number } | null = null
+        
+        // Get all unique rates for range calculation
+        const allRates = teacherAssignments
+          .filter(a => a.hourly_rate_teacher != null)
+          .map(a => a.hourly_rate_teacher!)
+        
+        if (allRates.length > 0) {
+          const minRate = Math.min(...allRates)
+          const maxRate = Math.max(...allRates)
+          
+          if (minRate !== maxRate) {
+            rateRange = { min: minRate, max: maxRate }
+          }
+          
+          // Calculate weighted average ONLY from assignments with hours
+          if (assignmentsWithHours.length > 0) {
+            const totalWeightedRate = assignmentsWithHours.reduce(
+              (sum, a) => sum + (a.hourly_rate_teacher! * a.hours_per_week!), 0
+            )
+            const totalHours = assignmentsWithHours.reduce(
+              (sum, a) => sum + a.hours_per_week!, 0
+            )
+            avgHourlyRate = totalWeightedRate / totalHours
+          } else if (assignmentsRateOnly.length > 0) {
+            // Only rate-only assignments (e.g., teacher only does Electives)
+            // Show single rate or range
+            avgHourlyRate = allRates[0]
+          }
+        } else {
+          // Fall back to default_hourly_rate
+          avgHourlyRate = teacher.default_hourly_rate
+        }
+        
+        // Check if there are variable-hours assignments (like Electives)
+        const hasVariableAssignments = assignmentsRateOnly.length > 0
+        
         return {
           ...teacher,
           active_assignments: teacherAssignments.length,
-          assigned_hours: teacherAssignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
+          assigned_hours: assignedHours,
+          avgHourlyRate,
+          rateRange,
+          hasVariableAssignments,
         }
       })
 
@@ -649,8 +710,8 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
               <div className="border border-border rounded-lg overflow-hidden">
                 <table className="w-full">
                   <thead className="bg-muted/50">
-                    <tr className="border-b border-border">
-                      <th className="w-10 px-3 py-2">
+                    <tr>
+                      <th className="px-3 py-2 w-8">
                         <input
                           type="checkbox"
                           checked={selectedPayrollIds.size === payrollData.filter(t => !t.isPaid).length && payrollData.filter(t => !t.isPaid).length > 0}
@@ -658,16 +719,16 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
                           className="rounded bg-background border-border"
                         />
                       </th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Teacher</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase">Students</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase">Hours</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase">Amount</th>
-                      <th className="px-3 py-2 text-center text-xs font-medium text-muted-foreground uppercase">Status</th>
-                      <th className="px-3 py-2 text-right text-xs font-medium text-muted-foreground uppercase">Actions</th>
+                      <th className="px-3 py-2 text-left text-sm font-medium">Teacher</th>
+                      <th className="px-3 py-2 text-left text-sm font-medium">Students</th>
+                      <th className="px-3 py-2 text-right text-sm font-medium">Hours</th>
+                      <th className="px-3 py-2 text-right text-sm font-medium">Amount</th>
+                      <th className="px-3 py-2 text-center text-sm font-medium">Status</th>
+                      <th className="px-3 py-2 text-right text-sm font-medium">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-border">
-                    {payrollData.map(teacher => (
+                  <tbody>
+                    {payrollData.map((teacher) => (
                       <PayrollRow
                         key={teacher.id}
                         teacher={teacher}
@@ -684,28 +745,20 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
               </div>
             )}
 
-            {/* Payroll Summary */}
+            {/* Summary Footer */}
             {payrollData.length > 0 && (
-              <div className="flex items-center justify-between text-sm p-3 bg-muted/30 rounded-lg">
-                <div className="flex items-center gap-6">
-                  <span>
-                    Total: <span className="font-medium">${payrollSummary.total.toFixed(2)}</span>
-                  </span>
-                  <span className="text-amber-400">
-                    Pending: <span className="font-medium">${payrollSummary.pending.toFixed(2)}</span>
-                  </span>
-                  <span className="text-green-400">
-                    Paid: <span className="font-medium">${payrollSummary.paid.toFixed(2)}</span>
-                  </span>
+              <div className="flex items-center justify-between text-sm">
+                <div className="flex items-center gap-4">
+                  <span>Total: <strong>${payrollSummary.total.toFixed(2)}</strong></span>
+                  <span className="text-amber-400">Pending: <strong>${payrollSummary.pending.toFixed(2)}</strong></span>
+                  <span className="text-green-400">Paid: <strong>${payrollSummary.paid.toFixed(2)}</strong></span>
                 </div>
-                <div className="text-muted-foreground">
-                  {payrollData.length} teachers with assignments
-                </div>
+                <span className="text-muted-foreground">{payrollData.length} teachers with assignments</span>
               </div>
             )}
           </div>
         ) : (
-          // Teacher Cards Grid
+          // Teacher Cards View
           <>
             {isLoading ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
@@ -713,7 +766,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
               </div>
             ) : filteredTeachers.length === 0 ? (
               <div className="flex items-center justify-center h-64 text-muted-foreground">
-                No teachers found
+                {searchQuery ? 'No teachers match your search' : 'No teachers found'}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -731,8 +784,8 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         )}
       </div>
 
-      {/* Detail Panel - only show on non-payroll tabs */}
-      {selectedTeacher && activeTab !== 'payroll' && (
+      {/* Detail Panel */}
+      {selectedTeacher && (
         <TeacherDetailPanel
           teacher={selectedTeacher}
           onClose={handleClosePanel}
@@ -744,9 +797,7 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
       <AddTeacherModal
         isOpen={showAddTeacher}
         onClose={() => setShowAddTeacher(false)}
-        onSuccess={() => {
-          queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all })
-        }}
+        onSuccess={handleTeacherUpdated}
       />
 
       {/* Record Payment Modal (from Payroll tab) */}
@@ -762,36 +813,32 @@ export default function Teachers({ selectedTeacherId, onSelectTeacher }: Teacher
         />
       )}
 
-      {/* Bulk Pay Confirmation Modal */}
+      {/* Bulk Payment Modal */}
       {showBulkPayModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/60" onClick={() => !bulkPayProcessing && setShowBulkPayModal(false)} />
-          <div className="relative w-full max-w-md bg-background border border-border rounded-lg shadow-xl p-6">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-lg shadow-xl max-w-md w-full p-6">
             <h3 className="text-lg font-semibold mb-4">Confirm Bulk Payment</h3>
             
-            <div className="space-y-4">
-              <div className="p-4 bg-muted/30 rounded-lg">
-                <div className="flex justify-between mb-2">
-                  <span className="text-muted-foreground">Teachers:</span>
-                  <span className="font-medium">{selectedPayrollIds.size}</span>
-                </div>
-                <div className="flex justify-between mb-2">
-                  <span className="text-muted-foreground">Period:</span>
-                  <span className="font-medium">{payPeriodStart} to {payPeriodEnd}</span>
-                </div>
-                <div className="flex justify-between text-lg">
-                  <span className="text-muted-foreground">Total Amount:</span>
-                  <span className="font-bold">${selectedTotal.toFixed(2)}</span>
-                </div>
+            <div className="space-y-3 mb-6">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Teachers:</span>
+                <span>{selectedPayrollIds.size}</span>
               </div>
-
-              <div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Total Amount:</span>
+                <span className="font-bold text-lg">${selectedTotal.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Period:</span>
+                <span>{payPeriodStart} to {payPeriodEnd}</span>
+              </div>
+              
+              <div className="pt-3 border-t border-border">
                 <label className="block text-sm font-medium mb-1">Payment Method</label>
                 <select
                   value={bulkPaymentMethod}
                   onChange={(e) => setBulkPaymentMethod(e.target.value)}
-                  disabled={bulkPayProcessing}
-                  className="w-full px-3 py-2 bg-background border border-border rounded-md"
+                  className="w-full px-3 py-2 bg-background border border-border rounded-md text-sm"
                 >
                   <option value="Zelle">Zelle</option>
                   <option value="Check">Check</option>
@@ -930,7 +977,7 @@ function PayrollRow({
   )
 }
 
-// Teacher Card Component
+// Teacher Card Component - UPDATED with average rate display
 function TeacherCard({ 
   teacher, 
   isSelected,
@@ -943,6 +990,19 @@ function TeacherCard({
   const loadPercent = teacher.max_hours_per_week 
     ? Math.min(100, ((teacher.assigned_hours || 0) / teacher.max_hours_per_week) * 100)
     : 0
+
+  // Format rate display
+  const formatRate = () => {
+    if (teacher.rateRange) {
+      // Show range if rates vary
+      return `$${teacher.rateRange.min}-${teacher.rateRange.max}/hr`
+    } else if (teacher.avgHourlyRate) {
+      return `$${teacher.avgHourlyRate.toFixed(0)}/hr`
+    } else if (teacher.default_hourly_rate) {
+      return `$${teacher.default_hourly_rate}/hr`
+    }
+    return 'Rate TBD'
+  }
 
   return (
     <div
@@ -972,6 +1032,9 @@ function TeacherCard({
           <span className="text-muted-foreground">Hours/week</span>
           <span>
             {teacher.assigned_hours || 0}/{teacher.max_hours_per_week || '—'}
+            {teacher.hasVariableAssignments && (
+              <span className="text-amber-400/80 ml-0.5" title="Has variable-hour assignments (e.g., Electives)">+</span>
+            )}
           </span>
         </div>
       </div>
@@ -992,12 +1055,10 @@ function TeacherCard({
         </div>
       )}
 
-      {/* Rate & Payment Info */}
+      {/* Rate & Payment Info - UPDATED */}
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          {teacher.default_hourly_rate 
-            ? `$${teacher.default_hourly_rate}/hr` 
-            : 'Rate TBD'}
+          {formatRate()}
         </span>
         {teacher.payment_info_on_file ? (
           <span className="text-green-400 text-xs">✓ Payment info</span>

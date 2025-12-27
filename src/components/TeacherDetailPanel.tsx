@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { X, Mail, Phone, MessageSquare, Pencil, Plus } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { X, Mail, Phone, MessageSquare, Pencil, Plus, ChevronUp, ChevronDown } from 'lucide-react'
 import { useTeacherAssignmentsByTeacher, useTeacherPaymentsByTeacher } from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
 import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
@@ -22,6 +22,9 @@ interface Teacher {
   updated_at: string
   active_assignments?: number
   assigned_hours?: number
+  // NEW: Rate info from Teachers.tsx
+  avgHourlyRate?: number | null
+  rateRange?: { min: number; max: number } | null
 }
 
 interface Assignment {
@@ -95,6 +98,45 @@ export default function TeacherDetailPanel({
   const assignedHours = assignments
     .filter(a => a.is_active)
     .reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
+  const hasVariableAssignments = assignments
+    .filter(a => a.is_active)
+    .some(a => a.hours_per_week == null)
+
+  // Calculate rate info from assignments
+  const rateInfo = useMemo(() => {
+    const activeAssigns = assignments.filter(a => a.is_active && a.hourly_rate_teacher != null)
+    if (activeAssigns.length === 0) {
+      return { 
+        avgRate: teacher.default_hourly_rate,
+        minRate: null,
+        maxRate: null,
+        hasRange: false
+      }
+    }
+    
+    const rates = activeAssigns.map(a => a.hourly_rate_teacher!)
+    const minRate = Math.min(...rates)
+    const maxRate = Math.max(...rates)
+    
+    // Calculate weighted average from assignments with hours
+    const withHours = activeAssigns.filter(a => a.hours_per_week && a.hours_per_week > 0)
+    let avgRate: number | null = null
+    
+    if (withHours.length > 0) {
+      const totalWeighted = withHours.reduce((sum, a) => sum + (a.hourly_rate_teacher! * a.hours_per_week!), 0)
+      const totalHours = withHours.reduce((sum, a) => sum + a.hours_per_week!, 0)
+      avgRate = totalWeighted / totalHours
+    } else {
+      avgRate = rates[0] // Use first rate if no hours available
+    }
+    
+    return {
+      avgRate,
+      minRate,
+      maxRate,
+      hasRange: minRate !== maxRate
+    }
+  }, [assignments, teacher.default_hourly_rate])
 
   // Merge computed stats with teacher data
   const teacherWithStats: Teacher = {
@@ -200,7 +242,13 @@ export default function TeacherDetailPanel({
 
         {/* Tab Content */}
         <div className="flex-1 overflow-auto p-4">
-          {activeTab === 'overview' && <OverviewTab teacher={teacherWithStats} />}
+          {activeTab === 'overview' && (
+            <OverviewTab 
+              teacher={teacherWithStats} 
+              rateInfo={rateInfo} 
+              hasVariableAssignments={hasVariableAssignments}
+            />
+          )}
           {activeTab === 'assignments' && (
             <AssignmentsTab assignments={assignments} loading={loadingAssignments} />
           )}
@@ -233,8 +281,31 @@ export default function TeacherDetailPanel({
   )
 }
 
-// Overview Tab
-function OverviewTab({ teacher }: { teacher: Teacher }) {
+// Overview Tab - UPDATED with rate info from assignments
+function OverviewTab({ 
+  teacher,
+  rateInfo,
+  hasVariableAssignments 
+}: { 
+  teacher: Teacher
+  rateInfo: {
+    avgRate: number | null
+    minRate: number | null
+    maxRate: number | null
+    hasRange: boolean
+  }
+  hasVariableAssignments: boolean
+}) {
+  // Format rate display
+  const formatRateDisplay = () => {
+    if (rateInfo.hasRange && rateInfo.minRate && rateInfo.maxRate) {
+      return `$${rateInfo.minRate}-${rateInfo.maxRate}`
+    } else if (rateInfo.avgRate) {
+      return `$${rateInfo.avgRate.toFixed(0)}`
+    }
+    return '—'
+  }
+
   return (
     <div className="space-y-6">
       {/* Quick Stats */}
@@ -246,14 +317,19 @@ function OverviewTab({ teacher }: { teacher: Teacher }) {
         <div className="p-3 bg-card border border-border rounded-lg">
           <div className="text-2xl font-bold">
             {teacher.assigned_hours || 0}/{teacher.max_hours_per_week || '—'}
+            {hasVariableAssignments && <span className="text-amber-400/80 text-base ml-1">+</span>}
           </div>
-          <div className="text-sm text-muted-foreground">Hours/Week</div>
+          <div className="text-sm text-muted-foreground">
+            Hours/Week{hasVariableAssignments && <span className="text-amber-400/80"> (+ var)</span>}
+          </div>
         </div>
         <div className="p-3 bg-card border border-border rounded-lg">
           <div className="text-2xl font-bold">
-            {teacher.default_hourly_rate ? `$${teacher.default_hourly_rate}` : '—'}
+            {formatRateDisplay()}
           </div>
-          <div className="text-sm text-muted-foreground">Default Rate</div>
+          <div className="text-sm text-muted-foreground">
+            {rateInfo.hasRange ? 'Rate Range' : 'Hourly Rate'}
+          </div>
         </div>
         <div className="p-3 bg-card border border-border rounded-lg">
           <div className="text-2xl font-bold">
@@ -308,18 +384,23 @@ function AssignmentsTab({
     return <div className="text-muted-foreground text-center py-8">Loading assignments...</div>
   }
 
-  if (assignments.length === 0) {
+  const activeAssignments = assignments.filter(a => a.is_active)
+
+  if (activeAssignments.length === 0) {
     return <div className="text-muted-foreground text-center py-8">No active assignments</div>
   }
+
+  const fixedHoursTotal = activeAssignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
+  const hasVariableAssignments = activeAssignments.some(a => a.hours_per_week == null)
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-medium">Current Assignments</h4>
+        <h4 className="text-sm font-medium">Current Assignments ({activeAssignments.length})</h4>
         <button className="text-xs text-primary hover:underline">+ New Assignment</button>
       </div>
 
-      {assignments.map(assignment => (
+      {activeAssignments.map(assignment => (
         <div
           key={assignment.id}
           className="p-3 bg-card border border-border rounded-lg"
@@ -334,20 +415,32 @@ function AssignmentsTab({
             </span>
           </div>
           <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-            <span>{assignment.hours_per_week || 0} hrs/wk</span>
-            <span>${assignment.hourly_rate_teacher || '—'}/hr</span>
+            <span>
+              {assignment.hours_per_week != null
+                ? `${assignment.hours_per_week} hrs/wk` 
+                : <span className="italic text-amber-400/80">Variable</span>}
+            </span>
+            <span>
+              ${assignment.hourly_rate_teacher || '—'}/hr
+            </span>
           </div>
         </div>
       ))}
 
       <div className="text-sm text-muted-foreground pt-2 border-t border-border">
-        Total: {assignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)} hrs/wk
+        Total: {fixedHoursTotal} hrs/wk
+        {hasVariableAssignments && (
+          <span className="ml-1 text-amber-400/80">(+ variable)</span>
+        )}
       </div>
     </div>
   )
 }
 
-// Payroll Tab
+// Payroll Tab - UPDATED with sortable columns
+type PayrollSortKey = 'pay_date' | 'period' | 'amount'
+type SortDirection = 'asc' | 'desc'
+
 function PayrollTab({ 
   payments, 
   loading,
@@ -357,11 +450,67 @@ function PayrollTab({
   loading: boolean
   onRecordPayment: () => void
 }) {
+  const [sortKey, setSortKey] = useState<PayrollSortKey>('pay_date')
+  const [sortDir, setSortDir] = useState<SortDirection>('desc')
+
+  const handleSort = (key: PayrollSortKey) => {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('desc')
+    }
+  }
+
+  const sortedPayments = useMemo(() => {
+    return [...payments].sort((a, b) => {
+      let comparison = 0
+      
+      switch (sortKey) {
+        case 'pay_date':
+          comparison = new Date(a.pay_date).getTime() - new Date(b.pay_date).getTime()
+          break
+        case 'period':
+          comparison = new Date(a.pay_period_start).getTime() - new Date(b.pay_period_start).getTime()
+          break
+        case 'amount':
+          comparison = a.total_amount - b.total_amount
+          break
+      }
+      
+      return sortDir === 'asc' ? comparison : -comparison
+    })
+  }, [payments, sortKey, sortDir])
+
   if (loading) {
     return <div className="text-muted-foreground text-center py-8">Loading payroll...</div>
   }
 
   const totalPaid = payments.reduce((sum, p) => sum + (p.total_amount || 0), 0)
+
+  const SortHeader = ({ 
+    label, 
+    sortKeyValue, 
+    className = '' 
+  }: { 
+    label: string
+    sortKeyValue: PayrollSortKey
+    className?: string 
+  }) => (
+    <th 
+      className={`text-left p-2 font-medium cursor-pointer hover:bg-muted/30 select-none ${className}`}
+      onClick={() => handleSort(sortKeyValue)}
+    >
+      <div className="flex items-center gap-1">
+        {label}
+        {sortKey === sortKeyValue && (
+          sortDir === 'asc' 
+            ? <ChevronUp className="w-3 h-3" />
+            : <ChevronDown className="w-3 h-3" />
+        )}
+      </div>
+    </th>
+  )
 
   return (
     <div className="space-y-4">
@@ -384,13 +533,13 @@ function PayrollTab({
             <table className="w-full text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="text-left p-2 font-medium">Pay Date</th>
-                  <th className="text-left p-2 font-medium">Period</th>
-                  <th className="text-right p-2 font-medium">Amount</th>
+                  <SortHeader label="Pay Date" sortKeyValue="pay_date" />
+                  <SortHeader label="Period" sortKeyValue="period" />
+                  <SortHeader label="Amount" sortKeyValue="amount" className="text-right" />
                 </tr>
               </thead>
               <tbody>
-                {payments.map(payment => (
+                {sortedPayments.map(payment => (
                   <tr key={payment.id} className="border-t border-border hover:bg-accent/50">
                     <td className="p-2">
                       {new Date(payment.pay_date).toLocaleDateString()}
@@ -409,6 +558,7 @@ function PayrollTab({
 
           <div className="text-sm text-muted-foreground pt-2">
             Total paid (shown): <span className="font-medium text-foreground">${totalPaid.toFixed(2)}</span>
+            <span className="ml-2">• {payments.length} payments</span>
           </div>
         </>
       )}
