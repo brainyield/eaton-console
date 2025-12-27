@@ -40,6 +40,11 @@ export const queryKeys = {
       ['teachers', 'list', filters] as const,
     detail: (id: string) => ['teachers', 'detail', id] as const,
     active: () => ['teachers', 'active'] as const,
+    // NEW: For teachers with load calculations
+    withLoad: (filters?: { status?: string }) =>
+      ['teachers', 'withLoad', filters] as const,
+    withLoadSingle: (id: string) =>
+      ['teachers', 'withLoad', 'single', id] as const,
   },
   
   // Services
@@ -68,6 +73,9 @@ export const queryKeys = {
     all: ['teacher-assignments'] as const,
     byEnrollment: (enrollmentId: string) => ['teacher-assignments', 'enrollment', enrollmentId] as const,
     byTeacher: (teacherId: string) => ['teacher-assignments', 'teacher', teacherId] as const,
+    // NEW: For service-level assignments
+    serviceLevel: () => ['teacher-assignments', 'serviceLevel'] as const,
+    serviceLevelByTeacher: (teacherId: string) => ['teacher-assignments', 'serviceLevel', teacherId] as const,
   },
   
   // Invoices

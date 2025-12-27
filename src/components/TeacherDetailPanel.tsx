@@ -1,459 +1,446 @@
 import { useState, useMemo } from 'react'
-import { X, Mail, Phone, MessageSquare, Pencil, Plus, ChevronUp, ChevronDown } from 'lucide-react'
-import { useTeacherAssignmentsByTeacher, useTeacherPaymentsByTeacher } from '../lib/hooks'
+import {
+  X,
+  User,
+  Mail,
+  Phone,
+  Clock,
+  DollarSign,
+  CreditCard,
+  Edit2,
+  ChevronUp,
+  ChevronDown,
+  Briefcase,
+  GraduationCap,
+} from 'lucide-react'
+import {
+  useTeacherWithLoad,
+  useTeacherAssignments,
+  useTeacherPaymentsByTeacher,
+  getServiceBadgeColor,
+  getServiceShortName,
+  type TeacherAssignmentWithDetails,
+} from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
 import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
 
-interface Teacher {
-  id: string
-  display_name: string
-  email: string | null
-  phone: string | null
-  role: string | null
-  skillset: string | null
-  preferred_comm_method: string | null
-  status: 'active' | 'reserve' | 'inactive'
-  default_hourly_rate: number | null
-  max_hours_per_week: number | null
-  payment_info_on_file: boolean
-  hire_date: string | null
-  notes: string | null
-  created_at: string
-  updated_at: string
-  active_assignments?: number
-  assigned_hours?: number
-  // NEW: Rate info from Teachers.tsx
-  avgHourlyRate?: number | null
-  rateRange?: { min: number; max: number } | null
-}
-
-interface Assignment {
-  id: string
-  enrollment_id: string
-  hourly_rate_teacher: number | null
-  hours_per_week: number | null
-  is_active: boolean
-  student_name: string
-  family_name: string
-  service_name: string
-}
-
-interface Payment {
-  id: string
-  pay_period_start: string
-  pay_period_end: string
-  pay_date: string
-  total_amount: number
-  payment_method: string | null
-  notes: string | null
-}
-
-type Tab = 'overview' | 'assignments' | 'payroll'
-
-export default function TeacherDetailPanel({
-  teacher,
-  onClose,
-  onTeacherUpdated,
-}: {
-  teacher: Teacher
+interface TeacherDetailPanelProps {
+  teacherId: string
   onClose: () => void
-  onTeacherUpdated?: () => void
-}) {
+}
+
+type Tab = 'overview' | 'assignments' | 'payroll' | 'history'
+
+export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<Tab>('overview')
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
 
-  // Modal state
-  const [showEditTeacher, setShowEditTeacher] = useState(false)
-  const [showRecordPayment, setShowRecordPayment] = useState(false)
+  const { data: teacher, isLoading: teacherLoading } = useTeacherWithLoad(teacherId)
+  const { data: assignments } = useTeacherAssignments(teacherId)
+  const { data: payments, isLoading: paymentsLoading } = useTeacherPaymentsByTeacher(teacherId)
 
-  // React Query - fetch assignments (enabled when on assignments tab)
-  const { 
-    data: rawAssignments = [], 
-    isLoading: loadingAssignments 
-  } = useTeacherAssignmentsByTeacher(teacher.id, {
-    enabled: activeTab === 'assignments' || activeTab === 'overview'
-  })
-
-  // React Query - fetch payments (enabled when on payroll tab)
-  const { 
-    data: payments = [], 
-    isLoading: loadingPayments 
-  } = useTeacherPaymentsByTeacher(teacher.id, {
-    enabled: activeTab === 'payroll'
-  })
-
-  // Transform assignments to match the Assignment interface
-  const assignments: Assignment[] = rawAssignments.map((a: any) => ({
-    id: a.id,
-    enrollment_id: a.enrollment_id,
-    hourly_rate_teacher: a.hourly_rate_teacher,
-    hours_per_week: a.hours_per_week,
-    is_active: a.is_active,
-    student_name: a.enrollment?.student?.full_name || 'Unknown',
-    family_name: a.enrollment?.family?.display_name || 'Unknown',
-    service_name: a.enrollment?.service?.name || 'Unknown',
-  }))
-
-  // Calculate stats from assignments
-  const activeAssignmentCount = assignments.filter(a => a.is_active).length
-  const assignedHours = assignments
-    .filter(a => a.is_active)
-    .reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
-  const hasVariableAssignments = assignments
-    .filter(a => a.is_active)
-    .some(a => a.hours_per_week == null)
-
-  // Calculate rate info from assignments
-  const rateInfo = useMemo(() => {
-    const activeAssigns = assignments.filter(a => a.is_active && a.hourly_rate_teacher != null)
-    if (activeAssigns.length === 0) {
-      return { 
-        avgRate: teacher.default_hourly_rate,
-        minRate: null,
-        maxRate: null,
-        hasRange: false
-      }
-    }
-    
-    const rates = activeAssigns.map(a => a.hourly_rate_teacher!)
-    const minRate = Math.min(...rates)
-    const maxRate = Math.max(...rates)
-    
-    // Calculate weighted average from assignments with hours
-    const withHours = activeAssigns.filter(a => a.hours_per_week && a.hours_per_week > 0)
-    let avgRate: number | null = null
-    
-    if (withHours.length > 0) {
-      const totalWeighted = withHours.reduce((sum, a) => sum + (a.hourly_rate_teacher! * a.hours_per_week!), 0)
-      const totalHours = withHours.reduce((sum, a) => sum + a.hours_per_week!, 0)
-      avgRate = totalWeighted / totalHours
-    } else {
-      avgRate = rates[0] // Use first rate if no hours available
-    }
-    
-    return {
-      avgRate,
-      minRate,
-      maxRate,
-      hasRange: minRate !== maxRate
-    }
-  }, [assignments, teacher.default_hourly_rate])
-
-  // Merge computed stats with teacher data
-  const teacherWithStats: Teacher = {
-    ...teacher,
-    active_assignments: activeAssignmentCount,
-    assigned_hours: assignedHours,
+  if (teacherLoading || !teacher) {
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex justify-end">
+        <div className="w-full max-w-2xl bg-gray-900 border-l border-gray-700 p-6 animate-pulse">
+          <div className="h-8 bg-gray-700 rounded w-1/2 mb-4" />
+          <div className="space-y-3">
+            <div className="h-4 bg-gray-700 rounded w-3/4" />
+            <div className="h-4 bg-gray-700 rounded w-1/2" />
+          </div>
+        </div>
+      </div>
+    )
   }
-
-  const handleEditSuccess = () => {
-    // Modal handles mutation and cache invalidation
-    onTeacherUpdated?.()
-  }
-
-  const handlePaymentSuccess = () => {
-    // Modal handles mutation and cache invalidation
-    // React Query will refetch payments automatically
-    onTeacherUpdated?.()
-  }
-
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'overview', label: 'Overview' },
-    { key: 'assignments', label: 'Assignments' },
-    { key: 'payroll', label: 'Payroll' },
-  ]
 
   return (
-    <>
-      <div className="fixed inset-y-0 right-0 w-full max-w-lg bg-background border-l border-border shadow-xl z-40 flex flex-col">
+    <div className="fixed inset-0 bg-black/50 z-50 flex justify-end" onClick={onClose}>
+      <div
+        className="w-full max-w-2xl bg-gray-900 border-l border-gray-700 h-full overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex-shrink-0 border-b border-border p-4">
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="text-lg font-semibold">{teacher.display_name}</h2>
+        <div className="sticky top-0 bg-gray-900 border-b border-gray-700 p-4 z-10">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-xl font-bold text-white">{teacher.display_name}</h2>
+              <p className="text-sm text-gray-400">{teacher.role || 'Teacher'}</p>
+            </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setShowEditTeacher(true)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+                onClick={() => setShowEditModal(true)}
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
               >
-                <Pencil className="w-4 h-4" />
-                Edit
+                <Edit2 className="h-4 w-4" />
               </button>
               <button
                 onClick={onClose}
-                className="p-1 hover:bg-accent rounded-md"
+                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             </div>
           </div>
 
           {/* Contact Info */}
-          <div className="flex items-center gap-4 text-sm text-muted-foreground mb-3">
+          <div className="flex flex-wrap gap-4 text-sm">
             {teacher.email && (
-              <a href={`mailto:${teacher.email}`} className="flex items-center gap-1 hover:text-foreground">
-                <Mail className="w-3.5 h-3.5" />
+              <a
+                href={`mailto:${teacher.email}`}
+                className="flex items-center gap-1.5 text-gray-400 hover:text-blue-400"
+              >
+                <Mail className="h-4 w-4" />
                 {teacher.email}
               </a>
             )}
             {teacher.phone && (
-              <a href={`tel:${teacher.phone}`} className="flex items-center gap-1 hover:text-foreground">
-                <Phone className="w-3.5 h-3.5" />
+              <a
+                href={`tel:${teacher.phone}`}
+                className="flex items-center gap-1.5 text-gray-400 hover:text-blue-400"
+              >
+                <Phone className="h-4 w-4" />
                 {teacher.phone}
               </a>
             )}
-          </div>
-
-          {/* Status Badge & Role */}
-          <div className="flex items-center gap-2 mb-3">
-            <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${
-              teacher.status === 'active' ? 'bg-green-500/20 text-green-400' :
-              teacher.status === 'reserve' ? 'bg-blue-500/20 text-blue-400' :
-              'bg-zinc-500/20 text-zinc-400'
-            }`}>
-              {teacher.status}
-            </span>
-            <span className="text-sm text-muted-foreground">
-              {teacher.role || 'No role'}
-            </span>
             {teacher.preferred_comm_method && (
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <MessageSquare className="w-3 h-3" />
-                {teacher.preferred_comm_method}
+              <span className="flex items-center gap-1.5 text-gray-500">
+                Prefers: {teacher.preferred_comm_method}
               </span>
             )}
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1">
-            {tabs.map(tab => (
+          <div className="flex gap-1 mt-4 -mb-4 border-b border-gray-700">
+            {(['overview', 'assignments', 'payroll'] as Tab[]).map((tab) => (
               <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-                  activeTab === tab.key
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-4 py-2 text-sm font-medium transition-colors border-b-2 -mb-px ${
+                  activeTab === tab
+                    ? 'border-blue-500 text-blue-400'
+                    : 'border-transparent text-gray-400 hover:text-white'
                 }`}
               >
-                {tab.label}
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Tab Content */}
-        <div className="flex-1 overflow-auto p-4">
+        {/* Content */}
+        <div className="p-4">
           {activeTab === 'overview' && (
-            <OverviewTab 
-              teacher={teacherWithStats} 
-              rateInfo={rateInfo} 
-              hasVariableAssignments={hasVariableAssignments}
-            />
+            <OverviewTab teacher={teacher} />
           )}
           {activeTab === 'assignments' && (
-            <AssignmentsTab assignments={assignments} loading={loadingAssignments} />
+            <AssignmentsTab
+              assignments={assignments || []}
+            />
           )}
           {activeTab === 'payroll' && (
-            <PayrollTab 
-              payments={payments as Payment[]} 
-              loading={loadingPayments} 
-              onRecordPayment={() => setShowRecordPayment(true)}
+            <PayrollTab
+              payments={payments || []}
+              isLoading={paymentsLoading}
+              onRecordPayment={() => setShowPaymentModal(true)}
             />
           )}
         </div>
       </div>
 
-      {/* Edit Teacher Modal */}
+      {/* Modals */}
       <EditTeacherModal
-        isOpen={showEditTeacher}
+        isOpen={showEditModal}
         teacher={teacher}
-        onClose={() => setShowEditTeacher(false)}
-        onSuccess={handleEditSuccess}
+        onClose={() => setShowEditModal(false)}
       />
 
-      {/* Record Payment Modal */}
       <RecordTeacherPaymentModal
-        isOpen={showRecordPayment}
+        isOpen={showPaymentModal}
         teacher={teacher}
-        onClose={() => setShowRecordPayment(false)}
-        onSuccess={handlePaymentSuccess}
+        onClose={() => setShowPaymentModal(false)}
       />
-    </>
+    </div>
   )
 }
 
-// Overview Tab - UPDATED with rate info from assignments
-function OverviewTab({ 
-  teacher,
-  rateInfo,
-  hasVariableAssignments 
-}: { 
-  teacher: Teacher
-  rateInfo: {
-    avgRate: number | null
-    minRate: number | null
-    maxRate: number | null
-    hasRange: boolean
-  }
-  hasVariableAssignments: boolean
-}) {
-  // Format rate display
-  const formatRateDisplay = () => {
-    if (rateInfo.hasRange && rateInfo.minRate && rateInfo.maxRate) {
-      return `$${rateInfo.minRate}-${rateInfo.maxRate}`
-    } else if (rateInfo.avgRate) {
-      return `$${rateInfo.avgRate.toFixed(0)}`
-    }
-    return '—'
-  }
+// ============================================================================
+// OVERVIEW TAB
+// ============================================================================
+
+function OverviewTab({ teacher }: { teacher: any }) {
+  const maxHours = teacher.max_hours_per_week ?? 30
 
   return (
     <div className="space-y-6">
-      {/* Quick Stats */}
+      {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
-        <div className="p-3 bg-card border border-border rounded-lg">
-          <div className="text-2xl font-bold">{teacher.active_assignments || 0}</div>
-          <div className="text-sm text-muted-foreground">Active Students</div>
-        </div>
-        <div className="p-3 bg-card border border-border rounded-lg">
-          <div className="text-2xl font-bold">
-            {teacher.assigned_hours || 0}/{teacher.max_hours_per_week || '—'}
-            {hasVariableAssignments && <span className="text-amber-400/80 text-base ml-1">+</span>}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            Hours/Week{hasVariableAssignments && <span className="text-amber-400/80"> (+ var)</span>}
-          </div>
-        </div>
-        <div className="p-3 bg-card border border-border rounded-lg">
-          <div className="text-2xl font-bold">
-            {formatRateDisplay()}
-          </div>
-          <div className="text-sm text-muted-foreground">
-            {rateInfo.hasRange ? 'Rate Range' : 'Hourly Rate'}
-          </div>
-        </div>
-        <div className="p-3 bg-card border border-border rounded-lg">
-          <div className="text-2xl font-bold">
-            {teacher.payment_info_on_file ? '✓' : '⚠'}
-          </div>
-          <div className="text-sm text-muted-foreground">Payment Info</div>
-        </div>
+        <StatCard
+          icon={<User className="h-5 w-5" />}
+          label="Active Students"
+          value={teacher.totalActiveStudents.toString()}
+          sublabel={`${teacher.enrollmentAssignmentCount} assignments`}
+        />
+        <StatCard
+          icon={<Clock className="h-5 w-5" />}
+          label="Hours/Week"
+          value={teacher.hoursDisplay}
+          sublabel={`of ${maxHours} max${teacher.hasVariableHours ? ' (+ variable)' : ''}`}
+        />
+        <StatCard
+          icon={<DollarSign className="h-5 w-5" />}
+          label="Rate Range"
+          value={teacher.rateDisplay}
+          sublabel={teacher.avgRate ? `Avg: $${teacher.avgRate}/hr` : undefined}
+        />
+        <StatCard
+          icon={<CreditCard className="h-5 w-5" />}
+          label="Payment Info"
+          value={teacher.payment_info_on_file ? 'On File' : 'Missing'}
+          valueClass={teacher.payment_info_on_file ? 'text-green-400' : 'text-amber-400'}
+        />
       </div>
 
-      {/* Hire Date */}
-      {teacher.hire_date && (
-        <div>
-          <h4 className="text-sm font-medium mb-2">Hire Date</h4>
-          <p className="text-sm text-muted-foreground">
-            {new Date(teacher.hire_date).toLocaleDateString()}
-          </p>
+      {/* Service Assignments Summary */}
+      {teacher.serviceAssignmentCount > 0 && (
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-gray-400 mb-3">Service Assignments</h3>
+          <div className="flex flex-wrap gap-2">
+            {teacher.allAssignments
+              .filter((a: TeacherAssignmentWithDetails) => a.service_id && !a.enrollment_id)
+              .map((a: TeacherAssignmentWithDetails) => (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-gray-700/50 rounded-lg border border-gray-600"
+                >
+                  <span className="text-sm font-medium text-white">
+                    {a.service?.name}
+                  </span>
+                  <span className="text-xs text-gray-400">
+                    {a.hours_per_week ? `${a.hours_per_week}h` : 'Variable'} × ${a.hourly_rate_teacher}/hr
+                  </span>
+                </div>
+              ))}
+          </div>
         </div>
       )}
 
       {/* Skillset */}
       {teacher.skillset && (
-        <div>
-          <h4 className="text-sm font-medium mb-2">Skillset</h4>
-          <p className="text-sm text-muted-foreground bg-card border border-border rounded-lg p-3">
-            {teacher.skillset}
-          </p>
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-gray-400 mb-2">Skillset</h3>
+          <p className="text-gray-300">{teacher.skillset}</p>
         </div>
       )}
 
       {/* Notes */}
       {teacher.notes && (
-        <div>
-          <h4 className="text-sm font-medium mb-2">Notes</h4>
-          <p className="text-sm text-muted-foreground bg-card border border-border rounded-lg p-3">
-            {teacher.notes}
-          </p>
+        <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+          <h3 className="text-sm font-medium text-gray-400 mb-2">Notes</h3>
+          <p className="text-gray-300 whitespace-pre-wrap">{teacher.notes}</p>
         </div>
       )}
     </div>
   )
 }
 
-// Assignments Tab
-function AssignmentsTab({ 
-  assignments, 
-  loading 
-}: { 
-  assignments: Assignment[]
-  loading: boolean 
+function StatCard({
+  icon,
+  label,
+  value,
+  sublabel,
+  valueClass = 'text-white',
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  sublabel?: string
+  valueClass?: string
 }) {
-  if (loading) {
-    return <div className="text-muted-foreground text-center py-8">Loading assignments...</div>
-  }
+  return (
+    <div className="bg-gray-800/50 border border-gray-700 rounded-lg p-4">
+      <div className="flex items-center gap-2 text-gray-400 mb-2">
+        {icon}
+        <span className="text-sm">{label}</span>
+      </div>
+      <div className={`text-2xl font-bold ${valueClass}`}>{value}</div>
+      {sublabel && <div className="text-sm text-gray-500 mt-1">{sublabel}</div>}
+    </div>
+  )
+}
 
-  const activeAssignments = assignments.filter(a => a.is_active)
+// ============================================================================
+// ASSIGNMENTS TAB
+// ============================================================================
 
-  if (activeAssignments.length === 0) {
-    return <div className="text-muted-foreground text-center py-8">No active assignments</div>
-  }
+function AssignmentsTab({
+  assignments,
+}: {
+  assignments: TeacherAssignmentWithDetails[]
+}) {
+  const enrollmentAssignments = assignments.filter(a => a.enrollment_id)
+  const serviceAssignments = assignments.filter(a => a.service_id && !a.enrollment_id)
 
-  const fixedHoursTotal = activeAssignments.reduce((sum, a) => sum + (a.hours_per_week || 0), 0)
-  const hasVariableAssignments = activeAssignments.some(a => a.hours_per_week == null)
+  const totalHours = assignments.reduce((sum, a) => sum + (a.hours_per_week ?? 0), 0)
+  const hasVariable = assignments.some(a => a.hours_per_week === null)
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between mb-2">
-        <h4 className="text-sm font-medium">Current Assignments ({activeAssignments.length})</h4>
-        <button className="text-xs text-primary hover:underline">+ New Assignment</button>
+    <div className="space-y-6">
+      {/* Summary */}
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-gray-400">
+          {assignments.length} active assignment{assignments.length !== 1 ? 's' : ''}
+        </span>
+        <span className="text-gray-400">
+          Total: {totalHours} hrs/wk{hasVariable ? ' (+ variable)' : ''}
+        </span>
       </div>
 
-      {activeAssignments.map(assignment => (
-        <div
-          key={assignment.id}
-          className="p-3 bg-card border border-border rounded-lg"
-        >
-          <div className="flex items-start justify-between mb-1">
-            <div>
-              <div className="font-medium">{assignment.student_name}</div>
-              <div className="text-sm text-muted-foreground">{assignment.family_name}</div>
-            </div>
-            <span className="text-xs bg-accent px-2 py-0.5 rounded">
-              {assignment.service_name}
-            </span>
-          </div>
-          <div className="flex items-center gap-4 text-sm text-muted-foreground mt-2">
-            <span>
-              {assignment.hours_per_week != null
-                ? `${assignment.hours_per_week} hrs/wk` 
-                : <span className="italic text-amber-400/80">Variable</span>}
-            </span>
-            <span>
-              ${assignment.hourly_rate_teacher || '—'}/hr
-            </span>
+      {/* Service-Level Assignments */}
+      {serviceAssignments.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            <Briefcase className="h-4 w-4" />
+            Service Assignments ({serviceAssignments.length})
+          </h3>
+          <div className="space-y-2">
+            {serviceAssignments.map((assignment) => (
+              <ServiceAssignmentCard key={assignment.id} assignment={assignment} />
+            ))}
           </div>
         </div>
-      ))}
+      )}
 
-      <div className="text-sm text-muted-foreground pt-2 border-t border-border">
-        Total: {fixedHoursTotal} hrs/wk
-        {hasVariableAssignments && (
-          <span className="ml-1 text-amber-400/80">(+ variable)</span>
-        )}
+      {/* Enrollment-Level Assignments */}
+      {enrollmentAssignments.length > 0 && (
+        <div>
+          <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
+            <GraduationCap className="h-4 w-4" />
+            Student Assignments ({enrollmentAssignments.length})
+          </h3>
+          <div className="space-y-2">
+            {enrollmentAssignments.map((assignment) => (
+              <EnrollmentAssignmentCard key={assignment.id} assignment={assignment} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {assignments.length === 0 && (
+        <div className="text-center py-8 text-gray-500">
+          No active assignments
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ServiceAssignmentCard({ assignment }: { assignment: TeacherAssignmentWithDetails }) {
+  const serviceCode = assignment.service?.code || 'unknown'
+  const serviceName = assignment.service?.name || 'Unknown Service'
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <span className={`px-2 py-1 text-xs rounded border ${getServiceBadgeColor(serviceCode)}`}>
+            {getServiceShortName(serviceCode)}
+          </span>
+          <span className="font-medium text-white">{serviceName}</span>
+        </div>
+        <div className="text-sm text-gray-400">
+          {assignment.hours_per_week ? (
+            <span>{assignment.hours_per_week} hrs/session × ${assignment.hourly_rate_teacher}/hr</span>
+          ) : (
+            <span>Variable hrs × ${assignment.hourly_rate_teacher}/hr</span>
+          )}
+        </div>
+      </div>
+      {assignment.notes && (
+        <p className="text-sm text-gray-500 mt-2">{assignment.notes}</p>
+      )}
+    </div>
+  )
+}
+
+function EnrollmentAssignmentCard({ assignment }: { assignment: TeacherAssignmentWithDetails }) {
+  const student = assignment.enrollment?.student
+  const family = student?.family
+  const service = assignment.enrollment?.service
+
+  const serviceCode = service?.code || 'unknown'
+
+  return (
+    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+      <div className="flex items-start justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-white">{student?.full_name || 'Unknown Student'}</span>
+            <span className={`px-2 py-0.5 text-xs rounded border ${getServiceBadgeColor(serviceCode)}`}>
+              {getServiceShortName(serviceCode)}
+            </span>
+          </div>
+          <p className="text-sm text-gray-400 mt-1">{family?.display_name || 'Unknown Family'}</p>
+        </div>
+        <div className="text-right text-sm">
+          <div className="text-gray-300">
+            {assignment.hours_per_week ? `${assignment.hours_per_week} hrs/wk` : 'Variable'}
+          </div>
+          <div className="text-gray-500">
+            × ${assignment.hourly_rate_teacher}/hr
+          </div>
+        </div>
       </div>
     </div>
   )
 }
 
-// Payroll Tab - UPDATED with sortable columns
-type PayrollSortKey = 'pay_date' | 'period' | 'amount'
+// ============================================================================
+// PAYROLL TAB
+// ============================================================================
+
+type PayrollSortKey = 'pay_date' | 'pay_period_start' | 'total_amount'
 type SortDirection = 'asc' | 'desc'
 
-function PayrollTab({ 
-  payments, 
-  loading,
+function PayrollTab({
+  payments,
+  isLoading,
   onRecordPayment,
-}: { 
-  payments: Payment[]
-  loading: boolean
+}: {
+  payments: any[]
+  isLoading: boolean
   onRecordPayment: () => void
 }) {
   const [sortKey, setSortKey] = useState<PayrollSortKey>('pay_date')
   const [sortDir, setSortDir] = useState<SortDirection>('desc')
 
-  const handleSort = (key: PayrollSortKey) => {
+  const sortedPayments = useMemo(() => {
+    if (!payments) return []
+    return [...payments].sort((a, b) => {
+      let aVal = a[sortKey]
+      let bVal = b[sortKey]
+
+      // Handle dates
+      if (sortKey === 'pay_date' || sortKey === 'pay_period_start') {
+        aVal = new Date(aVal).getTime()
+        bVal = new Date(bVal).getTime()
+      }
+
+      // Handle numbers
+      if (typeof aVal === 'string' && !isNaN(parseFloat(aVal))) {
+        aVal = parseFloat(aVal)
+        bVal = parseFloat(bVal)
+      }
+
+      if (sortDir === 'asc') {
+        return aVal < bVal ? -1 : aVal > bVal ? 1 : 0
+      } else {
+        return aVal > bVal ? -1 : aVal < bVal ? 1 : 0
+      }
+    })
+  }, [payments, sortKey, sortDir])
+
+  const toggleSort = (key: PayrollSortKey) => {
     if (sortKey === key) {
       setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     } else {
@@ -462,106 +449,145 @@ function PayrollTab({
     }
   }
 
-  const sortedPayments = useMemo(() => {
-    return [...payments].sort((a, b) => {
-      let comparison = 0
-      
-      switch (sortKey) {
-        case 'pay_date':
-          comparison = new Date(a.pay_date).getTime() - new Date(b.pay_date).getTime()
-          break
-        case 'period':
-          comparison = new Date(a.pay_period_start).getTime() - new Date(b.pay_period_start).getTime()
-          break
-        case 'amount':
-          comparison = a.total_amount - b.total_amount
-          break
-      }
-      
-      return sortDir === 'asc' ? comparison : -comparison
-    })
-  }, [payments, sortKey, sortDir])
-
-  if (loading) {
-    return <div className="text-muted-foreground text-center py-8">Loading payroll...</div>
+  const SortIcon = ({ columnKey }: { columnKey: PayrollSortKey }) => {
+    if (sortKey !== columnKey) return null
+    return sortDir === 'asc' ? (
+      <ChevronUp className="h-3 w-3" />
+    ) : (
+      <ChevronDown className="h-3 w-3" />
+    )
   }
 
-  const totalPaid = payments.reduce((sum, p) => sum + (p.total_amount || 0), 0)
+  // Calculate total paid
+  const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0)
 
-  const SortHeader = ({ 
-    label, 
-    sortKeyValue, 
-    className = '' 
-  }: { 
-    label: string
-    sortKeyValue: PayrollSortKey
-    className?: string 
-  }) => (
-    <th 
-      className={`text-left p-2 font-medium cursor-pointer hover:bg-muted/30 select-none ${className}`}
-      onClick={() => handleSort(sortKeyValue)}
-    >
-      <div className="flex items-center gap-1">
-        {label}
-        {sortKey === sortKeyValue && (
-          sortDir === 'asc' 
-            ? <ChevronUp className="w-3 h-3" />
-            : <ChevronDown className="w-3 h-3" />
-        )}
+  if (isLoading) {
+    return (
+      <div className="space-y-2">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="h-16 bg-gray-800 rounded-lg animate-pulse" />
+        ))}
       </div>
-    </th>
-  )
+    )
+  }
 
   return (
     <div className="space-y-4">
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <h4 className="text-sm font-medium">Payment History</h4>
-        <button 
+        <div className="text-sm text-gray-400">
+          {payments.length} payment{payments.length !== 1 ? 's' : ''} recorded
+        </div>
+        <button
           onClick={onRecordPayment}
-          className="flex items-center gap-1 text-xs text-primary hover:underline"
+          className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
         >
-          <Plus className="w-3 h-3" />
-          Record Payment
+          + Record Payment
         </button>
       </div>
 
-      {payments.length === 0 ? (
-        <div className="text-muted-foreground text-center py-8">No payment history</div>
-      ) : (
-        <>
-          <div className="overflow-hidden border border-border rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50">
-                <tr>
-                  <SortHeader label="Pay Date" sortKeyValue="pay_date" />
-                  <SortHeader label="Period" sortKeyValue="period" />
-                  <SortHeader label="Amount" sortKeyValue="amount" className="text-right" />
+      {/* Table */}
+      {payments.length > 0 ? (
+        <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                  onClick={() => toggleSort('pay_date')}
+                >
+                  <div className="flex items-center gap-1">
+                    Pay Date
+                    <SortIcon columnKey="pay_date" />
+                  </div>
+                </th>
+                <th
+                  className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                  onClick={() => toggleSort('pay_period_start')}
+                >
+                  <div className="flex items-center gap-1">
+                    Period
+                    <SortIcon columnKey="pay_period_start" />
+                  </div>
+                </th>
+                <th
+                  className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                  onClick={() => toggleSort('total_amount')}
+                >
+                  <div className="flex items-center gap-1 justify-end">
+                    Amount
+                    <SortIcon columnKey="total_amount" />
+                  </div>
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  Method
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              {sortedPayments.map((payment) => (
+                <tr key={payment.id} className="hover:bg-gray-700/50">
+                  <td className="px-4 py-3 text-sm text-gray-300">
+                    {formatDate(payment.pay_date)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    {formatDateRange(payment.pay_period_start, payment.pay_period_end)}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-right font-medium text-green-400">
+                    ${parseFloat(payment.total_amount).toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-400">
+                    {payment.payment_method || '—'}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {sortedPayments.map(payment => (
-                  <tr key={payment.id} className="border-t border-border hover:bg-accent/50">
-                    <td className="p-2">
-                      {new Date(payment.pay_date).toLocaleDateString()}
-                    </td>
-                    <td className="p-2 text-muted-foreground">
-                      {new Date(payment.pay_period_start).toLocaleDateString()} - {new Date(payment.pay_period_end).toLocaleDateString()}
-                    </td>
-                    <td className="p-2 text-right font-medium">
-                      ${payment.total_amount.toFixed(2)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
 
-          <div className="text-sm text-muted-foreground pt-2">
-            Total paid (shown): <span className="font-medium text-foreground">${totalPaid.toFixed(2)}</span>
-            <span className="ml-2">• {payments.length} payments</span>
+          {/* Total */}
+          <div className="border-t border-gray-700 px-4 py-3 flex items-center justify-between bg-gray-800/50">
+            <span className="text-sm font-medium text-gray-400">Total Paid</span>
+            <span className="text-lg font-bold text-green-400">
+              ${totalPaid.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
           </div>
-        </>
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500">
+          No payment history
+        </div>
       )}
     </div>
   )
+}
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+
+function formatDate(dateStr: string): string {
+  if (!dateStr) return '—'
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  })
+}
+
+function formatDateRange(start: string, end: string): string {
+  if (!start || !end) return '—'
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+
+  const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+
+  return `${startStr} - ${endStr}`
 }

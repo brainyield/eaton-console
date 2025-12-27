@@ -100,8 +100,9 @@ export interface Enrollment {
 
 export interface TeacherAssignment {
   id: string
-  enrollment_id: string
+  enrollment_id: string | null
   teacher_id: string
+  service_id: string | null  // NEW: For service-level assignments
   hourly_rate_teacher: number | null
   hours_per_week: number | null
   is_active: boolean
@@ -165,7 +166,7 @@ export interface TeacherPayment {
   created_at: string
 }
 
-// NEW: Invoice Email type for email history tracking
+// Invoice Email type for email history tracking
 export interface InvoiceEmail {
   id: string
   invoice_id: string
@@ -176,6 +177,169 @@ export interface InvoiceEmail {
   opened_at: string | null
   clicked_at: string | null
   created_at: string
+}
+
+// =============================================================================
+// TEACHER LOAD TYPES (NEW)
+// =============================================================================
+
+export interface TeacherAssignmentWithDetails {
+  id: string
+  teacher_id: string
+  enrollment_id: string | null
+  service_id: string | null
+  hourly_rate_teacher: number | null
+  hours_per_week: number | null
+  is_active: boolean
+  start_date: string | null
+  end_date: string | null
+  notes: string | null
+  created_at: string
+  // Joined data for enrollment-level
+  enrollment?: {
+    id: string
+    student?: {
+      id: string
+      full_name: string
+      family?: {
+        id: string
+        display_name: string
+      }
+    }
+    service?: {
+      id: string
+      code: string
+      name: string
+    }
+  }
+  // Joined data for service-level
+  service?: {
+    id: string
+    code: string
+    name: string
+  }
+}
+
+export interface TeacherWithLoad extends Teacher {
+  // Assignment counts
+  enrollmentAssignmentCount: number
+  serviceAssignmentCount: number
+  totalActiveStudents: number
+  
+  // Rate info
+  minRate: number | null
+  maxRate: number | null
+  avgRate: number | null
+  rateDisplay: string // e.g., "$65", "$65-80", or "N/A"
+  
+  // Hours info
+  definedHours: number // Sum of hours where hours_per_week is set
+  hasVariableHours: boolean // True if any assignment has NULL hours
+  hoursDisplay: string // e.g., "24", "24+", or "Variable"
+  
+  // All assignments (for detail view)
+  allAssignments: TeacherAssignmentWithDetails[]
+}
+
+// =============================================================================
+// TEACHER LOAD HELPER FUNCTIONS (NEW)
+// =============================================================================
+
+function calculateTeacherLoad(
+  teacher: Teacher,
+  assignments: TeacherAssignmentWithDetails[]
+): TeacherWithLoad {
+  const activeAssignments = assignments.filter(a => a.is_active)
+  
+  // Count by type
+  const enrollmentAssignments = activeAssignments.filter(a => a.enrollment_id !== null)
+  const serviceAssignments = activeAssignments.filter(a => a.service_id !== null && a.enrollment_id === null)
+  
+  // Get unique students (only from enrollment assignments)
+  const uniqueStudentIds = new Set(
+    enrollmentAssignments
+      .map(a => a.enrollment?.student?.id)
+      .filter((id): id is string => id !== undefined)
+  )
+  
+  // Calculate rates
+  const rates = activeAssignments
+    .map(a => a.hourly_rate_teacher)
+    .filter((r): r is number => r !== null && r > 0)
+  
+  const minRate = rates.length > 0 ? Math.min(...rates) : null
+  const maxRate = rates.length > 0 ? Math.max(...rates) : null
+  const avgRate = rates.length > 0 
+    ? Math.round(rates.reduce((sum, r) => sum + r, 0) / rates.length * 100) / 100
+    : null
+  
+  // Rate display
+  let rateDisplay = 'N/A'
+  if (minRate !== null && maxRate !== null) {
+    if (minRate === maxRate) {
+      rateDisplay = `$${minRate}`
+    } else {
+      rateDisplay = `$${minRate}-${maxRate}`
+    }
+  }
+  
+  // Calculate hours
+  const definedHours = activeAssignments.reduce((sum, a) => {
+    return sum + (a.hours_per_week ?? 0)
+  }, 0)
+  
+  const hasVariableHours = activeAssignments.some(a => 
+    a.is_active && a.hourly_rate_teacher !== null && a.hours_per_week === null
+  )
+  
+  // Hours display
+  let hoursDisplay = definedHours > 0 ? definedHours.toString() : '0'
+  if (hasVariableHours) {
+    hoursDisplay = definedHours > 0 ? `${definedHours}+` : 'Variable'
+  }
+  
+  return {
+    ...teacher,
+    enrollmentAssignmentCount: enrollmentAssignments.length,
+    serviceAssignmentCount: serviceAssignments.length,
+    totalActiveStudents: uniqueStudentIds.size,
+    minRate,
+    maxRate,
+    avgRate,
+    rateDisplay,
+    definedHours,
+    hasVariableHours,
+    hoursDisplay,
+    allAssignments: activeAssignments,
+  }
+}
+
+// =============================================================================
+// SERVICE BADGE HELPERS (NEW)
+// =============================================================================
+
+export function getServiceBadgeColor(code: string): string {
+  const colors: Record<string, string> = {
+    academic_coaching: 'bg-blue-900/50 text-blue-300 border-blue-700',
+    learning_pod: 'bg-green-900/50 text-green-300 border-green-700',
+    consulting: 'bg-pink-900/50 text-pink-300 border-pink-700',
+    eaton_online: 'bg-purple-900/50 text-purple-300 border-purple-700',
+    eaton_hub: 'bg-amber-900/50 text-amber-300 border-amber-700',
+    elective_classes: 'bg-cyan-900/50 text-cyan-300 border-cyan-700',
+  }
+  return colors[code] || 'bg-gray-900/50 text-gray-300 border-gray-700'
+}
+
+export function getServiceShortName(code: string): string {
+  const names: Record<string, string> = {
+    academic_coaching: 'AC',
+    learning_pod: 'Pod',
+    consulting: 'Consult',
+    eaton_online: 'Online',
+    eaton_hub: 'Hub',
+    elective_classes: 'Elective',
+  }
+  return names[code] || code
 }
 
 // =============================================================================
@@ -405,14 +569,14 @@ export function useActiveTeachers() {
   })
 }
 
-export function useTeacher(id: string) {
+export function useTeacher(id: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.teachers.detail(id),
+    queryKey: queryKeys.teachers.detail(id || ''),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('teachers')
         .select('*')
-        .eq('id', id)
+        .eq('id', id!)
         .single()
 
       if (error) throw error
@@ -466,6 +630,199 @@ export function useTeacherMutations() {
   })
 
   return { createTeacher, updateTeacher, deleteTeacher }
+}
+
+// =============================================================================
+// TEACHER LOAD HOOKS (NEW)
+// =============================================================================
+
+/**
+ * Fetch all assignments for a specific teacher (both enrollment and service-level)
+ */
+export function useTeacherAssignments(teacherId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.teacherAssignments.byTeacher(teacherId || ''),
+    queryFn: async (): Promise<TeacherAssignmentWithDetails[]> => {
+      if (!teacherId) return []
+      
+      // Fetch enrollment-level assignments
+      const { data: enrollmentAssignments, error: error1 } = await (supabase
+        .from('teacher_assignments') as any)
+        .select(`
+          id,
+          teacher_id,
+          enrollment_id,
+          service_id,
+          hourly_rate_teacher,
+          hours_per_week,
+          is_active,
+          start_date,
+          end_date,
+          notes,
+          created_at,
+          enrollment:enrollments(
+            id,
+            student:students(
+              id,
+              full_name,
+              family:families(id, display_name)
+            ),
+            service:services(id, code, name)
+          )
+        `)
+        .eq('teacher_id', teacherId)
+        .not('enrollment_id', 'is', null)
+        .order('is_active', { ascending: false })
+        .order('created_at', { ascending: false })
+      
+      if (error1) throw error1
+      
+      // Fetch service-level assignments
+      const { data: serviceAssignments, error: error2 } = await (supabase
+        .from('teacher_assignments') as any)
+        .select(`
+          id,
+          teacher_id,
+          enrollment_id,
+          service_id,
+          hourly_rate_teacher,
+          hours_per_week,
+          is_active,
+          start_date,
+          end_date,
+          notes,
+          created_at,
+          service:services(id, code, name)
+        `)
+        .eq('teacher_id', teacherId)
+        .not('service_id', 'is', null)
+        .is('enrollment_id', null)
+        .order('is_active', { ascending: false })
+        .order('created_at', { ascending: false })
+      
+      if (error2) throw error2
+      
+      // Combine results
+      const combined = [
+        ...(enrollmentAssignments || []),
+        ...(serviceAssignments || []),
+      ] as TeacherAssignmentWithDetails[]
+      
+      return combined
+    },
+    enabled: !!teacherId,
+  })
+}
+
+/**
+ * Fetch all teachers with their load calculations
+ * This enhances the existing useTeachers hook for the Teachers view
+ */
+export function useTeachersWithLoad(filters?: { status?: string }) {
+  const teachersQuery = useTeachers(filters)
+  
+  return useQuery({
+    queryKey: queryKeys.teachers.withLoad(filters),
+    queryFn: async (): Promise<TeacherWithLoad[]> => {
+      const teachers = teachersQuery.data
+      if (!teachers || teachers.length === 0) return []
+      
+      // Fetch ALL active assignments in one query
+      const { data: allEnrollmentAssignments, error: error1 } = await (supabase
+        .from('teacher_assignments') as any)
+        .select(`
+          id,
+          teacher_id,
+          enrollment_id,
+          service_id,
+          hourly_rate_teacher,
+          hours_per_week,
+          is_active,
+          start_date,
+          end_date,
+          notes,
+          created_at,
+          enrollment:enrollments(
+            id,
+            student:students(
+              id,
+              full_name,
+              family:families(id, display_name)
+            ),
+            service:services(id, code, name)
+          )
+        `)
+        .eq('is_active', true)
+        .not('enrollment_id', 'is', null)
+      
+      if (error1) throw error1
+      
+      const { data: allServiceAssignments, error: error2 } = await (supabase
+        .from('teacher_assignments') as any)
+        .select(`
+          id,
+          teacher_id,
+          enrollment_id,
+          service_id,
+          hourly_rate_teacher,
+          hours_per_week,
+          is_active,
+          start_date,
+          end_date,
+          notes,
+          created_at,
+          service:services(id, code, name)
+        `)
+        .eq('is_active', true)
+        .not('service_id', 'is', null)
+        .is('enrollment_id', null)
+      
+      if (error2) throw error2
+      
+      // Group assignments by teacher
+      const assignmentsByTeacher = new Map<string, TeacherAssignmentWithDetails[]>()
+      
+      const enrollmentAssignmentsTyped = (allEnrollmentAssignments || []) as TeacherAssignmentWithDetails[]
+      const serviceAssignmentsTyped = (allServiceAssignments || []) as TeacherAssignmentWithDetails[]
+      
+      for (const assignment of enrollmentAssignmentsTyped) {
+        const existing = assignmentsByTeacher.get(assignment.teacher_id) || []
+        existing.push(assignment)
+        assignmentsByTeacher.set(assignment.teacher_id, existing)
+      }
+      
+      for (const assignment of serviceAssignmentsTyped) {
+        const existing = assignmentsByTeacher.get(assignment.teacher_id) || []
+        existing.push(assignment)
+        assignmentsByTeacher.set(assignment.teacher_id, existing)
+      }
+      
+      // Calculate load for each teacher
+      return teachers.map(teacher => {
+        const assignments = assignmentsByTeacher.get(teacher.id) || []
+        return calculateTeacherLoad(teacher, assignments)
+      })
+    },
+    enabled: !!teachersQuery.data && teachersQuery.data.length > 0,
+    staleTime: 30000, // 30 seconds
+  })
+}
+
+/**
+ * Fetch a single teacher with full load details
+ */
+export function useTeacherWithLoad(teacherId: string | undefined) {
+  const teacherQuery = useTeacher(teacherId)
+  const assignmentsQuery = useTeacherAssignments(teacherId)
+  
+  return useQuery({
+    queryKey: queryKeys.teachers.withLoadSingle(teacherId || ''),
+    queryFn: async (): Promise<TeacherWithLoad | null> => {
+      if (!teacherQuery.data || !assignmentsQuery.data) return null
+      return calculateTeacherLoad(teacherQuery.data, assignmentsQuery.data)
+    },
+    enabled: !!teacherQuery.data && !!assignmentsQuery.data,
+  })
 }
 
 // =============================================================================
@@ -735,6 +1092,7 @@ export function useTeacherAssignmentMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all }) // Invalidate teacher load
     },
   })
 
@@ -751,6 +1109,7 @@ export function useTeacherAssignmentMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all }) // Invalidate teacher load
     },
   })
 
@@ -803,6 +1162,7 @@ export function useTeacherAssignmentMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all }) // Invalidate teacher load
     },
   })
 
@@ -827,6 +1187,7 @@ export function useTeacherAssignmentMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all }) // Invalidate teacher load
     },
   })
 
@@ -1082,7 +1443,7 @@ export function useExistingInvoicesForPeriod(periodStart: string, periodEnd: str
   })
 }
 
-// NEW: Hook to fetch email history for an invoice
+// Hook to fetch email history for an invoice
 export function useInvoiceEmails(invoiceId: string) {
   return useQuery({
     queryKey: queryKeys.invoiceEmails.byInvoice(invoiceId),
@@ -1099,7 +1460,7 @@ export function useInvoiceEmails(invoiceId: string) {
   })
 }
 
-// NEW: Helper function to determine reminder type based on days overdue
+// Helper function to determine reminder type based on days overdue
 export function getReminderType(dueDate: string): { 
   type: 'reminder_7' | 'reminder_14' | 'reminder_30'
   label: string
@@ -1416,7 +1777,7 @@ export function useInvoiceMutations() {
     },
   })
 
-  // NEW: Send reminder for a single invoice
+  // Send reminder for a single invoice
   const sendReminder = useMutation({
     mutationFn: async ({ 
       invoice, 
@@ -1494,7 +1855,7 @@ export function useInvoiceMutations() {
     },
   })
 
-  // NEW: Send reminders for multiple invoices at once
+  // Send reminders for multiple invoices at once
   const bulkSendReminders = useMutation({
     mutationFn: async ({ invoices }: { invoices: InvoiceWithFamily[] }) => {
       const results = await Promise.allSettled(
@@ -1528,7 +1889,7 @@ export function useInvoiceMutations() {
     bulkVoidInvoices,
     sendInvoice,
     bulkSendInvoices,
-    // NEW: Reminder mutations
+    // Reminder mutations
     sendReminder,
     bulkSendReminders,
   }
