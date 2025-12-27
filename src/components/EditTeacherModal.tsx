@@ -126,8 +126,14 @@ export function EditTeacherModal({
   if (!isOpen || !teacher) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div 
+        className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between p-4 border-b border-zinc-700">
           <h2 className="text-lg font-semibold text-zinc-100">Edit Teacher</h2>
           <button

@@ -1191,7 +1191,23 @@ export function useTeacherAssignmentMutations() {
     },
   })
 
-  return { createAssignment, updateAssignment, transferTeacher, endAssignmentsByEnrollment }
+  // Delete assignment permanently (use with caution - prefer deactivation)
+  const deleteAssignment = useMutation({
+    mutationFn: async (assignmentId: string) => {
+      const { error } = await (supabase.from('teacher_assignments') as any)
+        .delete()
+        .eq('id', assignmentId)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.teachers.all }) // Invalidate teacher load
+    },
+  })
+
+  return { createAssignment, updateAssignment, transferTeacher, endAssignmentsByEnrollment, deleteAssignment }
 }
 
 // =============================================================================

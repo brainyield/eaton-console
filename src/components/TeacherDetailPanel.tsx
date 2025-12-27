@@ -12,6 +12,7 @@ import {
   ChevronDown,
   Briefcase,
   GraduationCap,
+  Plus,
 } from 'lucide-react'
 import {
   useTeacherWithLoad,
@@ -23,6 +24,8 @@ import {
 } from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
 import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
+import { EditAssignmentModal } from './EditAssignmentModal'
+import { AddAssignmentModal } from './AddAssignmentModal'
 
 interface TeacherDetailPanelProps {
   teacherId: string
@@ -35,10 +38,19 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
   const [activeTab, setActiveTab] = useState<Tab>('overview')
   const [showEditModal, setShowEditModal] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [showEditAssignmentModal, setShowEditAssignmentModal] = useState(false)
+  const [showAddAssignmentModal, setShowAddAssignmentModal] = useState(false)
+  const [selectedAssignment, setSelectedAssignment] = useState<TeacherAssignmentWithDetails | null>(null)
 
   const { data: teacher, isLoading: teacherLoading } = useTeacherWithLoad(teacherId)
   const { data: assignments } = useTeacherAssignments(teacherId)
   const { data: payments, isLoading: paymentsLoading } = useTeacherPaymentsByTeacher(teacherId)
+
+  // Handler for clicking an assignment card
+  const handleAssignmentClick = (assignment: TeacherAssignmentWithDetails) => {
+    setSelectedAssignment(assignment)
+    setShowEditAssignmentModal(true)
+  }
 
   if (teacherLoading || !teacher) {
     return (
@@ -136,6 +148,8 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
           {activeTab === 'assignments' && (
             <AssignmentsTab
               assignments={assignments || []}
+              onAssignmentClick={handleAssignmentClick}
+              onAddAssignment={() => setShowAddAssignmentModal(true)}
             />
           )}
           {activeTab === 'payroll' && (
@@ -159,6 +173,23 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
         isOpen={showPaymentModal}
         teacher={teacher}
         onClose={() => setShowPaymentModal(false)}
+      />
+
+      <EditAssignmentModal
+        isOpen={showEditAssignmentModal}
+        assignment={selectedAssignment}
+        onClose={() => {
+          setShowEditAssignmentModal(false)
+          setSelectedAssignment(null)
+        }}
+      />
+
+      <AddAssignmentModal
+        isOpen={showAddAssignmentModal}
+        teacherId={teacherId}
+        teacherName={teacher.display_name}
+        defaultRate={teacher.default_hourly_rate}
+        onClose={() => setShowAddAssignmentModal(false)}
       />
     </div>
   )
@@ -275,8 +306,12 @@ function StatCard({
 
 function AssignmentsTab({
   assignments,
+  onAssignmentClick,
+  onAddAssignment,
 }: {
   assignments: TeacherAssignmentWithDetails[]
+  onAssignmentClick: (assignment: TeacherAssignmentWithDetails) => void
+  onAddAssignment: () => void
 }) {
   const enrollmentAssignments = assignments.filter(a => a.enrollment_id)
   const serviceAssignments = assignments.filter(a => a.service_id && !a.enrollment_id)
@@ -286,14 +321,21 @@ function AssignmentsTab({
 
   return (
     <div className="space-y-6">
-      {/* Summary */}
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-400">
+      {/* Header with Add Button */}
+      <div className="flex items-center justify-between">
+        <div className="text-sm text-gray-400">
           {assignments.length} active assignment{assignments.length !== 1 ? 's' : ''}
-        </span>
-        <span className="text-gray-400">
-          Total: {totalHours} hrs/wk{hasVariable ? ' (+ variable)' : ''}
-        </span>
+          <span className="ml-2">
+            • Total: {totalHours} hrs/wk{hasVariable ? ' (+ variable)' : ''}
+          </span>
+        </div>
+        <button
+          onClick={onAddAssignment}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Add Assignment
+        </button>
       </div>
 
       {/* Service-Level Assignments */}
@@ -305,7 +347,11 @@ function AssignmentsTab({
           </h3>
           <div className="space-y-2">
             {serviceAssignments.map((assignment) => (
-              <ServiceAssignmentCard key={assignment.id} assignment={assignment} />
+              <ServiceAssignmentCard
+                key={assignment.id}
+                assignment={assignment}
+                onClick={() => onAssignmentClick(assignment)}
+              />
             ))}
           </div>
         </div>
@@ -320,7 +366,11 @@ function AssignmentsTab({
           </h3>
           <div className="space-y-2">
             {enrollmentAssignments.map((assignment) => (
-              <EnrollmentAssignmentCard key={assignment.id} assignment={assignment} />
+              <EnrollmentAssignmentCard
+                key={assignment.id}
+                assignment={assignment}
+                onClick={() => onAssignmentClick(assignment)}
+              />
             ))}
           </div>
         </div>
@@ -335,12 +385,21 @@ function AssignmentsTab({
   )
 }
 
-function ServiceAssignmentCard({ assignment }: { assignment: TeacherAssignmentWithDetails }) {
+function ServiceAssignmentCard({
+  assignment,
+  onClick,
+}: {
+  assignment: TeacherAssignmentWithDetails
+  onClick: () => void
+}) {
   const serviceCode = assignment.service?.code || 'unknown'
   const serviceName = assignment.service?.name || 'Unknown Service'
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-blue-500/50 hover:bg-gray-800/80 transition-colors cursor-pointer"
+    >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className={`px-2 py-1 text-xs rounded border ${getServiceBadgeColor(serviceCode)}`}>
@@ -359,11 +418,17 @@ function ServiceAssignmentCard({ assignment }: { assignment: TeacherAssignmentWi
       {assignment.notes && (
         <p className="text-sm text-gray-500 mt-2">{assignment.notes}</p>
       )}
-    </div>
+    </button>
   )
 }
 
-function EnrollmentAssignmentCard({ assignment }: { assignment: TeacherAssignmentWithDetails }) {
+function EnrollmentAssignmentCard({
+  assignment,
+  onClick,
+}: {
+  assignment: TeacherAssignmentWithDetails
+  onClick: () => void
+}) {
   const student = assignment.enrollment?.student
   const family = student?.family
   const service = assignment.enrollment?.service
@@ -371,7 +436,10 @@ function EnrollmentAssignmentCard({ assignment }: { assignment: TeacherAssignmen
   const serviceCode = service?.code || 'unknown'
 
   return (
-    <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-gray-600 transition-colors">
+    <button
+      onClick={onClick}
+      className="w-full text-left bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-blue-500/50 hover:bg-gray-800/80 transition-colors cursor-pointer"
+    >
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -391,7 +459,7 @@ function EnrollmentAssignmentCard({ assignment }: { assignment: TeacherAssignmen
           </div>
         </div>
       </div>
-    </div>
+    </button>
   )
 }
 
