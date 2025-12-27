@@ -313,18 +313,28 @@ function AssignmentsTab({
   onAssignmentClick: (assignment: TeacherAssignmentWithDetails) => void
   onAddAssignment: () => void
 }) {
-  const enrollmentAssignments = assignments.filter(a => a.enrollment_id)
-  const serviceAssignments = assignments.filter(a => a.service_id && !a.enrollment_id)
+  const [showInactive, setShowInactive] = useState(false)
 
-  const totalHours = assignments.reduce((sum, a) => sum + (a.hours_per_week ?? 0), 0)
-  const hasVariable = assignments.some(a => a.hours_per_week === null)
+  // Separate active and inactive
+  const activeAssignments = assignments.filter(a => a.is_active)
+  const inactiveAssignments = assignments.filter(a => !a.is_active)
+
+  // Filter based on toggle
+  const displayedAssignments = showInactive ? assignments : activeAssignments
+
+  const enrollmentAssignments = displayedAssignments.filter(a => a.enrollment_id)
+  const serviceAssignments = displayedAssignments.filter(a => a.service_id && !a.enrollment_id)
+
+  // Calculate totals from ACTIVE assignments only
+  const totalHours = activeAssignments.reduce((sum, a) => sum + (a.hours_per_week ?? 0), 0)
+  const hasVariable = activeAssignments.some(a => a.hours_per_week === null)
 
   return (
     <div className="space-y-6">
       {/* Header with Add Button */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-400">
-          {assignments.length} active assignment{assignments.length !== 1 ? 's' : ''}
+          {activeAssignments.length} active assignment{activeAssignments.length !== 1 ? 's' : ''}
           <span className="ml-2">
             • Total: {totalHours} hrs/wk{hasVariable ? ' (+ variable)' : ''}
           </span>
@@ -338,12 +348,43 @@ function AssignmentsTab({
         </button>
       </div>
 
+      {/* Show Inactive Toggle - only show if there are inactive assignments */}
+      {inactiveAssignments.length > 0 && (
+        <div className="flex items-center gap-2 py-2 px-3 bg-gray-800/50 border border-gray-700 rounded-lg">
+          <button
+            onClick={() => setShowInactive(!showInactive)}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+              showInactive ? 'bg-amber-600' : 'bg-gray-600'
+            }`}
+          >
+            <span
+              className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${
+                showInactive ? 'translate-x-5' : 'translate-x-1'
+              }`}
+            />
+          </button>
+          <span className="text-sm text-gray-400">
+            Show inactive ({inactiveAssignments.length})
+          </span>
+          {showInactive && (
+            <span className="text-xs text-amber-400 ml-auto">
+              Click assignment to delete
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Service-Level Assignments */}
       {serviceAssignments.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
             <Briefcase className="h-4 w-4" />
-            Service Assignments ({serviceAssignments.length})
+            Service Assignments ({serviceAssignments.filter(a => a.is_active).length})
+            {showInactive && serviceAssignments.some(a => !a.is_active) && (
+              <span className="text-xs text-amber-400">
+                +{serviceAssignments.filter(a => !a.is_active).length} inactive
+              </span>
+            )}
           </h3>
           <div className="space-y-2">
             {serviceAssignments.map((assignment) => (
@@ -362,7 +403,12 @@ function AssignmentsTab({
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
             <GraduationCap className="h-4 w-4" />
-            Student Assignments ({enrollmentAssignments.length})
+            Student Assignments ({enrollmentAssignments.filter(a => a.is_active).length})
+            {showInactive && enrollmentAssignments.some(a => !a.is_active) && (
+              <span className="text-xs text-amber-400">
+                +{enrollmentAssignments.filter(a => !a.is_active).length} inactive
+              </span>
+            )}
           </h3>
           <div className="space-y-2">
             {enrollmentAssignments.map((assignment) => (
@@ -376,9 +422,9 @@ function AssignmentsTab({
         </div>
       )}
 
-      {assignments.length === 0 && (
+      {displayedAssignments.length === 0 && (
         <div className="text-center py-8 text-gray-500">
-          No active assignments
+          {showInactive ? 'No assignments' : 'No active assignments'}
         </div>
       )}
     </div>
@@ -394,18 +440,30 @@ function ServiceAssignmentCard({
 }) {
   const serviceCode = assignment.service?.code || 'unknown'
   const serviceName = assignment.service?.name || 'Unknown Service'
+  const isInactive = !assignment.is_active
 
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-blue-500/50 hover:bg-gray-800/80 transition-colors cursor-pointer"
+      className={`w-full text-left border rounded-lg p-4 transition-colors cursor-pointer ${
+        isInactive
+          ? 'bg-gray-800/30 border-gray-700/50 opacity-60 hover:border-red-500/50 hover:opacity-80'
+          : 'bg-gray-800 border-gray-700 hover:border-blue-500/50 hover:bg-gray-800/80'
+      }`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <span className={`px-2 py-1 text-xs rounded border ${getServiceBadgeColor(serviceCode)}`}>
             {getServiceShortName(serviceCode)}
           </span>
-          <span className="font-medium text-white">{serviceName}</span>
+          <span className={`font-medium ${isInactive ? 'text-gray-400 line-through' : 'text-white'}`}>
+            {serviceName}
+          </span>
+          {isInactive && (
+            <span className="px-2 py-0.5 text-xs bg-gray-700 text-gray-400 rounded">
+              Inactive
+            </span>
+          )}
         </div>
         <div className="text-sm text-gray-400">
           {assignment.hours_per_week ? (
@@ -417,6 +475,11 @@ function ServiceAssignmentCard({
       </div>
       {assignment.notes && (
         <p className="text-sm text-gray-500 mt-2">{assignment.notes}</p>
+      )}
+      {isInactive && assignment.end_date && (
+        <p className="text-xs text-gray-500 mt-2">
+          Ended: {new Date(assignment.end_date).toLocaleDateString()}
+        </p>
       )}
     </button>
   )
@@ -434,19 +497,31 @@ function EnrollmentAssignmentCard({
   const service = assignment.enrollment?.service
 
   const serviceCode = service?.code || 'unknown'
+  const isInactive = !assignment.is_active
 
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-gray-800 border border-gray-700 rounded-lg p-4 hover:border-blue-500/50 hover:bg-gray-800/80 transition-colors cursor-pointer"
+      className={`w-full text-left border rounded-lg p-4 transition-colors cursor-pointer ${
+        isInactive
+          ? 'bg-gray-800/30 border-gray-700/50 opacity-60 hover:border-red-500/50 hover:opacity-80'
+          : 'bg-gray-800 border-gray-700 hover:border-blue-500/50 hover:bg-gray-800/80'
+      }`}
     >
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <span className="font-medium text-white">{student?.full_name || 'Unknown Student'}</span>
+            <span className={`font-medium ${isInactive ? 'text-gray-400 line-through' : 'text-white'}`}>
+              {student?.full_name || 'Unknown Student'}
+            </span>
             <span className={`px-2 py-0.5 text-xs rounded border ${getServiceBadgeColor(serviceCode)}`}>
               {getServiceShortName(serviceCode)}
             </span>
+            {isInactive && (
+              <span className="px-2 py-0.5 text-xs bg-gray-700 text-gray-400 rounded">
+                Inactive
+              </span>
+            )}
           </div>
           <p className="text-sm text-gray-400 mt-1">{family?.display_name || 'Unknown Family'}</p>
         </div>
@@ -459,6 +534,11 @@ function EnrollmentAssignmentCard({
           </div>
         </div>
       </div>
+      {isInactive && assignment.end_date && (
+        <p className="text-xs text-gray-500 mt-2">
+          Ended: {new Date(assignment.end_date).toLocaleDateString()}
+        </p>
+      )}
     </button>
   )
 }

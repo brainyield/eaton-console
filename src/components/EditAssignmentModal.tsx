@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, AlertTriangle, Briefcase, GraduationCap } from 'lucide-react'
+import { X, AlertTriangle, Briefcase, GraduationCap, Trash2 } from 'lucide-react'
 import {
   useTeacherAssignmentMutations,
   getServiceBadgeColor,
@@ -28,10 +28,11 @@ export function EditAssignmentModal({
   const [isActive, setIsActive] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showDeactivateConfirm, setShowDeactivateConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Mutations
-  const { updateAssignment } = useTeacherAssignmentMutations()
-  const isSubmitting = updateAssignment.isPending
+  const { updateAssignment, deleteAssignment } = useTeacherAssignmentMutations()
+  const isSubmitting = updateAssignment.isPending || deleteAssignment.isPending
 
   // Populate form when assignment changes
   useEffect(() => {
@@ -42,6 +43,7 @@ export function EditAssignmentModal({
       setStartDate(assignment.start_date || '')
       setIsActive(assignment.is_active)
       setShowDeactivateConfirm(false)
+      setShowDeleteConfirm(false)
       setError(null)
     }
   }, [assignment])
@@ -114,6 +116,23 @@ export function EditAssignmentModal({
     )
   }
 
+  function handleDelete() {
+    if (!assignment) return
+
+    setError(null)
+
+    deleteAssignment.mutate(assignment.id, {
+      onSuccess: () => {
+        onSuccess?.()
+        handleClose()
+      },
+      onError: (err) => {
+        console.error('Failed to delete assignment:', err)
+        setError(err instanceof Error ? err.message : 'Failed to delete assignment')
+      },
+    })
+  }
+
   function handleClose() {
     setHourlyRate('')
     setHoursPerWeek('')
@@ -122,7 +141,9 @@ export function EditAssignmentModal({
     setIsActive(true)
     setError(null)
     setShowDeactivateConfirm(false)
+    setShowDeleteConfirm(false)
     updateAssignment.reset()
+    deleteAssignment.reset()
     onClose()
   }
 
@@ -302,6 +323,38 @@ export function EditAssignmentModal({
               </div>
             )}
 
+            {/* Delete Confirmation (only for inactive assignments) */}
+            {showDeleteConfirm && (
+              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Trash2 className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm text-red-300 font-medium">Permanently Delete Assignment?</p>
+                    <p className="text-xs text-red-300/70 mt-1">
+                      This will permanently remove this assignment from the system. This action cannot be undone.
+                    </p>
+                    <div className="flex gap-2 mt-3">
+                      <button
+                        type="button"
+                        onClick={handleDelete}
+                        disabled={isSubmitting}
+                        className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 text-white rounded-lg disabled:opacity-50"
+                      >
+                        {isSubmitting ? 'Deleting...' : 'Yes, Delete Permanently'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowDeleteConfirm(false)}
+                        className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Error */}
             {error && (
               <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
@@ -312,14 +365,26 @@ export function EditAssignmentModal({
 
           {/* Footer */}
           <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800">
-            <div>
-              {assignment.is_active && !showDeactivateConfirm && (
+            <div className="flex items-center gap-2">
+              {/* Deactivate button for active assignments */}
+              {assignment.is_active && !showDeactivateConfirm && !showDeleteConfirm && (
                 <button
                   type="button"
                   onClick={() => setShowDeactivateConfirm(true)}
                   className="px-3 py-1.5 text-sm text-amber-400 hover:text-amber-300 transition-colors"
                 >
                   Deactivate
+                </button>
+              )}
+              {/* Delete button for inactive assignments */}
+              {!assignment.is_active && !showDeactivateConfirm && !showDeleteConfirm && (
+                <button
+                  type="button"
+                  onClick={() => setShowDeleteConfirm(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
                 </button>
               )}
             </div>
