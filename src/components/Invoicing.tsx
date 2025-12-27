@@ -13,12 +13,14 @@ import {
   RefreshCw,
   Ban,
   Bell,
+  History,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import GenerateDraftsModal from './GenerateDraftsModal'
 import InvoiceDetailPanel from './InvoiceDetailPanel'
 import EditInvoiceModal from './EditInvoiceModal'
+import ImportHistoricalInvoiceModal from './ImportHistoricalInvoiceModal'
 
 // ============================================================================
 // Types
@@ -125,6 +127,7 @@ export default function Invoicing() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithDetails | null>(null)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceWithDetails | null>(null)
   const [sendingReminders, setSendingReminders] = useState(false)
 
@@ -379,6 +382,14 @@ export default function Invoicing() {
               title="Refresh"
             >
               <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+              title="Import a historical invoice from your previous system"
+            >
+              <History className="w-4 h-4" />
+              Import Historical
             </button>
             <button
               onClick={() => setShowGenerateModal(true)}
@@ -659,6 +670,17 @@ export default function Invoicing() {
           onSuccess={() => {
             setEditingInvoice(null)
             refetch()
+          }}
+        />
+      )}
+
+      {/* Import Historical Invoice Modal */}
+      {showImportModal && (
+        <ImportHistoricalInvoiceModal
+          onClose={() => setShowImportModal(false)}
+          onSuccess={() => {
+            setShowImportModal(false)
+            setActiveTab('outstanding') // Show imported invoice in Outstanding tab
           }}
         />
       )}

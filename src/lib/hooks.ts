@@ -1912,6 +1912,126 @@ export function useInvoiceMutations() {
     },
   })
 
+  // Create a historical invoice from Wave/Google Sheets data
+  const createHistoricalInvoice = useMutation({
+    mutationFn: async ({
+      familyId,
+      invoiceNumber,
+      invoiceDate,
+      dueDate,
+      periodStart,
+      periodEnd,
+      lineItems,
+      subtotal,
+      totalAmount,
+      status,
+      sentAt,
+      sentTo,
+      amountPaid,
+      payment,
+      notes,
+    }: {
+      familyId: string
+      invoiceNumber: string | null
+      invoiceDate: string
+      dueDate: string | null
+      periodStart: string | null
+      periodEnd: string | null
+      lineItems: Array<{
+        description: string
+        quantity: number
+        unit_price: number
+        amount: number
+      }>
+      subtotal: number
+      totalAmount: number
+      status: InvoiceStatus
+      sentAt: string | null
+      sentTo: string | null
+      amountPaid: number
+      payment: {
+        amount: number
+        paymentDate: string
+        paymentMethod: string | null
+        reference: string | null
+      } | null
+      notes: string | null
+    }) => {
+      // 1. Create the invoice
+      const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
+        .insert({
+          family_id: familyId,
+          invoice_number: invoiceNumber,
+          invoice_date: invoiceDate,
+          due_date: dueDate,
+          period_start: periodStart,
+          period_end: periodEnd,
+          subtotal,
+          total_amount: totalAmount,
+          amount_paid: amountPaid,
+          status,
+          sent_at: sentAt,
+          sent_to: sentTo,
+          notes,
+        })
+        .select()
+        .single()
+
+      if (invError) throw invError
+
+      // 2. Create line items (no enrollment_id since these are historical)
+      if (lineItems.length > 0) {
+        const lineItemsToInsert = lineItems.map((item, idx) => ({
+          invoice_id: invoice.id,
+          enrollment_id: null, // Historical invoices don't link to enrollments
+          description: item.description,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          amount: item.amount,
+          sort_order: idx,
+        }))
+
+        const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
+          .insert(lineItemsToInsert)
+
+        if (itemsError) throw itemsError
+      }
+
+      // 3. Create payment record if there was a payment
+      if (payment && payment.amount > 0) {
+        const { error: paymentError } = await (supabase.from('payments') as any)
+          .insert({
+            invoice_id: invoice.id,
+            amount: payment.amount,
+            payment_date: payment.paymentDate,
+            payment_method: payment.paymentMethod,
+            reference: payment.reference,
+            notes: `Imported from historical system`,
+          })
+
+        if (paymentError) throw paymentError
+      }
+
+      // 4. Log email record if it was sent (for email history tracking)
+      if (sentAt && sentTo) {
+        await (supabase.from('invoice_emails') as any).insert({
+          invoice_id: invoice.id,
+          email_type: 'invoice',
+          sent_to: sentTo,
+          sent_at: sentAt,
+          subject: `Invoice ${invoiceNumber || invoice.public_id} from Eaton Academic (Imported)`,
+        })
+      }
+
+      return invoice
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceEmails.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+    },
+  })
+
   return {
     generateDrafts,
     updateInvoice,
@@ -1925,6 +2045,8 @@ export function useInvoiceMutations() {
     // Reminder mutations
     sendReminder,
     bulkSendReminders,
+    // Historical import
+    createHistoricalInvoice,
   }
 }
 
