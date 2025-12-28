@@ -99,6 +99,7 @@ export const queryKeys = {
   invoiceEmails: {
     all: ['invoiceEmails'] as const,
     byInvoice: (invoiceId: string) => ['invoiceEmails', 'byInvoice', invoiceId] as const,
+    byFamily: (familyId: string) => ['invoiceEmails', 'byFamily', familyId] as const,
   },
   
   // Teacher Payments

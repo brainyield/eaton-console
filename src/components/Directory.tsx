@@ -1,9 +1,12 @@
 import { useState, useMemo, useEffect } from 'react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
 import type { CustomerStatus } from '../lib/hooks'
-import { Search, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { 
+  Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, 
+  Download, Trash2, RefreshCw, X 
+} from 'lucide-react'
 import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
 
@@ -43,13 +46,22 @@ interface FamilyWithStudents {
   created_at: string
   updated_at: string
   students: Student[]
-  total_balance?: number
+  total_balance: number
   active_enrollment_count?: number
 }
 
 interface DirectoryProps {
   selectedFamilyId?: string | null
   onSelectFamily?: (id: string | null) => void
+}
+
+// Sort configuration
+type SortField = 'display_name' | 'students' | 'status' | 'total_balance' | 'primary_email'
+type SortDirection = 'asc' | 'desc'
+
+interface SortConfig {
+  field: SortField
+  direction: SortDirection
 }
 
 const STATUS_COLORS: Record<CustomerStatus, string> = {
@@ -60,29 +72,89 @@ const STATUS_COLORS: Record<CustomerStatus, string> = {
   lead: 'bg-gray-500/20 text-gray-400',
 }
 
-// Custom hook for paginated families with students
-function usePaginatedFamilies(page: number, pageSize: number, statusFilter: CustomerStatus | 'all') {
+// Custom hook for paginated families with students and balance
+function usePaginatedFamilies(
+  page: number, 
+  pageSize: number, 
+  statusFilter: CustomerStatus | 'all',
+  sortConfig: SortConfig
+) {
   return useQuery({
-    queryKey: ['families', 'paginated', { page, pageSize, status: statusFilter }],
+    queryKey: ['families', 'paginated', { page, pageSize, status: statusFilter, sort: sortConfig }],
     queryFn: async () => {
+      // Build base query
       let query = supabase
         .from('families')
         .select(`
           *,
           students (*)
-        `, { count: 'exact' })
-        .order('display_name')
-        .range((page - 1) * pageSize, page * pageSize - 1)
+        `, { count: 'exact' }) as any
 
+      // Apply status filter
       if (statusFilter !== 'all') {
         query = query.eq('status', statusFilter)
       }
 
+      // Apply sorting (only for fields that can be sorted server-side)
+      if (sortConfig.field === 'display_name') {
+        query = query.order('display_name', { ascending: sortConfig.direction === 'asc' })
+      } else if (sortConfig.field === 'primary_email') {
+        query = query.order('primary_email', { ascending: sortConfig.direction === 'asc' })
+      } else if (sortConfig.field === 'status') {
+        query = query.order('status', { ascending: sortConfig.direction === 'asc' })
+      } else {
+        // Default sort for other fields
+        query = query.order('display_name')
+      }
+
+      // Apply pagination
+      query = query.range((page - 1) * pageSize, page * pageSize - 1)
+
       const { data, error, count } = await query
 
       if (error) throw error
+
+      // Fetch balance for each family
+      const familyData = (data || []) as any[]
+      const familyIds = familyData.map(f => f.id)
+      
+      let balanceMap: Map<string, number> = new Map()
+      if (familyIds.length > 0) {
+        const { data: invoices } = await (supabase
+          .from('invoices')
+          .select('family_id, balance_due, status')
+          .in('family_id', familyIds)
+          .in('status', ['sent', 'partial', 'overdue']) as any)
+
+        if (invoices) {
+          (invoices as any[]).forEach(inv => {
+            const current = balanceMap.get(inv.family_id) || 0
+            balanceMap.set(inv.family_id, current + (inv.balance_due || 0))
+          })
+        }
+      }
+
+      // Merge balance into family data
+      const familiesWithBalance = familyData.map(f => ({
+        ...f,
+        total_balance: balanceMap.get(f.id) || 0
+      })) as FamilyWithStudents[]
+
+      // Client-side sorting for fields that can't be sorted server-side
+      if (sortConfig.field === 'students') {
+        familiesWithBalance.sort((a, b) => {
+          const diff = a.students.length - b.students.length
+          return sortConfig.direction === 'asc' ? diff : -diff
+        })
+      } else if (sortConfig.field === 'total_balance') {
+        familiesWithBalance.sort((a, b) => {
+          const diff = a.total_balance - b.total_balance
+          return sortConfig.direction === 'asc' ? diff : -diff
+        })
+      }
+
       return { 
-        families: (data || []) as FamilyWithStudents[], 
+        families: familiesWithBalance, 
         totalCount: count || 0 
       }
     },
@@ -95,14 +167,24 @@ function useFamilyById(id: string | null) {
     queryKey: queryKeys.families.detail(id || 'none'),
     queryFn: async () => {
       if (!id) return null
-      const { data, error } = await supabase
+      const { data, error } = await (supabase
         .from('families')
         .select(`*, students (*)`)
         .eq('id', id)
-        .single()
+        .single() as any)
 
       if (error) throw error
-      return data as FamilyWithStudents
+      
+      // Fetch balance
+      const { data: invoices } = await (supabase
+        .from('invoices')
+        .select('balance_due')
+        .eq('family_id', id)
+        .in('status', ['sent', 'partial', 'overdue']) as any)
+
+      const total_balance = (invoices as any[] | null)?.reduce((sum, inv) => sum + (inv.balance_due || 0), 0) || 0
+
+      return { ...(data as any), total_balance } as FamilyWithStudents
     },
     enabled: !!id,
   })
@@ -115,13 +197,24 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const [selectedFamily, setSelectedFamily] = useState<FamilyWithStudents | null>(null)
   const [page, setPage] = useState(1)
   const pageSize = 25
+  
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'display_name', direction: 'asc' })
+  
+  // Selection state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  
+  // Bulk action states
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false)
 
   // Modal state
   const [showAddFamily, setShowAddFamily] = useState(false)
 
   // Fetch paginated families
-  const { data, isLoading, error } = usePaginatedFamilies(page, pageSize, statusFilter)
+  const { data, isLoading, error } = usePaginatedFamilies(page, pageSize, statusFilter, sortConfig)
   const families = data?.families || []
+  const totalCount = data?.totalCount || 0
+  const totalPages = Math.ceil(totalCount / pageSize)
 
   // Fetch family by ID when selected externally (from CommandPalette)
   const { data: externalFamily } = useFamilyById(
@@ -129,6 +222,60 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
       ? selectedFamilyId 
       : null
   )
+
+  // Bulk update status mutation
+  const bulkUpdateStatus = useMutation({
+    mutationFn: async ({ ids, status }: { ids: string[], status: CustomerStatus }) => {
+      const table = supabase.from('families') as any
+      const { error } = await table
+        .update({ status, updated_at: new Date().toISOString() })
+        .in('id', ids)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['families'] })
+      setSelectedIds(new Set())
+      setShowStatusDropdown(false)
+    }
+  })
+
+  // Bulk delete mutation
+  const bulkDelete = useMutation({
+    mutationFn: async (ids: string[]) => {
+      // Check if any families have enrollments or invoices
+      const { data: enrollments } = await (supabase
+        .from('enrollments')
+        .select('family_id')
+        .in('family_id', ids)
+        .limit(1) as any)
+
+      if (enrollments && enrollments.length > 0) {
+        throw new Error('Cannot delete families with enrollments. End enrollments first.')
+      }
+
+      const { data: invoices } = await (supabase
+        .from('invoices')
+        .select('family_id')
+        .in('family_id', ids)
+        .limit(1) as any)
+
+      if (invoices && invoices.length > 0) {
+        throw new Error('Cannot delete families with invoices.')
+      }
+
+      const { error } = await (supabase
+        .from('families')
+        .delete()
+        .in('id', ids) as any)
+      
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['families'] })
+      setSelectedIds(new Set())
+    }
+  })
 
   // Handle external selection (from CommandPalette)
   useEffect(() => {
@@ -165,9 +312,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   }
 
   const handleFamilyUpdated = () => {
-    // Invalidate queries to refetch data
     queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
-    // Refetch selected family if needed
     if (selectedFamily) {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.detail(selectedFamily.id) })
     }
@@ -177,11 +322,88 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const handleStatusFilterChange = (newStatus: CustomerStatus | 'all') => {
     setStatusFilter(newStatus)
     setPage(1)
+    setSelectedIds(new Set())
+  }
+
+  // Sort handler
+  const handleSort = (field: SortField) => {
+    setSortConfig(prev => ({
+      field,
+      direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
+    }))
+    setPage(1)
+  }
+
+  // Checkbox handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(filteredFamilies.map(f => f.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    const newSet = new Set(selectedIds)
+    if (checked) {
+      newSet.add(id)
+    } else {
+      newSet.delete(id)
+    }
+    setSelectedIds(newSet)
+  }
+
+  const isAllSelected = filteredFamilies.length > 0 && filteredFamilies.every(f => selectedIds.has(f.id))
+  const isSomeSelected = selectedIds.size > 0
+
+  // Export selected to CSV
+  const handleExportCSV = () => {
+    const selected = filteredFamilies.filter(f => selectedIds.has(f.id))
+    const headers = ['Family Name', 'Status', 'Email', 'Phone', 'Students', 'Balance']
+    const rows = selected.map(f => [
+      f.display_name,
+      f.status,
+      f.primary_email || '',
+      f.primary_phone || '',
+      f.students.map(s => s.full_name).join('; '),
+      f.total_balance.toFixed(2)
+    ])
+    
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `families-export-${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Handle bulk status change
+  const handleBulkStatusChange = (status: CustomerStatus) => {
+    if (!confirm(`Change status of ${selectedIds.size} families to "${status}"?`)) return
+    bulkUpdateStatus.mutate({ ids: Array.from(selectedIds), status })
+  }
+
+  // Handle bulk delete
+  const handleBulkDelete = () => {
+    if (!confirm(`Delete ${selectedIds.size} families? This cannot be undone.`)) return
+    bulkDelete.mutate(Array.from(selectedIds))
+  }
+
+  // Render sort icon
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortConfig.field !== field) {
+      return <ChevronUp className="h-3 w-3 text-zinc-600" />
+    }
+    return sortConfig.direction === 'asc' 
+      ? <ChevronUp className="h-3 w-3 text-blue-400" />
+      : <ChevronDown className="h-3 w-3 text-blue-400" />
   }
 
   return (
     <div className="h-full flex">
-      <div className={`flex-1 flex flex-col ${selectedFamily ? 'mr-[480px]' : ''}`}>
+      <div className={`flex-1 flex flex-col transition-all duration-200 ${selectedFamily ? 'mr-[480px]' : ''}`}>
         <div className="px-6 py-4 border-b border-zinc-800">
           <h1 className="text-xl font-semibold text-white mb-4">Directory</h1>
           
@@ -220,6 +442,74 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
           </div>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {isSomeSelected && (
+          <div className="px-6 py-3 bg-blue-900/30 border-b border-blue-800/50 flex items-center gap-4">
+            <span className="text-sm text-blue-300">
+              {selectedIds.size} selected
+            </span>
+            <div className="flex items-center gap-2">
+              {/* Change Status Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Change Status
+                </button>
+                {showStatusDropdown && (
+                  <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-50">
+                    {(['active', 'trial', 'paused', 'lead', 'churned'] as CustomerStatus[]).map(status => (
+                      <button
+                        key={status}
+                        onClick={() => handleBulkStatusChange(status)}
+                        className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 capitalize"
+                      >
+                        {status}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Export CSV */}
+              <button
+                onClick={handleExportCSV}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Export CSV
+              </button>
+
+              {/* Delete */}
+              <button
+                onClick={handleBulkDelete}
+                disabled={bulkDelete.isPending}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600/80 hover:bg-red-600 rounded-md text-white transition-colors disabled:opacity-50"
+              >
+                <Trash2 className="h-4 w-4" />
+                Delete
+              </button>
+
+              {/* Clear Selection */}
+              <button
+                onClick={() => setSelectedIds(new Set())}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+                Clear
+              </button>
+            </div>
+
+            {bulkDelete.isError && (
+              <span className="text-sm text-red-400">
+                {bulkDelete.error instanceof Error ? bulkDelete.error.message : 'Delete failed'}
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="flex-1 overflow-auto">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
@@ -234,22 +524,57 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <thead className="bg-zinc-900 sticky top-0">
                 <tr className="border-b border-zinc-800">
                   <th className="w-10 px-4 py-3">
-                    <input type="checkbox" className="rounded bg-zinc-800 border-zinc-600" />
+                    <input 
+                      type="checkbox" 
+                      checked={isAllSelected}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500" 
+                    />
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Family
+                  <th 
+                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                    onClick={() => handleSort('display_name')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Family
+                      <SortIcon field="display_name" />
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Students
+                  <th 
+                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                    onClick={() => handleSort('students')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Students
+                      <SortIcon field="students" />
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Status
+                  <th 
+                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                    onClick={() => handleSort('status')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Status
+                      <SortIcon field="status" />
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Balance
+                  <th 
+                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                    onClick={() => handleSort('total_balance')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Balance
+                      <SortIcon field="total_balance" />
+                    </div>
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Contact
+                  <th 
+                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
+                    onClick={() => handleSort('primary_email')}
+                  >
+                    <div className="flex items-center gap-1">
+                      Contact
+                      <SortIcon field="primary_email" />
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -261,10 +586,16 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                     className={`
                       hover:bg-zinc-800/50 cursor-pointer
                       ${selectedFamily?.id === family.id ? 'bg-zinc-800' : ''}
+                      ${selectedIds.has(family.id) ? 'bg-blue-900/20' : ''}
                     `}
                   >
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input type="checkbox" className="rounded bg-zinc-800 border-zinc-600" />
+                      <input 
+                        type="checkbox" 
+                        checked={selectedIds.has(family.id)}
+                        onChange={(e) => handleSelectOne(family.id, e.target.checked)}
+                        className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500" 
+                      />
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-sm font-medium text-white">{family.display_name}</div>
@@ -287,6 +618,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                             +{family.students.length - 2} more
                           </div>
                         )}
+                        {family.students.length === 0 && (
+                          <div className="text-xs text-zinc-500">No students</div>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -295,13 +629,13 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`text-sm ${(family.total_balance || 0) > 0 ? 'text-amber-400' : 'text-zinc-400'}`}>
-                        ${(family.total_balance || 0).toFixed(2)}
+                      <span className={`text-sm ${family.total_balance > 0 ? 'text-amber-400' : 'text-zinc-400'}`}>
+                        ${family.total_balance.toFixed(2)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <div className="text-sm text-zinc-300">{family.primary_email}</div>
-                      <div className="text-xs text-zinc-500">{family.primary_phone}</div>
+                      <div className="text-sm text-zinc-300">{family.primary_email || '—'}</div>
+                      <div className="text-xs text-zinc-500">{family.primary_phone || ''}</div>
                     </td>
                   </tr>
                 ))}
@@ -312,7 +646,11 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
 
         <div className="px-6 py-3 border-t border-zinc-800 flex items-center justify-between">
           <div className="text-sm text-zinc-400">
-            Showing {filteredFamilies.length} families
+            {searchQuery ? (
+              <>Showing {filteredFamilies.length} of {families.length} on this page ({totalCount} total)</>
+            ) : (
+              <>Showing {((page - 1) * pageSize) + 1}–{Math.min(page * pageSize, totalCount)} of {totalCount} families</>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -322,10 +660,12 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="text-sm text-zinc-400">Page {page}</span>
+            <span className="text-sm text-zinc-400">
+              Page {page} of {totalPages || 1}
+            </span>
             <button
               onClick={() => setPage(p => p + 1)}
-              disabled={families.length < pageSize}
+              disabled={page >= totalPages}
               className="p-2 rounded-md bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <ChevronRight className="h-4 w-4" />
@@ -350,6 +690,14 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
           queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
         }}
       />
+
+      {/* Click outside to close status dropdown */}
+      {showStatusDropdown && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setShowStatusDropdown(false)} 
+        />
+      )}
     </div>
   )
 }

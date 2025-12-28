@@ -1493,6 +1493,41 @@ export function useInvoiceEmails(invoiceId: string) {
   })
 }
 
+// Get all invoice emails for a family (via invoices)
+export function useInvoiceEmailsByFamily(familyId: string) {
+  return useQuery({
+    queryKey: queryKeys.invoiceEmails.byFamily(familyId),
+    queryFn: async () => {
+      // First get all invoice IDs for this family
+      const { data: invoices, error: invoicesError } = await (supabase
+        .from('invoices')
+        .select('id, invoice_number')
+        .eq('family_id', familyId) as any)
+
+      if (invoicesError) throw invoicesError
+      if (!invoices || invoices.length === 0) return []
+
+      const invoiceIds = (invoices as { id: string; invoice_number: string }[]).map(inv => inv.id)
+      const invoiceMap = new Map((invoices as { id: string; invoice_number: string }[]).map(inv => [inv.id, inv.invoice_number]))
+
+      // Then get all emails for those invoices
+      const { data: emails, error: emailsError } = await (supabase.from('invoice_emails') as any)
+        .select('*')
+        .in('invoice_id', invoiceIds)
+        .order('sent_at', { ascending: false })
+
+      if (emailsError) throw emailsError
+
+      // Add invoice_number to each email for display
+      return (emails || []).map((email: InvoiceEmail) => ({
+        ...email,
+        invoice_number: invoiceMap.get(email.invoice_id) || 'Unknown'
+      }))
+    },
+    enabled: !!familyId,
+  })
+}
+
 // Helper function to determine reminder type based on days overdue
 export function getReminderType(dueDate: string): { 
   type: 'reminder_7' | 'reminder_14' | 'reminder_30'

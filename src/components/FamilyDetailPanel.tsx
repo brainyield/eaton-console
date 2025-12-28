@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap } from 'lucide-react'
-import { useEnrollmentsByFamily } from '../lib/hooks'
-import type { Family, Student, CustomerStatus, EnrollmentStatus } from '../types/database'
+import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, Clock, ExternalLink, Send, Bell, CheckCircle, AlertCircle } from 'lucide-react'
+import { useEnrollmentsByFamily, useInvoicesByFamily, useInvoiceEmailsByFamily } from '../lib/hooks'
+import type { Family, Student, CustomerStatus, EnrollmentStatus, InvoiceStatus } from '../types/database'
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
@@ -31,6 +31,23 @@ const ENROLLMENT_STATUS_COLORS: Record<EnrollmentStatus, string> = {
   ended: 'bg-zinc-500/20 text-zinc-400',
 }
 
+const INVOICE_STATUS_COLORS: Record<InvoiceStatus, string> = {
+  draft: 'bg-zinc-500/20 text-zinc-400',
+  sent: 'bg-blue-500/20 text-blue-400',
+  paid: 'bg-green-500/20 text-green-400',
+  partial: 'bg-amber-500/20 text-amber-400',
+  overdue: 'bg-red-500/20 text-red-400',
+  void: 'bg-zinc-500/20 text-zinc-500 line-through',
+}
+
+const EMAIL_TYPE_CONFIG: Record<string, { color: string; icon: any; label: string }> = {
+  invoice: { color: 'bg-blue-900 text-blue-300', icon: Send, label: 'Invoice Sent' },
+  reminder_7_day: { color: 'bg-sky-900 text-sky-300', icon: Clock, label: 'Friendly Reminder' },
+  reminder_14_day: { color: 'bg-amber-900 text-amber-300', icon: Bell, label: 'Past Due Reminder' },
+  reminder_overdue: { color: 'bg-red-900 text-red-300', icon: AlertCircle, label: 'Urgent Reminder' },
+  payment_received: { color: 'bg-green-900 text-green-300', icon: CheckCircle, label: 'Payment Received' },
+}
+
 export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'enrollments' | 'invoices' | 'history'>('overview')
 
@@ -45,6 +62,18 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
   data: enrollments = [] as any[], 
   isLoading: loadingEnrollments 
 } = useEnrollmentsByFamily(family.id)
+
+  // React Query - fetch invoices for this family
+  const {
+    data: invoices = [],
+    isLoading: loadingInvoices
+  } = useInvoicesByFamily(family.id)
+
+  // React Query - fetch email history for this family
+  const {
+    data: emailHistory = [],
+    isLoading: loadingEmails
+  } = useInvoiceEmailsByFamily(family.id)
 
   // Reset selected student when family changes
   useEffect(() => {
@@ -286,14 +315,115 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
           )}
 
           {activeTab === 'invoices' && (
-            <div className="text-sm text-zinc-400 text-center py-8">
-              Invoice history coming soon
+            <div className="space-y-3">
+              {loadingInvoices ? (
+                <div className="text-sm text-zinc-400 text-center py-8">Loading invoices...</div>
+              ) : invoices.length === 0 ? (
+                <div className="text-sm text-zinc-400 text-center py-8">No invoices found</div>
+              ) : (
+                invoices.map((invoice: any) => (
+                  <div
+                    key={invoice.id}
+                    className="p-4 bg-zinc-800 rounded-lg hover:bg-zinc-750 transition-colors"
+                  >
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-zinc-400" />
+                        <span className="text-sm font-medium text-white">
+                          {invoice.invoice_number || `INV-${invoice.public_id?.slice(0, 6)}`}
+                        </span>
+                      </div>
+                      <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${INVOICE_STATUS_COLORS[invoice.status as InvoiceStatus]}`}>
+                        {invoice.status}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-zinc-400">
+                        {invoice.invoice_date && new Date(invoice.invoice_date).toLocaleDateString()}
+                        {invoice.period_start && invoice.period_end && (
+                          <span className="ml-2">
+                            ({new Date(invoice.period_start).toLocaleDateString()} - {new Date(invoice.period_end).toLocaleDateString()})
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className={`text-sm font-medium ${invoice.balance_due > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                          ${invoice.total_amount?.toFixed(2)}
+                        </span>
+                        {invoice.public_id && (
+                          <a
+                            href={`/invoice/${invoice.public_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-zinc-400 hover:text-white"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    {invoice.balance_due > 0 && invoice.balance_due !== invoice.total_amount && (
+                      <div className="mt-2 text-xs text-amber-400">
+                        Balance due: ${invoice.balance_due.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
             </div>
           )}
 
           {activeTab === 'history' && (
-            <div className="text-sm text-zinc-400 text-center py-8">
-              Communication history coming soon
+            <div className="space-y-3">
+              {loadingEmails ? (
+                <div className="text-sm text-zinc-400 text-center py-8">Loading history...</div>
+              ) : emailHistory.length === 0 ? (
+                <div className="text-sm text-zinc-400 text-center py-8">No communication history</div>
+              ) : (
+                emailHistory.map((email: any) => {
+                  const config = EMAIL_TYPE_CONFIG[email.email_type] || {
+                    color: 'bg-zinc-700 text-zinc-300',
+                    icon: Mail,
+                    label: email.email_type
+                  }
+                  const EmailIcon = config.icon
+                  const sentDate = new Date(email.sent_at)
+                  const now = new Date()
+                  const diffDays = Math.floor((now.getTime() - sentDate.getTime()) / (1000 * 60 * 60 * 24))
+                  
+                  let timeDisplay = ''
+                  if (diffDays === 0) timeDisplay = 'Today'
+                  else if (diffDays === 1) timeDisplay = 'Yesterday'
+                  else if (diffDays < 7) timeDisplay = `${diffDays} days ago`
+                  else timeDisplay = sentDate.toLocaleDateString()
+                  
+                  return (
+                    <div
+                      key={email.id}
+                      className="p-4 bg-zinc-800 rounded-lg"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`p-2 rounded-lg ${config.color}`}>
+                          <EmailIcon className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium text-white">{config.label}</span>
+                            <span className="text-xs text-zinc-500">{timeDisplay}</span>
+                          </div>
+                          <div className="text-xs text-zinc-400 truncate">
+                            {email.subject || `Invoice ${email.invoice_number}`}
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-1">
+                            To: {email.sent_to}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
             </div>
           )}
         </div>
