@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
-import { X, Trash2 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { X, Trash2, AlertTriangle } from 'lucide-react'
 import { useStudentMutations } from '../lib/hooks'
+import { supabase } from '../lib/supabase'
 import type { Student } from '../lib/hooks'
 
 // Extended Student type that includes homeschool_status which may exist in DB
@@ -36,8 +38,27 @@ export function EditStudentModal({
   })
   const [error, setError] = useState<string | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showForceDeleteConfirm, setShowForceDeleteConfirm] = useState(false)
 
-  const { updateStudent, deleteStudent } = useStudentMutations()
+  const { updateStudent, deleteStudent, forceDeleteStudent } = useStudentMutations()
+
+  // Fetch enrollments for this student to show in delete confirmation
+  const { data: studentEnrollments = [] } = useQuery({
+    queryKey: ['enrollments', 'byStudent', student?.id],
+    queryFn: async () => {
+      if (!student?.id) return []
+      const { data, error } = await (supabase
+        .from('enrollments')
+        .select('id, status, service:services(name), class_title')
+        .eq('student_id', student.id) as any)
+      if (error) throw error
+      return data || []
+    },
+    enabled: !!student?.id && isOpen,
+  })
+
+  const activeEnrollments = studentEnrollments.filter((e: any) => e.status === 'active' || e.status === 'trial')
+  const historicalEnrollments = studentEnrollments.filter((e: any) => e.status === 'ended' || e.status === 'paused')
 
   // Populate form when student changes
   useEffect(() => {
@@ -91,7 +112,6 @@ export function EditStudentModal({
   const handleDelete = () => {
     if (!student) return
 
-    // FIX: deleteStudent expects just the id string, not an object
     deleteStudent.mutate(
       student.id,
       {
@@ -100,13 +120,34 @@ export function EditStudentModal({
           onSuccess?.()
           onClose()
         },
-        onError: (err: Error & { code?: string }) => {
-          if (err.code === '23503') {
-            setError('Cannot delete student with existing enrollments')
+        onError: (err: Error) => {
+          // Check if this is a "has historical enrollments" error
+          if (err.message.includes('historical enrollment')) {
+            setShowDeleteConfirm(false)
+            setShowForceDeleteConfirm(true)
           } else {
             setError(err.message || 'Failed to delete student')
+            setShowDeleteConfirm(false)
           }
-          setShowDeleteConfirm(false)
+        },
+      }
+    )
+  }
+
+  const handleForceDelete = () => {
+    if (!student) return
+
+    forceDeleteStudent.mutate(
+      student.id,
+      {
+        onSuccess: () => {
+          setShowForceDeleteConfirm(false)
+          onSuccess?.()
+          onClose()
+        },
+        onError: (err: Error) => {
+          setError(err.message || 'Failed to delete student')
+          setShowForceDeleteConfirm(false)
         },
       }
     )
@@ -308,10 +349,43 @@ export function EditStudentModal({
               <h3 className="text-lg font-semibold text-zinc-100 mb-2">
                 Delete Student?
               </h3>
-              <p className="text-zinc-400 mb-4">
-                This will permanently delete {student.full_name} and cannot be
-                undone. Any associated enrollments must be deleted first.
-              </p>
+              
+              {activeEnrollments.length > 0 ? (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 text-red-400 mb-2">
+                    <AlertTriangle className="w-5 h-5" />
+                    <span className="font-medium">Cannot delete - has active enrollments:</span>
+                  </div>
+                  <ul className="text-sm text-zinc-400 ml-7 list-disc">
+                    {activeEnrollments.map((e: any) => (
+                      <li key={e.id}>{e.service?.name || e.class_title || 'Unknown service'} ({e.status})</li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-zinc-400 mt-3">
+                    End these enrollments first before deleting the student.
+                  </p>
+                </div>
+              ) : historicalEnrollments.length > 0 ? (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 text-amber-400 mb-2">
+                    <AlertTriangle className="w-5 h-5" />
+                    <span className="font-medium">Warning - has enrollment history:</span>
+                  </div>
+                  <ul className="text-sm text-zinc-400 ml-7 list-disc">
+                    {historicalEnrollments.map((e: any) => (
+                      <li key={e.id}>{e.service?.name || e.class_title || 'Unknown service'} ({e.status})</li>
+                    ))}
+                  </ul>
+                  <p className="text-sm text-zinc-400 mt-3">
+                    Deleting this student will also delete their enrollment history.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-zinc-400 mb-4">
+                  This will permanently delete {student.full_name}. This cannot be undone.
+                </p>
+              )}
+              
               <div className="flex justify-end gap-2">
                 <button
                   onClick={() => setShowDeleteConfirm(false)}
@@ -319,12 +393,53 @@ export function EditStudentModal({
                 >
                   Cancel
                 </button>
+                {activeEnrollments.length === 0 && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleteStudent.isPending}
+                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
+                  >
+                    {deleteStudent.isPending ? 'Deleting...' : 'Delete'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Force Delete Confirmation Dialog (for historical enrollments) */}
+        {showForceDeleteConfirm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md">
+              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
+                Confirm Delete with History?
+              </h3>
+              <div className="mb-4">
+                <div className="flex items-center gap-2 text-amber-400 mb-2">
+                  <AlertTriangle className="w-5 h-5" />
+                  <span className="font-medium">This will permanently delete:</span>
+                </div>
+                <ul className="text-sm text-zinc-400 ml-7 list-disc">
+                  <li>Student: {student?.full_name}</li>
+                  <li>{historicalEnrollments.length} historical enrollment(s)</li>
+                </ul>
+                <p className="text-sm text-red-400 mt-3">
+                  This action cannot be undone. Historical enrollment data will be lost.
+                </p>
+              </div>
+              <div className="flex justify-end gap-2">
                 <button
-                  onClick={handleDelete}
-                  disabled={deleteStudent.isPending}
+                  onClick={() => setShowForceDeleteConfirm(false)}
+                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleForceDelete}
+                  disabled={forceDeleteStudent.isPending}
                   className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
                 >
-                  {deleteStudent.isPending ? 'Deleting...' : 'Delete'}
+                  {forceDeleteStudent.isPending ? 'Deleting...' : 'Delete Permanently'}
                 </button>
               </div>
             </div>

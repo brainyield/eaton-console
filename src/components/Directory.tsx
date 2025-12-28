@@ -82,7 +82,79 @@ function usePaginatedFamilies(
   return useQuery({
     queryKey: ['families', 'paginated', { page, pageSize, status: statusFilter, sort: sortConfig }],
     queryFn: async () => {
-      // Build base query
+      // For balance sorting, we need a different approach:
+      // 1. Get all family balances first
+      // 2. Sort by balance
+      // 3. Then paginate
+      
+      if (sortConfig.field === 'total_balance') {
+        // Get balances for ALL families matching the filter (not just current page)
+        // Query invoices directly to avoid the Cartesian product bug in family_overview
+        let familyQuery = supabase
+          .from('families')
+          .select('id', { count: 'exact' }) as any
+        
+        if (statusFilter !== 'all') {
+          familyQuery = familyQuery.eq('status', statusFilter)
+        }
+        
+        const { data: allFamilyIds, count } = await familyQuery
+        const familyIds = (allFamilyIds || []).map((f: any) => f.id)
+        
+        // Get balances from invoices directly (no Cartesian product issue)
+        let balanceMap: Map<string, number> = new Map()
+        if (familyIds.length > 0) {
+          const { data: invoices } = await (supabase
+            .from('invoices')
+            .select('family_id, balance_due')
+            .in('family_id', familyIds)
+            .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
+
+          if (invoices) {
+            (invoices as any[]).forEach(inv => {
+              const current = balanceMap.get(inv.family_id) || 0
+              balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
+            })
+          }
+        }
+        
+        // Sort family IDs by balance
+        const sortedFamilyIds = familyIds.sort((a: string, b: string) => {
+          const balA = balanceMap.get(a) || 0
+          const balB = balanceMap.get(b) || 0
+          const diff = balA - balB
+          return sortConfig.direction === 'asc' ? diff : -diff
+        })
+        
+        // Paginate the sorted IDs
+        const startIdx = (page - 1) * pageSize
+        const paginatedIds = sortedFamilyIds.slice(startIdx, startIdx + pageSize)
+        
+        if (paginatedIds.length === 0) {
+          return { families: [], totalCount: count || 0 }
+        }
+        
+        // Fetch full family data for paginated IDs
+        const { data: familyData, error } = await (supabase
+          .from('families')
+          .select(`*, students (*)`)
+          .in('id', paginatedIds) as any)
+        
+        if (error) throw error
+        
+        // Merge balance and maintain sort order
+        const familiesWithBalance = paginatedIds.map((id: string) => {
+          const family = (familyData || []).find((f: any) => f.id === id)
+          return family ? {
+            ...family,
+            total_balance: balanceMap.get(id) || 0
+          } : null
+        }).filter(Boolean) as FamilyWithStudents[]
+        
+        return { families: familiesWithBalance, totalCount: count || 0 }
+      }
+      
+      // For non-balance sorting, use original approach but fix balance calculation
       let query = supabase
         .from('families')
         .select(`
@@ -114,22 +186,23 @@ function usePaginatedFamilies(
 
       if (error) throw error
 
-      // Fetch balance for each family
       const familyData = (data || []) as any[]
       const familyIds = familyData.map(f => f.id)
       
+      // Query invoices directly - NOT the family_overview VIEW
+      // The VIEW has a Cartesian product bug that multiplies balances
       let balanceMap: Map<string, number> = new Map()
       if (familyIds.length > 0) {
         const { data: invoices } = await (supabase
           .from('invoices')
-          .select('family_id, balance_due, status')
+          .select('family_id, balance_due')
           .in('family_id', familyIds)
-          .in('status', ['sent', 'partial', 'overdue']) as any)
+          .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
 
         if (invoices) {
           (invoices as any[]).forEach(inv => {
             const current = balanceMap.get(inv.family_id) || 0
-            balanceMap.set(inv.family_id, current + (inv.balance_due || 0))
+            balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
           })
         }
       }
@@ -140,15 +213,10 @@ function usePaginatedFamilies(
         total_balance: balanceMap.get(f.id) || 0
       })) as FamilyWithStudents[]
 
-      // Client-side sorting for fields that can't be sorted server-side
+      // Client-side sorting for student count
       if (sortConfig.field === 'students') {
         familiesWithBalance.sort((a, b) => {
           const diff = a.students.length - b.students.length
-          return sortConfig.direction === 'asc' ? diff : -diff
-        })
-      } else if (sortConfig.field === 'total_balance') {
-        familiesWithBalance.sort((a, b) => {
-          const diff = a.total_balance - b.total_balance
           return sortConfig.direction === 'asc' ? diff : -diff
         })
       }
@@ -175,14 +243,18 @@ function useFamilyById(id: string | null) {
 
       if (error) throw error
       
-      // Fetch balance
+      // Query invoices directly - NOT the family_overview VIEW
+      // The VIEW has a Cartesian product bug that multiplies balances
       const { data: invoices } = await (supabase
         .from('invoices')
         .select('balance_due')
         .eq('family_id', id)
-        .in('status', ['sent', 'partial', 'overdue']) as any)
+        .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
 
-      const total_balance = (invoices as any[] | null)?.reduce((sum, inv) => sum + (inv.balance_due || 0), 0) || 0
+      const total_balance = (invoices as any[] | null)?.reduce(
+        (sum, inv) => sum + (Number(inv.balance_due) || 0), 
+        0
+      ) || 0
 
       return { ...(data as any), total_balance } as FamilyWithStudents
     },

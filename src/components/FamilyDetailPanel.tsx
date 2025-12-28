@@ -106,6 +106,24 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
   // Count active enrollments from React Query data
   const activeEnrollmentCount = enrollments.filter(e => e.status === 'active').length
 
+  // Build a map of student_id -> enrollment info for display
+  const studentEnrollmentMap = new Map<string, { total: number; active: number; services: string[] }>()
+  enrollments.forEach((enrollment: any) => {
+    const studentId = enrollment.student_id
+    if (!studentId) return
+    
+    const existing = studentEnrollmentMap.get(studentId) || { total: 0, active: 0, services: [] }
+    existing.total++
+    if (enrollment.status === 'active' || enrollment.status === 'trial') {
+      existing.active++
+    }
+    const serviceName = enrollment.service?.name || enrollment.class_title || 'Unknown'
+    if (!existing.services.includes(serviceName)) {
+      existing.services.push(serviceName)
+    }
+    studentEnrollmentMap.set(studentId, existing)
+  })
+
   return (
     <>
       <div className="fixed right-0 top-0 h-full w-[480px] bg-zinc-900 border-l border-zinc-800 shadow-2xl flex flex-col z-40">
@@ -208,7 +226,9 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                   {!family.students || family.students.length === 0 ? (
                     <p className="text-sm text-zinc-500 py-3">No students yet</p>
                   ) : (
-                    family.students.map((student) => (
+                    family.students.map((student) => {
+                      const enrollmentInfo = studentEnrollmentMap.get(student.id)
+                      return (
                       <div
                         key={student.id}
                         onClick={() => handleEditStudent(student)}
@@ -226,13 +246,29 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
+                          {enrollmentInfo && enrollmentInfo.active > 0 && (
+                            <span className="text-xs text-green-400 bg-green-500/20 px-2 py-0.5 rounded" title={enrollmentInfo.services.join(', ')}>
+                              {enrollmentInfo.active} active
+                            </span>
+                          )}
+                          {enrollmentInfo && enrollmentInfo.total > 0 && enrollmentInfo.active === 0 && (
+                            <span className="text-xs text-zinc-400 bg-zinc-700 px-2 py-0.5 rounded">
+                              {enrollmentInfo.total} ended
+                            </span>
+                          )}
+                          {!enrollmentInfo && (
+                            <span className="text-xs text-amber-400 bg-amber-500/20 px-2 py-0.5 rounded">
+                              No enrollments
+                            </span>
+                          )}
                           {!student.active && (
                             <span className="text-xs text-zinc-500 bg-zinc-700 px-2 py-0.5 rounded">Inactive</span>
                           )}
                           <ChevronRight className="h-4 w-4 text-zinc-500" />
                         </div>
                       </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </div>

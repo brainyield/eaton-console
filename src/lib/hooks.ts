@@ -517,16 +517,67 @@ export function useStudentMutations() {
 
   const deleteStudent = useMutation({
     mutationFn: async (id: string) => {
+      // Check for active enrollments BEFORE deleting
+      // The database has ON DELETE CASCADE which would silently delete enrollments!
+      const { data: enrollments, error: checkError } = await (supabase
+        .from('enrollments')
+        .select('id, status')
+        .eq('student_id', id) as any)
+      
+      if (checkError) throw checkError
+      
+      if (enrollments && enrollments.length > 0) {
+        const activeCount = enrollments.filter((e: any) => e.status === 'active' || e.status === 'trial').length
+        const endedCount = enrollments.filter((e: any) => e.status === 'ended' || e.status === 'paused').length
+        
+        if (activeCount > 0) {
+          throw new Error(`Cannot delete student with ${activeCount} active enrollment(s). End the enrollments first.`)
+        }
+        
+        // Even ended enrollments are historical data - warn but allow
+        if (endedCount > 0) {
+          throw new Error(`This student has ${endedCount} historical enrollment(s). Deleting will remove enrollment history. Use the 'Confirm Delete with History' option if you're sure.`)
+        }
+      }
+      
       const { error } = await supabase.from('students').delete().eq('id', id)
       if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.students.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
     },
   })
 
-  return { createStudent, updateStudent, deleteStudent }
+  // Force delete student even with historical enrollments (use with caution)
+  const forceDeleteStudent = useMutation({
+    mutationFn: async (id: string) => {
+      // Only check for ACTIVE enrollments - block those
+      const { data: activeEnrollments, error: checkError } = await (supabase
+        .from('enrollments')
+        .select('id')
+        .eq('student_id', id)
+        .in('status', ['active', 'trial']) as any)
+      
+      if (checkError) throw checkError
+      
+      if (activeEnrollments && activeEnrollments.length > 0) {
+        throw new Error(`Cannot delete student with ${activeEnrollments.length} active enrollment(s). End the enrollments first.`)
+      }
+      
+      // Proceed with delete - cascade will remove historical enrollments
+      const { error } = await supabase.from('students').delete().eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.students.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+    },
+  })
+
+  return { createStudent, updateStudent, deleteStudent, forceDeleteStudent }
 }
 
 // =============================================================================
