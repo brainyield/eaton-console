@@ -50,6 +50,48 @@ interface AttendeeWithDetails {
   family_name: string | null
 }
 
+// Database row types for Supabase queries
+interface EventRow {
+  id: string
+  title: string
+  description: string | null
+  venue_name: string | null
+  start_at: string | null
+  end_at: string | null
+  ticket_price_cents: number | null
+  event_type: string
+}
+
+interface AttendeeRow {
+  event_id: string
+}
+
+interface OrderRow {
+  event_id: string
+  total_cents: number | null
+  payment_status: string
+}
+
+interface AttendeeListRow {
+  attendee_id: string
+  attendee_name: string
+  attendee_age: number | null
+  event_id: string
+  event_title: string | null
+  event_date: string | null
+  venue_name: string | null
+  purchaser_name: string | null
+  purchaser_email: string | null
+  payment_status: string | null
+  family_id: string | null
+  event_type: string
+}
+
+interface FamilyRow {
+  id: string
+  display_name: string | null
+}
+
 function useEvents() {
   return useQuery({
     queryKey: ['events', 'list'],
@@ -60,6 +102,7 @@ function useEvents() {
         .select('*')
         .eq('event_type', 'event')
         .order('start_at', { ascending: false })
+        .returns<EventRow[]>()
 
       if (error) throw error
 
@@ -73,12 +116,14 @@ function useEvents() {
         .from('event_attendees')
         .select('event_id')
         .in('event_id', eventIds)
+        .returns<AttendeeRow[]>()
 
       const { data: orders } = await supabase
         .from('event_orders')
         .select('event_id, total_cents, payment_status')
         .in('event_id', eventIds)
         .in('payment_status', ['paid', 'stepup_pending'])
+        .returns<OrderRow[]>()
 
       const attendeeCountMap = new Map<string, number>()
       const revenueMap = new Map<string, number>()
@@ -95,6 +140,7 @@ function useEvents() {
 
       return (events || []).map(e => ({
         ...e,
+        location: e.venue_name,
         attendee_count: attendeeCountMap.get(e.id) || 0,
         revenue: (revenueMap.get(e.id) || 0) / 100
       })) as EventWithStats[]
@@ -114,6 +160,7 @@ function useAllAttendees() {
         .select('*')
         .eq('event_type', 'event')
         .order('event_date', { ascending: false })
+        .returns<AttendeeListRow[]>()
 
       if (error) throw error
       if (!attendeeList || attendeeList.length === 0) return []
@@ -121,8 +168,8 @@ function useAllAttendees() {
       // Get family names for attendees that have family_id
       const familyIds = [...new Set(attendeeList.map(a => a.family_id).filter(Boolean))] as string[]
       const { data: families } = familyIds.length > 0
-        ? await supabase.from('families').select('id, display_name').in('id', familyIds)
-        : { data: [] }
+        ? await supabase.from('families').select('id, display_name').in('id', familyIds).returns<FamilyRow[]>()
+        : { data: [] as FamilyRow[] }
 
       const familyMap = new Map((families || []).map(f => [f.id, f]))
 
@@ -138,7 +185,7 @@ function useAllAttendees() {
         purchaser_email: a.purchaser_email,
         payment_status: a.payment_status || 'unknown',
         family_id: a.family_id,
-        family_name: familyMap.get(a.family_id)?.display_name
+        family_name: a.family_id ? familyMap.get(a.family_id)?.display_name : null
       })) as AttendeeWithDetails[]
     }
   })
