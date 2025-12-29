@@ -83,6 +83,7 @@ One record per checkout session (Stripe or Step Up).
 | `payment_status` | TEXT | pending, paid, stepup_pending, refunded, expired, failed |
 | `family_id` | UUID | FK to families (auto-linked) |
 | `metadata` | JSONB | Raw data (attendee details, etc.) |
+| `invoice_id` | UUID | FK to invoices - links Step Up order to billing invoice |
 | `created_at` | TIMESTAMPTZ | Order created |
 | `updated_at` | TIMESTAMPTZ | Order updated |
 | `paid_at` | TIMESTAMPTZ | When payment completed |
@@ -198,6 +199,7 @@ Step Up orders awaiting invoice/payment. **Use this in console for billing track
 | `idx_event_orders_payment_method` | event_orders | payment_method | Filter by payment method |
 | `idx_event_orders_purchaser_email` | event_orders | purchaser_email | Lookup by email |
 | `idx_event_orders_family_id` | event_orders | family_id | Join with families |
+| `idx_event_orders_invoice_id` | event_orders | invoice_id | Find orders billed on an invoice |
 | `idx_event_attendees_event_id` | event_attendees | event_id | Filter attendees by event |
 | `idx_event_attendees_order_id` | event_attendees | order_id | Join with orders |
 | `idx_event_events_wp_post_id` | event_events | wp_post_id | Lookup by WP ID |

@@ -1527,6 +1527,86 @@ export function useExistingInvoicesForPeriod(periodStart: string, periodEnd: str
   })
 }
 
+// Type for pending event orders (Step Up orders awaiting invoice)
+export interface PendingEventOrder {
+  id: string
+  event_id: string
+  family_id: string | null
+  purchaser_email: string
+  purchaser_name: string | null
+  quantity: number
+  total_cents: number
+  payment_status: string
+  payment_method: string
+  created_at: string
+  event_title: string
+  event_type: string
+  event_date: string
+  family_name: string | null
+}
+
+// Hook to fetch pending Step Up event orders for single events only (not classes)
+// Classes are billed via Monthly invoices with registration fees
+export function usePendingEventOrders(familyId?: string) {
+  return useQuery({
+    queryKey: ['event_orders', 'pending', 'events', familyId || 'all'],
+    queryFn: async () => {
+      let query = supabase
+        .from('event_orders')
+        .select(`
+          id,
+          event_id,
+          family_id,
+          purchaser_email,
+          purchaser_name,
+          quantity,
+          total_cents,
+          payment_status,
+          payment_method,
+          created_at,
+          event:event_events!inner(
+            title,
+            event_type,
+            start_at
+          ),
+          family:families(
+            display_name
+          )
+        `)
+        .eq('payment_method', 'stepup')
+        .eq('payment_status', 'stepup_pending')
+        .is('invoice_id', null)
+        .eq('event.event_type', 'event') // Only single events, not classes
+
+      if (familyId) {
+        query = query.eq('family_id', familyId)
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // Transform to flat structure
+      return (data || []).map((order: any) => ({
+        id: order.id,
+        event_id: order.event_id,
+        family_id: order.family_id,
+        purchaser_email: order.purchaser_email,
+        purchaser_name: order.purchaser_name,
+        quantity: order.quantity,
+        total_cents: order.total_cents,
+        payment_status: order.payment_status,
+        payment_method: order.payment_method,
+        created_at: order.created_at,
+        event_title: order.event?.title || 'Unknown Event',
+        event_type: order.event?.event_type || 'event',
+        event_date: order.event?.start_at || '',
+        family_name: order.family?.display_name || null,
+      })) as PendingEventOrder[]
+    },
+  })
+}
+
 // Hook to fetch email history for an invoice
 export function useInvoiceEmails(invoiceId: string) {
   return useQuery({
@@ -1654,7 +1734,7 @@ export function useInvoiceMutations() {
         const lineItems = group.enrollments.map((enrollment, idx) => {
           // Check for custom amount override
           const customData = customAmounts?.[enrollment.id]
-          
+
           let quantity: number
           let unitPrice: number
           let amount: number
@@ -1690,6 +1770,74 @@ export function useInvoiceMutations() {
           }
         })
 
+        // For monthly invoices, check for pending class registration fees (Step Up)
+        // These are event_orders for classes where invoice_id is NULL
+        const pendingRegistrationFees: { id: string; event_title: string; total_cents: number; student_name: string }[] = []
+
+        if (invoiceType === 'monthly') {
+          // Find elective_classes enrollments in this group
+          const electiveEnrollments = group.enrollments.filter(e => e.service?.code === 'elective_classes')
+
+          if (electiveEnrollments.length > 0) {
+            // Query for pending registration fees for this family
+            // These are Step Up event orders for classes that haven't been invoiced yet
+            const { data: pendingOrders } = await supabase
+              .from('event_orders')
+              .select(`
+                id,
+                total_cents,
+                event:event_events!inner(
+                  title,
+                  event_type
+                )
+              `)
+              .eq('family_id', familyId)
+              .eq('payment_method', 'stepup')
+              .eq('payment_status', 'stepup_pending')
+              .is('invoice_id', null)
+              .eq('event.event_type', 'class')
+
+            if (pendingOrders && pendingOrders.length > 0) {
+              // Match pending orders to enrollments by class title
+              for (const order of pendingOrders as any[]) {
+                const eventTitle = order.event?.title || ''
+                // Find matching enrollment by class_title
+                const matchingEnrollment = electiveEnrollments.find(e =>
+                  e.class_title && (
+                    eventTitle.toLowerCase().includes(e.class_title.toLowerCase()) ||
+                    e.class_title.toLowerCase().includes(eventTitle.toLowerCase())
+                  )
+                )
+
+                if (matchingEnrollment) {
+                  pendingRegistrationFees.push({
+                    id: order.id,
+                    event_title: eventTitle,
+                    total_cents: order.total_cents,
+                    student_name: matchingEnrollment.student?.full_name || 'Student',
+                  })
+                }
+              }
+            }
+          }
+        }
+
+        // Add registration fee line items
+        let sortOrder = lineItems.length
+        for (const regFee of pendingRegistrationFees) {
+          const amount = regFee.total_cents / 100
+          subtotal += amount
+          lineItems.push({
+            invoice_id: invoice.id,
+            enrollment_id: null as any, // Registration fees don't link to enrollments
+            description: `${regFee.student_name} - Registration Fee: ${regFee.event_title}`,
+            quantity: 1,
+            unit_price: amount,
+            amount,
+            sort_order: sortOrder++,
+          })
+        }
+
         const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
           .insert(lineItems)
 
@@ -1705,6 +1853,14 @@ export function useInvoiceMutations() {
 
         if (updateError) throw updateError
 
+        // Link registration fee event_orders to this invoice
+        if (pendingRegistrationFees.length > 0) {
+          const orderIds = pendingRegistrationFees.map(f => f.id)
+          await (supabase.from('event_orders') as any)
+            .update({ invoice_id: invoice.id })
+            .in('id', orderIds)
+        }
+
         createdInvoices.push(invoice)
       }
 
@@ -1712,6 +1868,93 @@ export function useInvoiceMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+    },
+  })
+
+  // Generate invoice for Step Up event orders
+  const generateEventInvoice = useMutation({
+    mutationFn: async ({
+      familyId,
+      familyName,
+      orderIds,
+      orders,
+      dueDate,
+    }: {
+      familyId: string
+      familyName: string
+      orderIds: string[]
+      orders: { id: string; event_title: string; event_date: string; total_cents: number }[]
+      dueDate: string
+    }) => {
+      // Create invoice
+      const invoiceNote = `Event registrations for ${familyName}`
+
+      const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
+        .insert({
+          family_id: familyId,
+          invoice_date: new Date().toISOString().split('T')[0],
+          due_date: dueDate,
+          status: 'draft',
+          notes: invoiceNote,
+        })
+        .select()
+        .single()
+
+      if (invError) throw invError
+
+      // Create line items for each event order
+      let subtotal = 0
+      const lineItems = orders.map((order, idx) => {
+        const amount = order.total_cents / 100
+        subtotal += amount
+
+        // Format event date
+        const eventDate = order.event_date
+          ? new Date(order.event_date).toLocaleDateString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              year: 'numeric'
+            })
+          : ''
+
+        return {
+          invoice_id: invoice.id,
+          enrollment_id: null, // Events are not enrollments
+          description: `${order.event_title}${eventDate ? ` (${eventDate})` : ''} - Registration Fee`,
+          quantity: 1,
+          unit_price: amount,
+          amount: amount,
+          sort_order: idx,
+        }
+      })
+
+      const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
+        .insert(lineItems)
+
+      if (itemsError) throw itemsError
+
+      // Update invoice totals
+      const { error: updateError } = await (supabase.from('invoices') as any)
+        .update({
+          subtotal,
+          total_amount: subtotal,
+        })
+        .eq('id', invoice.id)
+
+      if (updateError) throw updateError
+
+      // Link event_orders to this invoice
+      const { error: linkError } = await (supabase.from('event_orders') as any)
+        .update({ invoice_id: invoice.id })
+        .in('id', orderIds)
+
+      if (linkError) throw linkError
+
+      return invoice
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
     },
   })
 
@@ -1723,11 +1966,29 @@ export function useInvoiceMutations() {
         .select()
         .single()
       if (error) throw error
+
+      // Sync event_orders when invoice is marked as paid
+      // This updates Step Up event registrations linked to this invoice
+      if (data.status === 'paid') {
+        const { error: syncError } = await (supabase.from('event_orders') as any)
+          .update({
+            payment_status: 'paid',
+            paid_at: new Date().toISOString(),
+          })
+          .eq('invoice_id', id)
+
+        if (syncError) {
+          console.error('Failed to sync event_orders payment status:', syncError)
+          // Don't throw - the invoice update succeeded, this is a secondary operation
+        }
+      }
+
       return invoice
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.id) })
+      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
     },
   })
 
@@ -1748,21 +2009,33 @@ export function useInvoiceMutations() {
 
   const deleteInvoice = useMutation({
     mutationFn: async (id: string) => {
+      // Unlink any event_orders referencing this invoice first
+      await (supabase.from('event_orders') as any)
+        .update({ invoice_id: null, payment_status: 'stepup_pending' })
+        .eq('invoice_id', id)
+
       const { error } = await supabase.from('invoices').delete().eq('id', id)
       if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
     },
   })
 
   const bulkDeleteInvoices = useMutation({
     mutationFn: async (ids: string[]) => {
+      // Unlink any event_orders referencing these invoices first
+      await (supabase.from('event_orders') as any)
+        .update({ invoice_id: null, payment_status: 'stepup_pending' })
+        .in('invoice_id', ids)
+
       const { error } = await supabase.from('invoices').delete().in('id', ids)
       if (error) throw error
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
     },
   })
 
@@ -2120,6 +2393,7 @@ export function useInvoiceMutations() {
 
   return {
     generateDrafts,
+    generateEventInvoice,
     updateInvoice,
     updateLineItem,
     deleteInvoice,

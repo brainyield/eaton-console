@@ -12,16 +12,17 @@ import {
   useBillableEnrollments,
   useExistingInvoicesForPeriod,
   useInvoiceMutations,
+  usePendingEventOrders,
   getWeekBounds,
   getNextMonday,
 } from '../lib/hooks'
-import type { BillableEnrollment } from '../lib/hooks'
+import type { BillableEnrollment, PendingEventOrder } from '../lib/hooks'
 
 // ============================================================================
 // Types
 // ============================================================================
 
-type InvoiceType = 'weekly' | 'monthly'
+type InvoiceType = 'weekly' | 'monthly' | 'events'
 type SortField = 'family' | 'amount'
 type SortDirection = 'asc' | 'desc'
 
@@ -157,48 +158,59 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editValue, setEditValue] = useState<string>('')
 
+  // Events mode state
+  const [selectedEventOrders, setSelectedEventOrders] = useState<Set<string>>(new Set())
+
   // Initialize dates based on invoice type
   useEffect(() => {
     const today = new Date()
-    
+
     if (invoiceType === 'weekly') {
       // Get this week's bounds (Mon-Fri)
       const { start, end } = getWeekBounds(today)
       setPeriodStart(formatDate(start))
       setPeriodEnd(formatDate(end))
-      
+
       // Due date is next Monday
       const nextMon = getNextMonday(end)
       setDueDate(formatDate(nextMon))
-      
+
       // Note format
       const startStr = start.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
       const endStr = end.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
       setPeriodNote(`For the week of ${startStr} - ${endStr}`)
-      
+
       // Reset global weeks
       setGlobalWeeks(1)
-      
-    } else {
+
+    } else if (invoiceType === 'monthly') {
       // Monthly: current month bounds
       const { start, end } = getMonthBounds(today)
       setPeriodStart(formatDate(start))
       setPeriodEnd(formatDate(end))
-      
+
       // Due date is Monday after month ends
       const nextMon = getNextMonday(end)
       setDueDate(formatDate(nextMon))
-      
+
       // Note format
       const monthYear = start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
       setPeriodNote(`For ${monthYear}`)
-      
+
       // Reset global sessions
       setGlobalSessions(4)
+    } else {
+      // Events: no period, just due date
+      setPeriodStart('')
+      setPeriodEnd('')
+      const nextMon = getNextMonday(today)
+      setDueDate(formatDate(nextMon))
+      setPeriodNote('Step Up Event Registrations')
     }
-    
-    // Clear overrides when switching type
+
+    // Clear overrides and selections when switching type
     setOverrides({})
+    setSelectedEventOrders(new Set())
   }, [invoiceType])
 
   // Data fetching - fetch all active enrollments, filter by billing frequency below
@@ -206,7 +218,10 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
 
   const { data: existingInvoices = [] } = useExistingInvoicesForPeriod(periodStart, periodEnd)
 
-  const { generateDrafts } = useInvoiceMutations()
+  // Fetch pending event orders for events mode
+  const { data: pendingEventOrders = [], isLoading: eventsLoading } = usePendingEventOrders()
+
+  const { generateDrafts, generateEventInvoice } = useInvoiceMutations()
 
   // Build preview items with overrides applied
   const previewItems = useMemo(() => {
@@ -382,6 +397,84 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     }
   }, [sortedPreviewItems, selectedCount])
 
+  // ===========================================================================
+  // Events Mode - Group pending event orders by family
+  // ===========================================================================
+  const eventOrdersByFamily = useMemo(() => {
+    const grouped = new Map<string, PendingEventOrder[]>()
+
+    pendingEventOrders.forEach(order => {
+      const familyId = order.family_id || 'unlinked'
+      if (!grouped.has(familyId)) {
+        grouped.set(familyId, [])
+      }
+      grouped.get(familyId)!.push(order)
+    })
+
+    return Array.from(grouped.entries()).map(([familyId, orders]) => ({
+      familyId,
+      familyName: orders[0].family_name || orders[0].purchaser_name || 'Unknown',
+      orders,
+      totalAmount: orders
+        .filter(o => selectedEventOrders.has(o.id))
+        .reduce((sum, o) => sum + o.total_cents / 100, 0),
+      allSelected: orders.every(o => selectedEventOrders.has(o.id)),
+      someSelected: orders.some(o => selectedEventOrders.has(o.id)),
+    }))
+  }, [pendingEventOrders, selectedEventOrders])
+
+  // Event order counts
+  const selectedEventCount = selectedEventOrders.size
+  const eventTotalAmount = pendingEventOrders
+    .filter(o => selectedEventOrders.has(o.id))
+    .reduce((sum, o) => sum + o.total_cents / 100, 0)
+  const eventFamilyCount = new Set(
+    pendingEventOrders
+      .filter(o => selectedEventOrders.has(o.id))
+      .map(o => o.family_id)
+  ).size
+
+  // Event handlers
+  const handleToggleEventOrder = useCallback((id: string) => {
+    setSelectedEventOrders(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const handleToggleEventFamily = useCallback((familyId: string) => {
+    const familyOrders = pendingEventOrders
+      .filter(o => (o.family_id || 'unlinked') === familyId)
+      .map(o => o.id)
+
+    const allSelected = familyOrders.every(id => selectedEventOrders.has(id))
+
+    setSelectedEventOrders(prev => {
+      const next = new Set(prev)
+      familyOrders.forEach(id => {
+        if (allSelected) {
+          next.delete(id)
+        } else {
+          next.add(id)
+        }
+      })
+      return next
+    })
+  }, [pendingEventOrders, selectedEventOrders])
+
+  const handleSelectAllEvents = useCallback(() => {
+    if (selectedEventCount === pendingEventOrders.length) {
+      setSelectedEventOrders(new Set())
+    } else {
+      setSelectedEventOrders(new Set(pendingEventOrders.map(o => o.id)))
+    }
+  }, [pendingEventOrders, selectedEventCount])
+
   const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
@@ -485,6 +578,51 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     }
   }, [selectedCount, generateDrafts, periodStart, periodEnd, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess])
 
+  // Generate event invoices - one invoice per family
+  const handleGenerateEvents = useCallback(async () => {
+    if (selectedEventCount === 0) return
+
+    try {
+      // Group selected orders by family
+      const ordersByFamily = new Map<string, PendingEventOrder[]>()
+      pendingEventOrders
+        .filter(o => selectedEventOrders.has(o.id))
+        .forEach(order => {
+          const familyId = order.family_id || 'unlinked'
+          if (!ordersByFamily.has(familyId)) {
+            ordersByFamily.set(familyId, [])
+          }
+          ordersByFamily.get(familyId)!.push(order)
+        })
+
+      // Create one invoice per family
+      for (const [familyId, orders] of ordersByFamily) {
+        if (familyId === 'unlinked') {
+          alert(`Cannot create invoice for unlinked orders (${orders.map(o => o.event_title).join(', ')}). Please link these orders to a family first.`)
+          continue
+        }
+
+        await generateEventInvoice.mutateAsync({
+          familyId,
+          familyName: orders[0].family_name || orders[0].purchaser_name || 'Unknown',
+          orderIds: orders.map(o => o.id),
+          orders: orders.map(o => ({
+            id: o.id,
+            event_title: o.event_title,
+            event_date: o.event_date,
+            total_cents: o.total_cents,
+          })),
+          dueDate,
+        })
+      }
+
+      onSuccess()
+    } catch (error) {
+      console.error('Failed to generate event invoices:', error)
+      alert('Failed to generate event invoices. Check console for details.')
+    }
+  }, [selectedEventCount, pendingEventOrders, selectedEventOrders, generateEventInvoice, dueDate, onSuccess])
+
   // Service filter options based on invoice type
   const serviceOptions = invoiceType === 'weekly'
     ? [
@@ -544,37 +682,42 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 >
                   <option value="weekly">Weekly (AC, Online)</option>
                   <option value="monthly">Monthly (Pod, Consult, etc.)</option>
+                  <option value="events">Events (Step Up)</option>
                 </select>
               </div>
 
-              {/* Period Start */}
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Period Start
-                </label>
-                <input
-                  type="date"
-                  value={periodStart}
-                  onChange={e => setPeriodStart(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
-                />
-              </div>
+              {/* Period Start - only for weekly/monthly */}
+              {invoiceType !== 'events' && (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    Period Start
+                  </label>
+                  <input
+                    type="date"
+                    value={periodStart}
+                    onChange={e => setPeriodStart(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
+                  />
+                </div>
+              )}
 
-              {/* Period End */}
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Period End
-                </label>
-                <input
-                  type="date"
-                  value={periodEnd}
-                  onChange={e => setPeriodEnd(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
-                />
-              </div>
+              {/* Period End - only for weekly/monthly */}
+              {invoiceType !== 'events' && (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    Period End
+                  </label>
+                  <input
+                    type="date"
+                    value={periodEnd}
+                    onChange={e => setPeriodEnd(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
+                  />
+                </div>
+              )}
 
               {/* Due Date */}
-              <div>
+              <div className={invoiceType === 'events' ? 'col-span-2' : ''}>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">
                   Due Date
                 </label>
@@ -588,7 +731,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
             </div>
 
             {/* Note and Service Filter */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div className={`grid gap-4 mt-4 ${invoiceType === 'events' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
               <div>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">
                   Invoice Note
@@ -598,28 +741,30 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                   value={periodNote}
                   onChange={e => setPeriodNote(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
-                  placeholder="e.g., For the week of 12/23/2025 - 12/27/2025"
+                  placeholder={invoiceType === 'events' ? 'Step Up Event Registrations' : 'e.g., For the week of 12/23/2025 - 12/27/2025'}
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-zinc-400 mb-1">
-                  Filter by Service
-                </label>
-                <select
-                  value={serviceFilter}
-                  onChange={e => setServiceFilter(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
-                >
-                  {serviceOptions.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
+              {invoiceType !== 'events' && (
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    Filter by Service
+                  </label>
+                  <select
+                    value={serviceFilter}
+                    onChange={e => setServiceFilter(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
+                  >
+                    {serviceOptions.map(opt => (
+                      <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
-            {/* Bulk Multiplier Controls */}
-            {(showWeeksControl || showSessionsControl) && (
+            {/* Bulk Multiplier Controls - only for weekly/monthly */}
+            {invoiceType !== 'events' && (showWeeksControl || showSessionsControl) && (
               <div className="mt-4 p-3 bg-zinc-900/50 rounded-lg border border-zinc-700">
                 <div className="flex items-center gap-4">
                   {showWeeksControl && (
@@ -664,14 +809,23 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           <div className="px-6 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-800/20">
             <div className="flex items-center gap-4">
               <span className="text-sm text-zinc-400">
-                {enrollmentsLoading ? 'Loading...' : (
-                  <>
-                    <span className="text-white font-medium">{familyCount}</span> families,{' '}
-                    <span className="text-white font-medium">{selectedCount}</span> enrollments selected
-                  </>
+                {invoiceType === 'events' ? (
+                  eventsLoading ? 'Loading...' : (
+                    <>
+                      <span className="text-white font-medium">{eventFamilyCount}</span> families,{' '}
+                      <span className="text-white font-medium">{selectedEventCount}</span> event orders selected
+                    </>
+                  )
+                ) : (
+                  enrollmentsLoading ? 'Loading...' : (
+                    <>
+                      <span className="text-white font-medium">{familyCount}</span> families,{' '}
+                      <span className="text-white font-medium">{selectedCount}</span> enrollments selected
+                    </>
+                  )
                 )}
               </span>
-              {existingCount > 0 && (
+              {invoiceType !== 'events' && existingCount > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-400">
                   <AlertTriangle className="w-3 h-3" />
                   {existingCount} already have invoices for this period
@@ -679,115 +833,224 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
               )}
             </div>
             <div className="flex items-center gap-4">
-              {/* Sort Controls */}
-              <div className="flex items-center gap-2 text-xs">
-                <span className="text-zinc-500">Sort:</span>
-                <button
-                  onClick={() => handleSort('family')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'family' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
-                >
-                  Name
-                  {sortField === 'family' && (
-                    sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                  )}
-                </button>
-                <button
-                  onClick={() => handleSort('amount')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'amount' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
-                >
-                  Amount
-                  {sortField === 'amount' && (
-                    sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
-                  )}
-                </button>
-              </div>
-              
+              {/* Sort Controls - only for enrollments */}
+              {invoiceType !== 'events' && (
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="text-zinc-500">Sort:</span>
+                  <button
+                    onClick={() => handleSort('family')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'family' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Name
+                    {sortField === 'family' && (
+                      sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleSort('amount')}
+                    className={`flex items-center gap-1 px-2 py-1 rounded ${sortField === 'amount' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'}`}
+                  >
+                    Amount
+                    {sortField === 'amount' && (
+                      sortDirection === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
+                </div>
+              )}
+
               <button
-                onClick={handleSelectAll}
+                onClick={invoiceType === 'events' ? handleSelectAllEvents : handleSelectAll}
                 className="text-sm text-blue-400 hover:text-blue-300"
               >
-                {selectedCount === sortedPreviewItems.filter(i => !i.hasExisting).length ? 'Deselect All' : 'Select All'}
+                {invoiceType === 'events'
+                  ? (selectedEventCount === pendingEventOrders.length ? 'Deselect All' : 'Select All')
+                  : (selectedCount === sortedPreviewItems.filter(i => !i.hasExisting).length ? 'Deselect All' : 'Select All')
+                }
               </button>
             </div>
           </div>
 
           {/* Preview List */}
           <div className="flex-1 overflow-y-auto px-6 py-4 min-h-[300px] max-h-[400px]">
-            {enrollmentsLoading ? (
-              <div className="flex items-center justify-center h-full">
-                <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
-              </div>
-            ) : sortedPreviewItems.length === 0 ? (
-              <div className="flex items-center justify-center h-full text-zinc-500">
-                No active enrollments found for {invoiceType} billing
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {groupedByFamily.map(group => (
-                  <div
-                    key={group.familyId}
-                    className={`border rounded-lg overflow-hidden ${
-                      group.hasExisting 
-                        ? 'border-amber-500/30 bg-amber-500/5' 
-                        : 'border-zinc-700 bg-zinc-800/30'
-                    }`}
-                  >
-                    {/* Family Header */}
+            {/* ============================================================ */}
+            {/* Events Mode Content */}
+            {/* ============================================================ */}
+            {invoiceType === 'events' ? (
+              eventsLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
+                </div>
+              ) : pendingEventOrders.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-zinc-500">
+                  No pending Step Up event registrations found
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {eventOrdersByFamily.map(group => (
                     <div
-                      className="flex items-center justify-between px-4 py-2 bg-zinc-800/50 cursor-pointer"
-                      onClick={() => handleToggleFamily(group.familyId)}
+                      key={group.familyId}
+                      className={`border rounded-lg overflow-hidden ${
+                        group.familyId === 'unlinked'
+                          ? 'border-red-500/30 bg-red-500/5'
+                          : 'border-zinc-700 bg-zinc-800/30'
+                      }`}
                     >
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={group.allSelected}
-                          onChange={() => handleToggleFamily(group.familyId)}
-                          onClick={e => e.stopPropagation()}
-                          className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
-                        />
-                        <span className="font-medium text-white">{group.familyName}</span>
-                        {group.hasExisting && (
-                          <span className="flex items-center gap-1 text-xs text-amber-400">
-                            <AlertTriangle className="w-3 h-3" />
-                            Invoice exists
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-sm text-zinc-400">
-                        ${group.totalAmount.toFixed(2)}
-                      </span>
-                    </div>
-
-                    {/* Enrollments */}
-                    <div className="divide-y divide-zinc-800">
-                      {group.items.map(item => (
-                        <div
-                          key={item.enrollment.id}
-                          className={`flex items-center justify-between px-4 py-2 ${
-                            item.hasExisting ? 'opacity-50' : ''
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <input
-                              type="checkbox"
-                              checked={selectedEnrollments.has(item.enrollment.id)}
-                              onChange={() => handleToggleEnrollment(item.enrollment.id)}
-                              disabled={item.hasExisting}
-                              className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-50"
-                            />
-                            <ServiceBadge code={item.enrollment.service?.code || ''} />
-                            <span className="text-sm text-zinc-300">
-                              {item.enrollment.student?.full_name}
+                      {/* Family Header */}
+                      <div
+                        className="flex items-center justify-between px-4 py-2 bg-zinc-800/50 cursor-pointer"
+                        onClick={() => handleToggleEventFamily(group.familyId)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={group.allSelected}
+                            onChange={() => handleToggleEventFamily(group.familyId)}
+                            onClick={e => e.stopPropagation()}
+                            disabled={group.familyId === 'unlinked'}
+                            className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-50"
+                          />
+                          <span className="font-medium text-white">{group.familyName}</span>
+                          {group.familyId === 'unlinked' && (
+                            <span className="flex items-center gap-1 text-xs text-red-400">
+                              <AlertTriangle className="w-3 h-3" />
+                              Not linked to family
                             </span>
-                            {item.isEdited && (
-                              <button
-                                onClick={() => clearOverride(item.enrollment.id)}
-                                className="text-xs text-amber-400 hover:text-amber-300"
-                                title="Clear custom amount"
-                              >
-                                (edited - click to reset)
-                              </button>
-                            )}
+                          )}
+                        </div>
+                        <span className="text-sm text-zinc-400">
+                          ${group.totalAmount.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {/* Event Orders */}
+                      <div className="divide-y divide-zinc-800">
+                        {group.orders.map(order => (
+                          <div
+                            key={order.id}
+                            className={`flex items-center justify-between px-4 py-2 ${
+                              group.familyId === 'unlinked' ? 'opacity-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedEventOrders.has(order.id)}
+                                onChange={() => handleToggleEventOrder(order.id)}
+                                disabled={group.familyId === 'unlinked'}
+                                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-50"
+                              />
+                              <span className={`inline-flex px-1.5 py-0.5 text-xs font-medium rounded ${
+                                order.event_type === 'class'
+                                  ? 'bg-pink-500/20 text-pink-400'
+                                  : 'bg-purple-500/20 text-purple-400'
+                              }`}>
+                                {order.event_type === 'class' ? 'Class' : 'Event'}
+                              </span>
+                              <div className="flex flex-col">
+                                <span className="text-sm text-zinc-300">
+                                  {order.event_title}
+                                </span>
+                                <span className="text-xs text-zinc-500">
+                                  {order.event_date ? new Date(order.event_date).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  }) : 'No date'}
+                                  {order.quantity > 1 && ` • ${order.quantity} tickets`}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-white">
+                                ${(order.total_cents / 100).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : (
+              /* ============================================================ */
+              /* Enrollments Mode Content (Weekly/Monthly) */
+              /* ============================================================ */
+              enrollmentsLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
+                </div>
+              ) : sortedPreviewItems.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-zinc-500">
+                  No active enrollments found for {invoiceType} billing
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {groupedByFamily.map(group => (
+                    <div
+                      key={group.familyId}
+                      className={`border rounded-lg overflow-hidden ${
+                        group.hasExisting
+                          ? 'border-amber-500/30 bg-amber-500/5'
+                          : 'border-zinc-700 bg-zinc-800/30'
+                      }`}
+                    >
+                      {/* Family Header */}
+                      <div
+                        className="flex items-center justify-between px-4 py-2 bg-zinc-800/50 cursor-pointer"
+                        onClick={() => handleToggleFamily(group.familyId)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={group.allSelected}
+                            onChange={() => handleToggleFamily(group.familyId)}
+                            onClick={e => e.stopPropagation()}
+                            className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
+                          />
+                          <span className="font-medium text-white">{group.familyName}</span>
+                          {group.hasExisting && (
+                            <span className="flex items-center gap-1 text-xs text-amber-400">
+                              <AlertTriangle className="w-3 h-3" />
+                              Invoice exists
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-sm text-zinc-400">
+                          ${group.totalAmount.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {/* Enrollments */}
+                      <div className="divide-y divide-zinc-800">
+                        {group.items.map(item => (
+                          <div
+                            key={item.enrollment.id}
+                            className={`flex items-center justify-between px-4 py-2 ${
+                              item.hasExisting ? 'opacity-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedEnrollments.has(item.enrollment.id)}
+                                onChange={() => handleToggleEnrollment(item.enrollment.id)}
+                                disabled={item.hasExisting}
+                                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-50"
+                              />
+                              <ServiceBadge code={item.enrollment.service?.code || ''} />
+                              <span className="text-sm text-zinc-300">
+                                {item.enrollment.student?.full_name}
+                              </span>
+                              {item.isEdited && (
+                                <button
+                                  onClick={() => clearOverride(item.enrollment.id)}
+                                  className="text-xs text-amber-400 hover:text-amber-300"
+                                  title="Clear custom amount"
+                                >
+                                  (edited - click to reset)
+                                </button>
+                              )}
                           </div>
                           <div className="text-right flex items-center gap-2">
                             {editingId === item.enrollment.id ? (
@@ -845,17 +1108,27 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                   </div>
                 ))}
               </div>
+              )
             )}
           </div>
 
           {/* Footer */}
           <div className="px-6 py-4 border-t border-zinc-700 bg-zinc-800/30 flex items-center justify-between">
             <div className="text-sm text-zinc-400">
-              {selectedCount > 0 && (
-                <>
-                  Will create <span className="text-white font-medium">{familyCount}</span> invoice{familyCount !== 1 ? 's' : ''} totaling{' '}
-                  <span className="text-green-400 font-medium">${totalAmount.toFixed(2)}</span>
-                </>
+              {invoiceType === 'events' ? (
+                selectedEventCount > 0 && (
+                  <>
+                    Will create <span className="text-white font-medium">{eventFamilyCount}</span> invoice{eventFamilyCount !== 1 ? 's' : ''} totaling{' '}
+                    <span className="text-green-400 font-medium">${eventTotalAmount.toFixed(2)}</span>
+                  </>
+                )
+              ) : (
+                selectedCount > 0 && (
+                  <>
+                    Will create <span className="text-white font-medium">{familyCount}</span> invoice{familyCount !== 1 ? 's' : ''} totaling{' '}
+                    <span className="text-green-400 font-medium">${totalAmount.toFixed(2)}</span>
+                  </>
+                )
               )}
             </div>
             <div className="flex items-center gap-3">
@@ -866,11 +1139,15 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 Cancel
               </button>
               <button
-                onClick={handleGenerate}
-                disabled={selectedCount === 0 || generateDrafts.isPending}
+                onClick={invoiceType === 'events' ? handleGenerateEvents : handleGenerate}
+                disabled={
+                  invoiceType === 'events'
+                    ? selectedEventCount === 0 || generateEventInvoice.isPending
+                    : selectedCount === 0 || generateDrafts.isPending
+                }
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {generateDrafts.isPending ? (
+                {(invoiceType === 'events' ? generateEventInvoice.isPending : generateDrafts.isPending) ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Generating...
@@ -878,7 +1155,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 ) : (
                   <>
                     <Check className="w-4 h-4" />
-                    Generate {familyCount} Draft{familyCount !== 1 ? 's' : ''}
+                    Generate {invoiceType === 'events' ? eventFamilyCount : familyCount} Draft{(invoiceType === 'events' ? eventFamilyCount : familyCount) !== 1 ? 's' : ''}
                   </>
                 )}
               </button>

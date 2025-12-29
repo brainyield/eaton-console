@@ -302,6 +302,7 @@ export type Database = {
           curriculum: string | null
           daily_rate: number | null
           end_date: string | null
+          event_order_id: string | null
           family_id: string
           hourly_rate_customer: number | null
           hours_per_week: number | null
@@ -327,6 +328,7 @@ export type Database = {
           curriculum?: string | null
           daily_rate?: number | null
           end_date?: string | null
+          event_order_id?: string | null
           family_id: string
           hourly_rate_customer?: number | null
           hours_per_week?: number | null
@@ -352,6 +354,7 @@ export type Database = {
           curriculum?: string | null
           daily_rate?: number | null
           end_date?: string | null
+          event_order_id?: string | null
           family_id?: string
           hourly_rate_customer?: number | null
           hours_per_week?: number | null
@@ -581,6 +584,7 @@ export type Database = {
           event_id: string | null
           family_id: string | null
           id: string
+          invoice_id: string | null
           metadata: Json | null
           paid_at: string | null
           payment_method: string
@@ -600,6 +604,7 @@ export type Database = {
           event_id?: string | null
           family_id?: string | null
           id?: string
+          invoice_id?: string | null
           metadata?: Json | null
           paid_at?: string | null
           payment_method?: string
@@ -619,6 +624,7 @@ export type Database = {
           event_id?: string | null
           family_id?: string | null
           id?: string
+          invoice_id?: string | null
           metadata?: Json | null
           paid_at?: string | null
           payment_method?: string

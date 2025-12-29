@@ -215,6 +215,7 @@ CREATE TABLE enrollments (
   class_title text,
   schedule_notes text,
   notes text,
+  event_order_id uuid REFERENCES event_orders(id), -- Links elective enrollment to event registration
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
@@ -224,6 +225,7 @@ CREATE INDEX enrollments_student_idx ON enrollments(student_id);
 CREATE INDEX enrollments_service_idx ON enrollments(service_id);
 CREATE INDEX enrollments_status_idx ON enrollments(status);
 CREATE INDEX enrollments_class_title_idx ON enrollments(class_title) WHERE class_title IS NOT NULL;
+CREATE INDEX enrollments_event_order_idx ON enrollments(event_order_id) WHERE event_order_id IS NOT NULL;
 
 -- Teacher assignments can be linked to either:
 -- 1. An enrollment (for student-specific assignments like Academic Coaching)

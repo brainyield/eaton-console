@@ -122,7 +122,7 @@ function useEvents() {
         .from('event_orders')
         .select('event_id, total_cents, payment_status')
         .in('event_id', eventIds)
-        .in('payment_status', ['paid', 'stepup_pending'])
+        .eq('payment_status', 'paid')
         .returns<OrderRow[]>()
 
       const attendeeCountMap = new Map<string, number>()
