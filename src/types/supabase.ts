@@ -372,6 +372,34 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "enrollments_event_order_id_fkey"
+            columns: ["event_order_id"]
+            isOneToOne: false
+            referencedRelation: "event_attendee_list"
+            referencedColumns: ["order_id"]
+          },
+          {
+            foreignKeyName: "enrollments_event_order_id_fkey"
+            columns: ["event_order_id"]
+            isOneToOne: false
+            referencedRelation: "event_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollments_event_order_id_fkey"
+            columns: ["event_order_id"]
+            isOneToOne: false
+            referencedRelation: "event_orders_pending_billing"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollments_event_order_id_fkey"
+            columns: ["event_order_id"]
+            isOneToOne: false
+            referencedRelation: "event_stepup_pending"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "enrollments_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
@@ -473,6 +501,13 @@ export type Database = {
             columns: ["order_id"]
             isOneToOne: false
             referencedRelation: "event_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_attendees_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "event_orders_pending_billing"
             referencedColumns: ["id"]
           },
           {
@@ -680,6 +715,20 @@ export type Database = {
             columns: ["family_id"]
             isOneToOne: false
             referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_orders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_orders_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "overdue_invoices"
             referencedColumns: ["id"]
           },
         ]
@@ -1845,6 +1894,68 @@ export type Database = {
             columns: ["student_id"]
             isOneToOne: false
             referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_orders_pending_billing: {
+        Row: {
+          created_at: string | null
+          event_date: string | null
+          event_id: string | null
+          event_title: string | null
+          event_type: string | null
+          family_id: string | null
+          family_name: string | null
+          id: string | null
+          payment_method: string | null
+          payment_status: string | null
+          purchaser_email: string | null
+          purchaser_name: string | null
+          quantity: number | null
+          total_cents: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_orders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_attendee_list"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "event_orders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_orders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_stepup_pending"
+            referencedColumns: ["event_id"]
+          },
+          {
+            foreignKeyName: "event_orders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "event_summary"
             referencedColumns: ["id"]
           },
           {
