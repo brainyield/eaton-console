@@ -8,6 +8,7 @@ import { CommandPalette } from './components/CommandPalette'
 import Invoicing from './components/Invoicing'
 import PublicInvoicePage from './components/PublicInvoicePage'
 import ActiveRoster from './components/ActiveRoster'
+import Events from './components/Events'
 import Reports from './components/Reports'
 import Settings from './components/Settings'
 
@@ -57,6 +58,11 @@ function AppContent() {
         <Route path="/roster" element={
           <Layout currentPath="/roster" onNavigate={(path) => navigate(path)}>
             <ActiveRoster />
+          </Layout>
+        } />
+        <Route path="/events" element={
+          <Layout currentPath="/events" onNavigate={(path) => navigate(path)}>
+            <Events />
           </Layout>
         } />
         <Route path="/invoicing" element={

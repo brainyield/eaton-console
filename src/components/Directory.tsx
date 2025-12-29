@@ -361,6 +361,15 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
     }
   }, [selectedFamilyId, families, externalFamily])
 
+  // Handle selection from sessionStorage (from Events page)
+  useEffect(() => {
+    const storedFamilyId = sessionStorage.getItem('selectedFamilyId')
+    if (storedFamilyId) {
+      sessionStorage.removeItem('selectedFamilyId')
+      onSelectFamily?.(storedFamilyId)
+    }
+  }, [])
+
   // Client-side search filtering
   const filteredFamilies = useMemo(() => {
     if (!searchQuery) return families

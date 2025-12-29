@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { 
-  LayoutDashboard, 
-  Users, 
-  ClipboardList, 
-  Receipt, 
+import {
+  LayoutDashboard,
+  Users,
+  ClipboardList,
+  Receipt,
   GraduationCap,
   BarChart3,
   Settings,
   Search,
-  ChevronDown
+  ChevronDown,
+  CalendarDays
 } from 'lucide-react'
 
 interface NavItem {
@@ -21,6 +22,7 @@ const navigation: NavItem[] = [
   { name: 'Command Center', icon: LayoutDashboard, href: '/' },
   { name: 'Directory', icon: Users, href: '/directory' },
   { name: 'Active Roster', icon: ClipboardList, href: '/roster' },
+  { name: 'Events', icon: CalendarDays, href: '/events' },
   { name: 'Invoicing', icon: Receipt, href: '/invoicing' },
   { name: 'Teachers', icon: GraduationCap, href: '/teachers' },
   { name: 'Reports', icon: BarChart3, href: '/reports' },
