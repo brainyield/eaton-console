@@ -1695,7 +1695,7 @@ export function useInvoiceMutations() {
       periodStart: string
       periodEnd: string
       dueDate: string
-      invoiceType: 'weekly' | 'monthly'
+      invoiceType: 'weekly' | 'monthly' | 'events'
       customAmounts?: Record<string, { quantity: number; unitPrice: number; amount: number }>
     }) => {
       // Group enrollments by family
@@ -2427,7 +2427,7 @@ function extractServiceCodeFromDescription(description: string): string | null {
 
 function calculateEnrollmentAmount(
   enrollment: BillableEnrollment,
-  _invoiceType: 'weekly' | 'monthly'
+  _invoiceType: 'weekly' | 'monthly' | 'events'
 ): number {
   const service = enrollment.service
   const billingFreq = service?.billing_frequency
@@ -2456,7 +2456,7 @@ function buildLineItemDescriptionWithQuantity(
   enrollment: BillableEnrollment,
   quantity: number,
   unitPrice: number,
-  _invoiceType: 'weekly' | 'monthly'
+  _invoiceType: 'weekly' | 'monthly' | 'events'
 ): string {
   const studentName = enrollment.student?.full_name || 'Unknown Student'
   const serviceName = enrollment.service?.name || 'Service'
