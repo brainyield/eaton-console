@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useFamilyMutations } from '../lib/hooks'
 import type { CustomerStatus } from '../lib/hooks'
+import { formatNameLastFirst } from '../lib/utils'
 
 interface AddFamilyModalProps {
   isOpen: boolean
@@ -38,10 +39,10 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess }: AddFamilyModalPro
 
     createFamily.mutate(
       {
-        display_name: formData.display_name.trim(),
+        display_name: formatNameLastFirst(formData.display_name),
         primary_email: formData.primary_email.trim() || null,
         primary_phone: formData.primary_phone.trim() || null,
-        primary_contact_name: formData.primary_contact_name.trim() || null,
+        primary_contact_name: formatNameLastFirst(formData.primary_contact_name) || null,
         status: formData.status,
         payment_gateway: formData.payment_gateway || null,
         address_line1: formData.address_line1.trim() || null,

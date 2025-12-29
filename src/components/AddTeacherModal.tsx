@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useTeacherMutations } from '../lib/hooks'
 import type { EmployeeStatus } from '../lib/hooks'
+import { formatNameLastFirst } from '../lib/utils'
 
 interface AddTeacherModalProps {
   isOpen: boolean
@@ -39,7 +40,7 @@ export function AddTeacherModal({ isOpen, onClose, onSuccess }: AddTeacherModalP
 
     createTeacher.mutate(
       {
-        display_name: formData.display_name.trim(),
+        display_name: formatNameLastFirst(formData.display_name),
         email: formData.email.trim() || null,
         phone: formData.phone.trim() || null,
         role: formData.role || null,

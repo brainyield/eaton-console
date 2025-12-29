@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { X } from 'lucide-react'
 import { useStudentMutations } from '../lib/hooks'
+import { formatNameLastFirst } from '../lib/utils'
 
 interface AddStudentModalProps {
   isOpen: boolean
@@ -41,7 +42,7 @@ export function AddStudentModal({
     createStudent.mutate(
       {
         family_id: familyId,
-        full_name: formData.full_name.trim(),
+        full_name: formatNameLastFirst(formData.full_name),
         grade_level: formData.grade_level || null,
         dob: formData.dob || null,
         age_group: formData.age_group || null,
@@ -122,7 +123,7 @@ export function AddStudentModal({
                 setFormData({ ...formData, full_name: e.target.value })
               }
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              placeholder="Full name"
+              placeholder="Last, First (e.g., Smith, Emma)"
               autoFocus
             />
           </div>

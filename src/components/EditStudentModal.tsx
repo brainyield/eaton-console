@@ -4,6 +4,7 @@ import { X, Trash2, AlertTriangle } from 'lucide-react'
 import { useStudentMutations } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import type { Student } from '../lib/hooks'
+import { formatNameLastFirst } from '../lib/utils'
 
 // Extended Student type that includes homeschool_status which may exist in DB
 interface StudentWithHomeschool extends Student {
@@ -89,7 +90,7 @@ export function EditStudentModal({
       {
         id: student.id,
         data: {
-          full_name: formData.full_name.trim(),
+          full_name: formatNameLastFirst(formData.full_name),
           grade_level: formData.grade_level || null,
           dob: formData.dob || null,
           age_group: formData.age_group || null,
@@ -206,7 +207,7 @@ export function EditStudentModal({
                 setFormData({ ...formData, full_name: e.target.value })
               }
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              placeholder="Full name"
+              placeholder="Last, First (e.g., Smith, Emma)"
             />
           </div>
 

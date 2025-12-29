@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { X, Trash2, AlertTriangle, Users, Briefcase, DollarSign, AlertCircle } from 'lucide-react'
 import { useTeacherMutations, useTeacherAssignments, useTeacherPaymentsByTeacher } from '../lib/hooks'
 import type { Teacher, EmployeeStatus } from '../lib/hooks'
+import { formatNameLastFirst } from '../lib/utils'
 
 interface EditTeacherModalProps {
   isOpen: boolean
@@ -125,7 +126,7 @@ export function EditTeacherModal({
       {
         id: teacher.id,
         data: {
-          display_name: formData.display_name.trim(),
+          display_name: formatNameLastFirst(formData.display_name),
           email: formData.email.trim() || null,
           phone: formData.phone.trim() || null,
           role: formData.role || null,

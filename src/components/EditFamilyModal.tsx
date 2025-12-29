@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { X, Trash2 } from 'lucide-react'
 import { useFamilyMutations } from '../lib/hooks'
 import type { Family, CustomerStatus } from '../lib/hooks'
+import { formatNameLastFirst } from '../lib/utils'
 
 interface EditFamilyModalProps {
   isOpen: boolean
@@ -62,10 +63,10 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
       {
         id: family.id,
         data: {
-          display_name: formData.display_name.trim(),
+          display_name: formatNameLastFirst(formData.display_name),
           primary_email: formData.primary_email.trim() || null,
           primary_phone: formData.primary_phone.trim() || null,
-          primary_contact_name: formData.primary_contact_name.trim() || null,
+          primary_contact_name: formatNameLastFirst(formData.primary_contact_name) || null,
           status: formData.status,
           payment_gateway: formData.payment_gateway || null,
           address_line1: formData.address_line1.trim() || null,
