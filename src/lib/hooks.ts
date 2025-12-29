@@ -356,7 +356,7 @@ export function useFamilies(filters?: { status?: string; search?: string }) {
         .order('display_name')
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status)
+        query = query.eq('status', filters.status as 'lead' | 'trial' | 'active' | 'paused' | 'churned')
       }
 
       if (filters?.search) {
@@ -594,7 +594,7 @@ export function useTeachers(filters?: { status?: string }) {
         .order('display_name')
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status)
+        query = query.eq('status', filters.status as 'active' | 'reserve' | 'inactive')
       }
 
       const { data, error } = await query

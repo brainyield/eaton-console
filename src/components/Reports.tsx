@@ -190,11 +190,11 @@ export default function Reports() {
       const monthlyByService: Record<string, Record<string, number>> = {}
       const allServices = new Set<string>()
 
-      records.forEach((rec: { period_start: string; revenue: number | null; service_id: string }) => {
+      records.forEach((rec: { period_start: string; revenue: number | null; service_id: string | null }) => {
         const [year, month] = rec.period_start.split('-')
         const monthKey = `${year}-${month}`
         const revenue = Number(rec.revenue) || 0
-        const serviceCode = serviceMap[rec.service_id]?.code || 'unknown'
+        const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'unknown'
         
         // Total by month
         if (!monthlyData[monthKey]) {
