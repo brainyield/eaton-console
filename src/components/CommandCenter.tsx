@@ -36,18 +36,18 @@ function useDashboardStats() {
     queryFn: async (): Promise<DashboardStats> => {
       // Fetch all stats in parallel
       const [
-        studentsResult,
+        studentsWithActiveEnrollmentsResult,
         familiesResult,
         teachersResult,
         invoicesResult,
         hubSessionsResult,
         enrollmentsResult,
       ] = await Promise.all([
-        // Active students
+        // Students with active/trial enrollments (actually receiving services)
         supabase
-          .from('students')
-          .select('id', { count: 'exact', head: true })
-          .eq('active', true),
+          .from('enrollments')
+          .select('student_id')
+          .in('status', ['active', 'trial']),
         
         // Active families
         supabase
@@ -96,6 +96,17 @@ function useDashboardStats() {
       }
       const enrollments = (enrollmentsResult.data || []) as EnrollmentData[]
 
+      // Count unique students with active/trial enrollments
+      interface StudentEnrollmentData {
+        student_id: string | null
+      }
+      const studentsWithEnrollments = (studentsWithActiveEnrollmentsResult.data || []) as StudentEnrollmentData[]
+      const uniqueActiveStudents = new Set(
+        studentsWithEnrollments
+          .map(e => e.student_id)
+          .filter((id): id is string => id !== null)
+      ).size
+
       // Calculate outstanding balance
       const outstandingBalance = invoices.reduce(
         (sum, inv) => sum + (inv.balance_due || 0), 
@@ -116,7 +127,7 @@ function useDashboardStats() {
       }, 0)
 
       return {
-        activeStudents: studentsResult.count || 0,
+        activeStudents: uniqueActiveStudents,
         activeFamilies: familiesResult.count || 0,
         activeTeachers: teachersResult.count || 0,
         outstandingBalance,
