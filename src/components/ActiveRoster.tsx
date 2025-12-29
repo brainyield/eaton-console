@@ -98,6 +98,20 @@ const STATUS_COLORS: Record<EnrollmentStatus, string> = {
   ended: 'bg-zinc-500/20 text-zinc-400',
 }
 
+// Age group sort order - maps age group strings to numeric sort values
+const AGE_GROUP_ORDER: Record<string, number> = {
+  '3-5': 1,
+  '6-8': 2,
+  '9-11': 3,
+  '12-14': 4,
+  '15-17': 5,
+}
+
+function getAgeGroupSortValue(ageGroup: string | null | undefined): number {
+  if (!ageGroup) return 999 // Push null/undefined to the end
+  return AGE_GROUP_ORDER[ageGroup] ?? 999
+}
+
 // Service icons
 const serviceIcons: Record<string, typeof BookOpen> = {
   learning_pod: Home,
@@ -310,8 +324,9 @@ export default function ActiveRoster() {
           bValue = b.class_title || 'zzz'
           break
         case 'age_group':
-          aValue = a.student?.age_group || 'zzz'
-          bValue = b.student?.age_group || 'zzz'
+          // Use numeric sort values for proper age group ordering
+          aValue = getAgeGroupSortValue(a.student?.age_group)
+          bValue = getAgeGroupSortValue(b.student?.age_group)
           break
       }
 
