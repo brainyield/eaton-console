@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { 
-  Search, 
-  Users, 
-  BookOpen, 
-  GraduationCap, 
+import {
+  Search,
+  Users,
+  BookOpen,
+  GraduationCap,
   Monitor,
   Home,
   Laptop,
@@ -17,7 +17,8 @@ import {
   Plus,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Download
 } from 'lucide-react'
 import { useEnrollments, useActiveServices } from '../lib/hooks'
 import type { Service, Enrollment } from '../lib/hooks'
@@ -30,7 +31,7 @@ import { EndEnrollmentModal } from './EndEnrollmentModal'
 
 // Types
 type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
-type SortField = 'student' | 'family' | 'teacher' | 'hours' | 'rate' | 'status'
+type SortField = 'student' | 'family' | 'teacher' | 'hours' | 'rate' | 'status' | 'grade' | 'class' | 'age_group'
 type SortDirection = 'asc' | 'desc'
 
 interface SortConfig {
@@ -42,6 +43,7 @@ interface Student {
   id: string
   full_name: string
   grade_level: string | null
+  age_group: string | null
 }
 
 interface Family {
@@ -299,6 +301,18 @@ export default function ActiveRoster() {
           aValue = a.status || ''
           bValue = b.status || ''
           break
+        case 'grade':
+          aValue = a.student?.grade_level || 'zzz'
+          bValue = b.student?.grade_level || 'zzz'
+          break
+        case 'class':
+          aValue = a.class_title || 'zzz'
+          bValue = b.class_title || 'zzz'
+          break
+        case 'age_group':
+          aValue = a.student?.age_group || 'zzz'
+          bValue = b.student?.age_group || 'zzz'
+          break
       }
 
       if (typeof aValue === 'string' && typeof bValue === 'string') {
@@ -338,6 +352,83 @@ export default function ActiveRoster() {
       return `$${enrollment.daily_rate}/day`
     }
     return ''
+  }
+
+  // Service-specific column configuration
+  type ServiceColumnConfig = {
+    showGrade?: boolean
+    showTeacher?: boolean
+    showHours?: boolean
+    showRate?: boolean
+    showClass?: boolean
+    showAgeGroup?: boolean
+  }
+
+  function getServiceColumns(serviceCode: string | undefined): ServiceColumnConfig {
+    switch (serviceCode) {
+      case 'academic_coaching':
+        return { showTeacher: true, showHours: true, showRate: true }
+      case 'eaton_online':
+        return { showGrade: true, showTeacher: true, showHours: true }
+      case 'consulting':
+        return {} // Only Student, Family, Status
+      case 'learning_pod':
+        return { showAgeGroup: true } // Student, Age Group, Family, Status
+      case 'elective_classes':
+        return { showClass: true }
+      case 'eaton_hub':
+        return {} // Only Student, Family, Status
+      default:
+        return { showTeacher: true, showHours: true, showRate: true }
+    }
+  }
+
+  // CSV Export function
+  function exportServiceToCSV(serviceName: string, serviceCode: string | undefined, enrollments: EnrollmentWithRelations[]) {
+    const columns = getServiceColumns(serviceCode)
+    const today = new Date().toISOString().split('T')[0]
+    const filename = `${serviceName.toLowerCase().replace(/\s+/g, '-')}-roster-${today}.csv`
+
+    // Build headers
+    const headers: string[] = ['Student Name', 'Grade Level', 'Family Name', 'Family Email']
+    if (columns.showAgeGroup) headers.push('Age Group')
+    if (columns.showClass) headers.push('Class')
+    if (columns.showTeacher) headers.push('Teacher')
+    if (columns.showHours) headers.push('Hrs/Week')
+    if (columns.showRate) headers.push('Rate')
+    headers.push('Status')
+
+    // Build rows
+    const rows = enrollments.map(enrollment => {
+      const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
+      const row: string[] = [
+        enrollment.student?.full_name || enrollment.family.display_name,
+        enrollment.student?.grade_level || '',
+        enrollment.family.display_name,
+        enrollment.family.primary_email || '',
+      ]
+      if (columns.showAgeGroup) row.push(enrollment.student?.age_group || '')
+      if (columns.showClass) row.push(enrollment.class_title || '')
+      if (columns.showTeacher) row.push(activeAssignment?.teacher?.display_name || 'Unassigned')
+      if (columns.showHours) row.push(activeAssignment?.hours_per_week?.toString() || '')
+      if (columns.showRate) row.push(formatRate(enrollment))
+      row.push(enrollment.status)
+      return row
+    })
+
+    // Generate CSV content
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.map(cell => `"${(cell || '').replace(/"/g, '""')}"`).join(','))
+    ].join('\n')
+
+    // Download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = filename
+    link.click()
+    URL.revokeObjectURL(link.href)
   }
 
   function handleEnrollmentClick(enrollment: EnrollmentWithRelations) {
@@ -473,11 +564,11 @@ export default function ActiveRoster() {
               <div key={groupName} className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
                 {/* Group Header */}
                 {groupBy !== 'none' && (
-                  <button
-                    onClick={() => toggleGroup(groupName)}
-                    className="w-full flex items-center justify-between px-4 py-3 bg-gray-800 hover:bg-gray-750 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
+                  <div className="flex items-center justify-between px-4 py-3 bg-gray-800">
+                    <button
+                      onClick={() => toggleGroup(groupName)}
+                      className="flex items-center gap-3 hover:bg-gray-750 transition-colors rounded -ml-2 px-2 py-1"
+                    >
                       {isExpanded ? (
                         <ChevronDown className="w-5 h-5 text-gray-400" />
                       ) : (
@@ -488,135 +579,218 @@ export default function ActiveRoster() {
                       <span className="text-sm text-gray-500">
                         ({groupEnrollments.length} enrollment{groupEnrollments.length !== 1 ? 's' : ''})
                       </span>
-                    </div>
-                  </button>
-                )}
-
-                {/* FIX #2: Sortable Table Header + Enrollments */}
-                {isExpanded && (
-                  <div>
-                    {/* Table Header with Sort Controls */}
-                    <div className="grid grid-cols-12 gap-4 px-4 py-2 bg-gray-900/50 border-b border-gray-700 text-xs text-gray-400 uppercase tracking-wider">
-                      <button 
-                        className="col-span-3 flex items-center gap-1 hover:text-white text-left"
-                        onClick={() => handleSort(groupName, 'student')}
+                    </button>
+                    {groupBy === 'service' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          const serviceCode = services.find(s => s.name === groupName)?.code
+                          exportServiceToCSV(groupName, serviceCode, sortedEnrollments)
+                        }}
+                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+                        title={`Download ${groupName} roster as CSV`}
                       >
-                        Student/Family {renderSortIcon(groupName, 'student')}
+                        <Download className="w-4 h-4" />
                       </button>
-                      {groupBy !== 'service' && (
-                        <div className="col-span-2">Service</div>
-                      )}
-                      {groupBy !== 'teacher' && (
-                        <button 
-                          className={`${groupBy === 'service' ? 'col-span-2' : 'col-span-2'} flex items-center gap-1 hover:text-white text-left`}
-                          onClick={() => handleSort(groupName, 'teacher')}
-                        >
-                          Teacher {renderSortIcon(groupName, 'teacher')}
-                        </button>
-                      )}
-                      <button 
-                        className="col-span-1 flex items-center gap-1 hover:text-white text-left"
-                        onClick={() => handleSort(groupName, 'status')}
-                      >
-                        Status {renderSortIcon(groupName, 'status')}
-                      </button>
-                      <button 
-                        className="col-span-2 flex items-center gap-1 hover:text-white text-right justify-end"
-                        onClick={() => handleSort(groupName, 'rate')}
-                      >
-                        Rate {renderSortIcon(groupName, 'rate')}
-                      </button>
-                      <button 
-                        className="col-span-1 flex items-center gap-1 hover:text-white text-right justify-end"
-                        onClick={() => handleSort(groupName, 'hours')}
-                      >
-                        Hrs/Wk {renderSortIcon(groupName, 'hours')}
-                      </button>
-                    </div>
-
-                    {/* Enrollment Rows */}
-                    <div className="divide-y divide-gray-700">
-                      {sortedEnrollments.map((enrollment) => {
-                        const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
-                        
-                        return (
-                          <div
-                            key={enrollment.id}
-                            onClick={() => handleEnrollmentClick(enrollment)}
-                            className="grid grid-cols-12 gap-4 px-4 py-3 hover:bg-gray-750 cursor-pointer transition-colors items-center"
-                          >
-                            {/* Student/Family Info */}
-                            <div className="col-span-3">
-                              <p className="font-medium text-white truncate">
-                                {enrollment.student?.full_name || enrollment.family.display_name}
-                              </p>
-                              <p className="text-sm text-gray-400 truncate">
-                                {enrollment.student ? enrollment.family.display_name : ''}
-                                {enrollment.student?.grade_level && ` • ${enrollment.student.grade_level}`}
-                              </p>
-                            </div>
-
-                            {/* Service (if not grouped by service) */}
-                            {groupBy !== 'service' && (
-                              <div className="col-span-2">
-                                <p className="text-sm text-gray-300 truncate">{enrollment.service?.name}</p>
-                                {enrollment.class_title && (
-                                  <p className="text-xs text-gray-500 truncate">{enrollment.class_title}</p>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Teacher (if not grouped by teacher) */}
-                            {groupBy !== 'teacher' && (
-                              <div className={groupBy === 'service' ? 'col-span-2' : 'col-span-2'}>
-                                {activeAssignment ? (
-                                  <div className="flex items-center gap-2 text-sm text-gray-300">
-                                    <User className="w-3 h-3 flex-shrink-0" />
-                                    <span className="truncate">{activeAssignment.teacher?.display_name}</span>
-                                  </div>
-                                ) : (
-                                  <span className="text-sm text-gray-500 italic">Unassigned</span>
-                                )}
-                              </div>
-                            )}
-
-                            {/* Status */}
-                            <div className="col-span-1">
-                              <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[enrollment.status]}`}>
-                                {enrollment.status}
-                              </span>
-                            </div>
-
-                            {/* Rate */}
-                            <div className="col-span-2 text-right">
-                              <div className="flex items-center gap-1 text-gray-300 justify-end">
-                                <DollarSign className="w-3 h-3" />
-                                <span className="text-sm">{formatRate(enrollment)}</span>
-                              </div>
-                            </div>
-
-                            {/* Hours - show from active assignment, not enrollment */}
-                            <div className="col-span-1 text-right">
-                              {(() => {
-                                // Get the active assignment's hours_per_week
-                                const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
-                                const hours = activeAssignment?.hours_per_week
-                                return hours ? (
-                                  <div className="flex items-center gap-1 text-gray-400 text-sm justify-end">
-                                    <Clock className="w-3 h-3" />
-                                    {hours}
-                                  </div>
-                                ) : (
-                                  <span className="text-gray-600">-</span>
-                                )
-                              })()}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
+                    )}
                   </div>
                 )}
+
+                {/* Service-specific Table Header + Enrollments */}
+                {isExpanded && (() => {
+                  const serviceCode = groupBy === 'service'
+                    ? services.find(s => s.name === groupName)?.code
+                    : undefined
+                  const columns = getServiceColumns(serviceCode)
+
+                  return (
+                    <div>
+                      {/* Table Header with Sort Controls */}
+                      <div className="flex items-center gap-4 px-4 py-2 bg-gray-900/50 border-b border-gray-700 text-xs text-gray-400 uppercase tracking-wider">
+                        <button
+                          className="flex-[2] flex items-center gap-1 hover:text-white text-left min-w-0"
+                          onClick={() => handleSort(groupName, 'student')}
+                        >
+                          Student {renderSortIcon(groupName, 'student')}
+                        </button>
+                        {columns.showGrade && (
+                          <button
+                            className="w-16 flex items-center gap-1 hover:text-white justify-center"
+                            onClick={() => handleSort(groupName, 'grade')}
+                          >
+                            Grade {renderSortIcon(groupName, 'grade')}
+                          </button>
+                        )}
+                        {columns.showClass && (
+                          <button
+                            className="flex-1 flex items-center gap-1 hover:text-white text-left min-w-0"
+                            onClick={() => handleSort(groupName, 'class')}
+                          >
+                            Class {renderSortIcon(groupName, 'class')}
+                          </button>
+                        )}
+                        {columns.showAgeGroup && (
+                          <button
+                            className="w-24 flex items-center gap-1 hover:text-white text-left"
+                            onClick={() => handleSort(groupName, 'age_group')}
+                          >
+                            Age Group {renderSortIcon(groupName, 'age_group')}
+                          </button>
+                        )}
+                        <button
+                          className="flex-[2] flex items-center gap-1 hover:text-white text-left min-w-0"
+                          onClick={() => handleSort(groupName, 'family')}
+                        >
+                          Family {renderSortIcon(groupName, 'family')}
+                        </button>
+                        {groupBy !== 'service' && (
+                          <div className="flex-1 min-w-0">Service</div>
+                        )}
+                        {columns.showTeacher && groupBy !== 'teacher' && (
+                          <button
+                            className="flex-1 flex items-center gap-1 hover:text-white text-left min-w-0"
+                            onClick={() => handleSort(groupName, 'teacher')}
+                          >
+                            Teacher {renderSortIcon(groupName, 'teacher')}
+                          </button>
+                        )}
+                        {columns.showHours && (
+                          <button
+                            className="w-16 flex items-center gap-1 hover:text-white text-right justify-end"
+                            onClick={() => handleSort(groupName, 'hours')}
+                          >
+                            Hrs/Wk {renderSortIcon(groupName, 'hours')}
+                          </button>
+                        )}
+                        {columns.showRate && (
+                          <button
+                            className="w-24 flex items-center gap-1 hover:text-white text-right justify-end"
+                            onClick={() => handleSort(groupName, 'rate')}
+                          >
+                            Rate {renderSortIcon(groupName, 'rate')}
+                          </button>
+                        )}
+                        <button
+                          className="w-20 flex items-center gap-1 hover:text-white text-left"
+                          onClick={() => handleSort(groupName, 'status')}
+                        >
+                          Status {renderSortIcon(groupName, 'status')}
+                        </button>
+                      </div>
+
+                      {/* Enrollment Rows */}
+                      <div className="divide-y divide-gray-700">
+                        {sortedEnrollments.map((enrollment) => {
+                          const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
+
+                          return (
+                            <div
+                              key={enrollment.id}
+                              onClick={() => handleEnrollmentClick(enrollment)}
+                              className="flex items-center gap-4 px-4 py-3 hover:bg-gray-750 cursor-pointer transition-colors"
+                            >
+                              {/* Student Name */}
+                              <div className="flex-[2] min-w-0">
+                                <p className="font-medium text-white truncate">
+                                  {enrollment.student?.full_name || enrollment.family.display_name}
+                                </p>
+                              </div>
+
+                              {/* Grade (for Eaton Online) */}
+                              {columns.showGrade && (
+                                <div className="w-16 text-center">
+                                  <span className="text-sm text-gray-300">
+                                    {enrollment.student?.grade_level || '-'}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Class (for Elective Classes) */}
+                              {columns.showClass && (
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-gray-300 truncate">
+                                    {enrollment.class_title || '-'}
+                                  </p>
+                                </div>
+                              )}
+
+                              {/* Age Group (for Learning Pod) */}
+                              {columns.showAgeGroup && (
+                                <div className="w-24">
+                                  <span className="text-sm text-gray-300">
+                                    {enrollment.student?.age_group || '-'}
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Family */}
+                              <div className="flex-[2] min-w-0">
+                                <p className="text-sm text-gray-300 truncate">
+                                  {enrollment.family.display_name}
+                                </p>
+                              </div>
+
+                              {/* Service (if not grouped by service) */}
+                              {groupBy !== 'service' && (
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm text-gray-300 truncate">{enrollment.service?.name}</p>
+                                  {enrollment.class_title && (
+                                    <p className="text-xs text-gray-500 truncate">{enrollment.class_title}</p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Teacher */}
+                              {columns.showTeacher && groupBy !== 'teacher' && (
+                                <div className="flex-1 min-w-0">
+                                  {activeAssignment ? (
+                                    <div className="flex items-center gap-2 text-sm text-gray-300">
+                                      <User className="w-3 h-3 flex-shrink-0" />
+                                      <span className="truncate">{activeAssignment.teacher?.display_name}</span>
+                                    </div>
+                                  ) : (
+                                    <span className="text-sm text-gray-500 italic">Unassigned</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Hours */}
+                              {columns.showHours && (
+                                <div className="w-16 text-right">
+                                  {activeAssignment?.hours_per_week ? (
+                                    <div className="flex items-center gap-1 text-gray-400 text-sm justify-end">
+                                      <Clock className="w-3 h-3" />
+                                      {activeAssignment.hours_per_week}
+                                    </div>
+                                  ) : (
+                                    <span className="text-gray-600">-</span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Rate */}
+                              {columns.showRate && (
+                                <div className="w-24 text-right">
+                                  <div className="flex items-center gap-1 text-gray-300 justify-end">
+                                    <DollarSign className="w-3 h-3" />
+                                    <span className="text-sm">{formatRate(enrollment)}</span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Status */}
+                              <div className="w-20">
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[enrollment.status]}`}>
+                                  {enrollment.status}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             )
           })}
