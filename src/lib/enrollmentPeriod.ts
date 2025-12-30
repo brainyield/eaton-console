@@ -1,10 +1,9 @@
 import type { ServiceCode } from '../types/database'
 
+export type { ServiceCode }
+
 // Service codes that use semester format (Fall/Spring/Summer YYYY)
 const SEMESTER_SERVICES: ServiceCode[] = ['learning_pod', 'elective_classes']
-
-// Service codes that use school year format (YYYY-YYYY)
-const SCHOOL_YEAR_SERVICES: ServiceCode[] = ['academic_coaching', 'eaton_online', 'consulting', 'eaton_hub']
 
 export type PeriodType = 'semester' | 'school_year'
 

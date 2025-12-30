@@ -302,6 +302,7 @@ export type Database = {
           curriculum: string | null
           daily_rate: number | null
           end_date: string | null
+          enrollment_period: string | null
           event_order_id: string | null
           family_id: string
           hourly_rate_customer: number | null
@@ -328,6 +329,7 @@ export type Database = {
           curriculum?: string | null
           daily_rate?: number | null
           end_date?: string | null
+          enrollment_period?: string | null
           event_order_id?: string | null
           family_id: string
           hourly_rate_customer?: number | null
@@ -354,6 +356,7 @@ export type Database = {
           curriculum?: string | null
           daily_rate?: number | null
           end_date?: string | null
+          enrollment_period?: string | null
           event_order_id?: string | null
           family_id?: string
           hourly_rate_customer?: number | null

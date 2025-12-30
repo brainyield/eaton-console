@@ -82,6 +82,7 @@ export interface Enrollment {
   status: EnrollmentStatus
   start_date: string | null
   end_date: string | null
+  enrollment_period: string | null
   annual_fee: number | null
   monthly_rate: number | null
   weekly_tuition: number | null
