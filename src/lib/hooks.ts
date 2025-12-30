@@ -486,6 +486,25 @@ export function useStudentMutations() {
 
   const createStudent = useMutation({
     mutationFn: async (data: Partial<Student>) => {
+      // Check for duplicate student name within the same family
+      if (data.family_id && data.full_name) {
+        const normalizedName = data.full_name.trim().toLowerCase()
+        const { data: existingStudents, error: checkError } = await supabase
+          .from('students')
+          .select('id, full_name')
+          .eq('family_id', data.family_id)
+
+        if (checkError) throw checkError
+
+        const duplicate = existingStudents?.find(
+          (s: any) => s.full_name.trim().toLowerCase() === normalizedName
+        )
+
+        if (duplicate) {
+          throw new Error(`A student named "${duplicate.full_name}" already exists in this family. Please use a different name or edit the existing student.`)
+        }
+      }
+
       const { data: student, error } = await (supabase.from('students') as any)
         .insert(data)
         .select()
