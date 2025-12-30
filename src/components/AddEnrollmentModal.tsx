@@ -165,7 +165,7 @@ export function AddEnrollmentModal({
   // Eaton Online: weekly tuition + hours/week + number of weeks
   const showEatonOnlineFields = selectedService?.code === 'eaton_online';
   
-  // Learning Pod: monthly rate + daily rate
+  // Learning Pod: daily rate (per session)
   const showLearningPodFields = selectedService?.code === 'learning_pod';
   
   // Monthly services: monthly rate only
@@ -195,7 +195,11 @@ export function AddEnrollmentModal({
       return `$${weekly.toFixed(2)}/week`;
     }
     
-    if ((code === 'learning_pod' || code === 'consulting' || code === 'elective_classes') && formData.monthly_rate) {
+    if (code === 'learning_pod' && formData.daily_rate) {
+      return `$${parseFloat(formData.daily_rate).toFixed(2)}/session`;
+    }
+
+    if ((code === 'consulting' || code === 'elective_classes') && formData.monthly_rate) {
       return `$${parseFloat(formData.monthly_rate).toFixed(2)}/month`;
     }
     
@@ -249,7 +253,7 @@ export function AddEnrollmentModal({
           updates.hours_per_week = '15';
           break;
         case 'learning_pod':
-          updates.monthly_rate = '400';
+          // Default to $100/session (students over 5), can be changed to $75 for 5 and under
           updates.daily_rate = '100';
           break;
         case 'elective_classes':
@@ -653,41 +657,23 @@ export function AddEnrollmentModal({
                   </>
                 )}
 
-                {/* Learning Pod: monthly rate + daily rate */}
+                {/* Learning Pod: per-session rate */}
                 {showLearningPodFields && (
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Monthly Rate ($)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        name="monthly_rate"
-                        value={formData.monthly_rate}
-                        onChange={handleChange}
-                        placeholder="400.00"
-                        className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Age 5 & under: $300 | Age 6+: $400</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-300 mb-2">
-                        Daily Rate ($)
-                      </label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        name="daily_rate"
-                        value={formData.daily_rate}
-                        onChange={handleChange}
-                        placeholder="100.00"
-                        className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Age 5 & under: $75 | Age 6+: $100</p>
-                    </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Rate per Session ($)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      name="daily_rate"
+                      value={formData.daily_rate}
+                      onChange={handleChange}
+                      placeholder="100.00"
+                      className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Age 5 & under: $75 | Age 6+: $100</p>
                   </div>
                 )}
 

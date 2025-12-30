@@ -384,13 +384,13 @@ export default function ActiveRoster() {
       case 'academic_coaching':
         return { showTeacher: true, showHours: true, showRate: true }
       case 'eaton_online':
-        return { showGrade: true, showTeacher: true, showHours: true }
+        return { showGrade: true, showTeacher: true, showHours: true, showRate: true }
       case 'consulting':
-        return {} // Only Student, Family, Status
+        return { showRate: true }
       case 'learning_pod':
-        return { showAgeGroup: true } // Student, Age Group, Family, Status
+        return { showAgeGroup: true, showRate: true }
       case 'elective_classes':
-        return { showClass: true }
+        return { showClass: true, showRate: true }
       case 'eaton_hub':
         return {} // Only Student, Family, Status
       default:

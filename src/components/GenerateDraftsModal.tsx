@@ -99,11 +99,11 @@ function getBaseValues(enrollment: BillableEnrollment): { quantity: number; unit
     }
   }
 
-  // Learning Pod: use monthly_rate but allow session multiplier
+  // Learning Pod: use daily_rate (per session)
   if (serviceCode === 'learning_pod') {
     return {
       quantity: 1,
-      unitPrice: enrollment.monthly_rate || 0,
+      unitPrice: enrollment.daily_rate || 0,
     }
   }
 
