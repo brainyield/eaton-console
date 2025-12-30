@@ -5,6 +5,7 @@ import type { Family, Student, CustomerStatus, EnrollmentStatus, InvoiceStatus }
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
+import { calculateAge } from '../lib/utils'
 
 interface FamilyWithStudents extends Family {
   students: Student[]
@@ -247,9 +248,11 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                           </div>
                           <div>
                             <div className="text-sm font-medium text-white">{student.full_name}</div>
-                            <div className="text-xs text-zinc-400">
-                              {[student.grade_level, student.age_group].filter(Boolean).join(' • ') || 'No grade info'}
-                            </div>
+                            {calculateAge(student.dob) !== null && (
+                              <div className="text-xs text-zinc-400">
+                                {calculateAge(student.dob)} years old
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex items-center gap-2">

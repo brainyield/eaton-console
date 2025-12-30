@@ -39,3 +39,28 @@ export function formatNameLastFirst(name: string | null | undefined): string {
 
   return `${lastName}, ${firstNames}`;
 }
+
+/**
+ * Calculates age from a date of birth string.
+ * Returns null if the DOB is not provided or invalid.
+ *
+ * @param dob - Date of birth in ISO format (YYYY-MM-DD) or other parseable date string
+ * @returns Age in years, or null if DOB is not available
+ */
+export function calculateAge(dob: string | null | undefined): number | null {
+  if (!dob) return null;
+
+  const birthDate = new Date(dob);
+  if (isNaN(birthDate.getTime())) return null;
+
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+
+  // Adjust age if birthday hasn't occurred yet this year
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+
+  return age >= 0 ? age : null;
+}
