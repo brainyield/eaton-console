@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, Clock, ExternalLink, Send, Bell, CheckCircle, AlertCircle } from 'lucide-react'
-import { useEnrollmentsByFamily, useInvoicesByFamily, useInvoiceEmailsByFamily } from '../lib/hooks'
+import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, ExternalLink } from 'lucide-react'
+import { useEnrollmentsByFamily, useInvoicesByFamily } from '../lib/hooks'
 import type { Family, Student, CustomerStatus, EnrollmentStatus, InvoiceStatus } from '../types/database'
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
+import { EmailHistory } from './email'
 import { calculateAge } from '../lib/utils'
 
 interface FamilyWithStudents extends Family {
@@ -41,13 +42,6 @@ const INVOICE_STATUS_COLORS: Record<InvoiceStatus, string> = {
   void: 'bg-zinc-500/20 text-zinc-500 line-through',
 }
 
-const EMAIL_TYPE_CONFIG: Record<string, { color: string; icon: any; label: string }> = {
-  invoice: { color: 'bg-blue-900 text-blue-300', icon: Send, label: 'Invoice Sent' },
-  reminder_7_day: { color: 'bg-sky-900 text-sky-300', icon: Clock, label: 'Friendly Reminder' },
-  reminder_14_day: { color: 'bg-amber-900 text-amber-300', icon: Bell, label: 'Past Due Reminder' },
-  reminder_overdue: { color: 'bg-red-900 text-red-300', icon: AlertCircle, label: 'Urgent Reminder' },
-  payment_received: { color: 'bg-green-900 text-green-300', icon: CheckCircle, label: 'Payment Received' },
-}
 
 export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'enrollments' | 'invoices' | 'history'>('overview')
@@ -70,12 +64,6 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
     data: invoices = [],
     isLoading: loadingInvoices
   } = useInvoicesByFamily(family.id)
-
-  // React Query - fetch email history for this family
-  const {
-    data: emailHistory = [],
-    isLoading: loadingEmails
-  } = useInvoiceEmailsByFamily(family.id)
 
   // Reset selected student when family changes
   useEffect(() => {
@@ -462,56 +450,10 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
           )}
 
           {activeTab === 'history' && (
-            <div className="space-y-3">
-              {loadingEmails ? (
-                <div className="text-sm text-zinc-400 text-center py-8">Loading history...</div>
-              ) : emailHistory.length === 0 ? (
-                <div className="text-sm text-zinc-400 text-center py-8">No communication history</div>
-              ) : (
-                emailHistory.map((email: any) => {
-                  const config = EMAIL_TYPE_CONFIG[email.email_type] || {
-                    color: 'bg-zinc-700 text-zinc-300',
-                    icon: Mail,
-                    label: email.email_type
-                  }
-                  const EmailIcon = config.icon
-                  const sentDate = new Date(email.sent_at)
-                  const now = new Date()
-                  const diffDays = Math.floor((now.getTime() - sentDate.getTime()) / (1000 * 60 * 60 * 24))
-                  
-                  let timeDisplay = ''
-                  if (diffDays === 0) timeDisplay = 'Today'
-                  else if (diffDays === 1) timeDisplay = 'Yesterday'
-                  else if (diffDays < 7) timeDisplay = `${diffDays} days ago`
-                  else timeDisplay = sentDate.toLocaleDateString()
-                  
-                  return (
-                    <div
-                      key={email.id}
-                      className="p-4 bg-zinc-800 rounded-lg"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg ${config.color}`}>
-                          <EmailIcon className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-white">{config.label}</span>
-                            <span className="text-xs text-zinc-500">{timeDisplay}</span>
-                          </div>
-                          <div className="text-xs text-zinc-400 truncate">
-                            {email.subject || `Invoice ${email.invoice_number}`}
-                          </div>
-                          <div className="text-xs text-zinc-500 mt-1">
-                            To: {email.sent_to}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-            </div>
+            <EmailHistory
+              email={family.primary_email}
+              familyId={family.id}
+            />
           )}
         </div>
       </div>

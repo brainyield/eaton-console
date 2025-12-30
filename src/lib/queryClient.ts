@@ -125,4 +125,11 @@ export const queryKeys = {
     dashboard: () => ['stats', 'dashboard'] as const,
     roster: () => ['stats', 'roster'] as const,
   },
+
+  // Gmail
+  gmail: {
+    all: ['gmail'] as const,
+    search: (email: string) => ['gmail', 'search', email] as const,
+    thread: (threadId: string) => ['gmail', 'thread', threadId] as const,
+  },
 }

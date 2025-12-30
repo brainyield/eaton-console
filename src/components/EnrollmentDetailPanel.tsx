@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { 
-  X, 
-  Mail, 
-  Phone, 
-  Calendar, 
-  Clock,  
-  User, 
+import {
+  X,
+  Mail,
+  Phone,
+  Clock,
+  User,
   Users,
   GraduationCap,
   BookOpen,
@@ -16,6 +15,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useTeacherAssignmentsByEnrollment } from '../lib/hooks';
+import { EmailHistory } from './email';
 
 // Types
 type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended';
@@ -532,13 +532,10 @@ export function EnrollmentDetailPanel({
           )}
 
           {activeTab === 'history' && (
-            <div className="text-center py-12">
-              <Calendar className="w-12 h-12 text-gray-600 mx-auto mb-3" />
-              <p className="text-gray-400">Activity history coming soon</p>
-              <p className="text-gray-500 text-sm mt-2">
-                Invoice history, payments, and changes will appear here
-              </p>
-            </div>
+            <EmailHistory
+              email={enrollment.family.primary_email}
+              familyId={enrollment.family_id}
+            />
           )}
         </div>
       </div>

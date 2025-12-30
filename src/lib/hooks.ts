@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
+import { searchGmail, getGmailThread, sendGmail } from './gmail'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -2677,4 +2678,49 @@ export function formatDateRange(start: string, end: string): string {
 
 export function formatMonthYear(date: Date): string {
   return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+// =============================================================================
+// GMAIL HOOKS
+// =============================================================================
+
+/**
+ * Search Gmail for emails to/from a specific email address
+ */
+export function useGmailSearch(email: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.gmail.search(email || ''),
+    queryFn: () => searchGmail(email!),
+    enabled: !!email,
+    staleTime: 1000 * 60 * 2, // 2 minutes
+  })
+}
+
+/**
+ * Fetch full email thread with message bodies
+ */
+export function useGmailThread(threadId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.gmail.thread(threadId || ''),
+    queryFn: () => getGmailThread(threadId!),
+    enabled: !!threadId,
+  })
+}
+
+/**
+ * Send a new email or reply to an existing thread
+ */
+export function useGmailSend() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: sendGmail,
+    onSuccess: (_, variables) => {
+      // Invalidate the search for the recipient's email
+      queryClient.invalidateQueries({ queryKey: queryKeys.gmail.search(variables.to) })
+      // If this was a reply, also invalidate the thread
+      if (variables.threadId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.gmail.thread(variables.threadId) })
+      }
+    },
+  })
 }
