@@ -42,6 +42,7 @@ function useDashboardStats() {
         invoicesResult,
         hubSessionsResult,
         enrollmentsResult,
+        stepUpPendingResult,
       ] = await Promise.all([
         // Students with active/trial enrollments (actually receiving services)
         supabase
@@ -73,11 +74,16 @@ function useDashboardStats() {
           .select('id', { count: 'exact', head: true })
           .is('invoice_line_item_id', null),
         
-        // Active enrollments for MRR calculation
+        // Active enrollments for MRR calculation (with service code)
         supabase
           .from('enrollments')
-          .select('monthly_rate, weekly_tuition, hourly_rate_customer, hours_per_week')
+          .select('monthly_rate, weekly_tuition, hourly_rate_customer, hours_per_week, daily_rate, service:services(code)')
           .eq('status', 'active'),
+
+        // Pending Step Up event orders for MRR
+        supabase
+          .from('event_stepup_pending')
+          .select('total_cents'),
       ])
 
       // Type the invoice data
@@ -93,8 +99,16 @@ function useDashboardStats() {
         weekly_tuition: number | null
         hourly_rate_customer: number | null
         hours_per_week: number | null
+        daily_rate: number | null
+        service: { code: string } | null
       }
       const enrollments = (enrollmentsResult.data || []) as EnrollmentData[]
+
+      // Type the Step Up pending data
+      interface StepUpPendingData {
+        total_cents: number | null
+      }
+      const stepUpPending = (stepUpPendingResult.data || []) as StepUpPendingData[]
 
       // Count unique students with active/trial enrollments
       interface StudentEnrollmentData {
@@ -116,15 +130,39 @@ function useDashboardStats() {
       // Count overdue invoices
       const overdueInvoices = invoices.filter(inv => inv.status === 'overdue').length
 
-      // Calculate rough MRR from active enrollments
-      const totalMRR = enrollments.reduce((sum, e) => {
-        if (e.monthly_rate) return sum + e.monthly_rate
-        if (e.weekly_tuition) return sum + (e.weekly_tuition * 4)
-        if (e.hourly_rate_customer && e.hours_per_week) {
-          return sum + (e.hourly_rate_customer * e.hours_per_week * 4)
+      // Calculate MRR from active enrollments based on service type
+      const enrollmentMRR = enrollments.reduce((sum, e) => {
+        const serviceCode = e.service?.code
+
+        // Learning Pod: daily_rate × 4 sessions
+        if (serviceCode === 'learning_pod') {
+          return sum + (e.daily_rate || 0) * 4
         }
+
+        // Academic Coaching: hourly_rate × hours_per_week × 4 weeks
+        if (serviceCode === 'academic_coaching') {
+          return sum + (e.hourly_rate_customer || 0) * (e.hours_per_week || 0) * 4
+        }
+
+        // Eaton Online: weekly_tuition × 4 weeks
+        if (serviceCode === 'eaton_online') {
+          return sum + (e.weekly_tuition || 0) * 4
+        }
+
+        // Everything else: use monthly_rate if set
+        if (e.monthly_rate) {
+          return sum + e.monthly_rate
+        }
+
         return sum
       }, 0)
+
+      // Add pending Step Up event orders (convert cents to dollars)
+      const stepUpMRR = stepUpPending.reduce((sum, order) => {
+        return sum + (order.total_cents || 0) / 100
+      }, 0)
+
+      const totalMRR = enrollmentMRR + stepUpMRR
 
       return {
         activeStudents: uniqueActiveStudents,
