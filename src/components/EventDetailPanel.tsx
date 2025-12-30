@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { formatNameLastFirst } from '../lib/utils'
 import {
   X,
   Calendar,
@@ -140,12 +141,12 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
       let aVal: string, bVal: string
       switch (sortConfig.field) {
         case 'attendee_name':
-          aVal = a.attendee_name.toLowerCase()
-          bVal = b.attendee_name.toLowerCase()
+          aVal = formatNameLastFirst(a.attendee_name).toLowerCase()
+          bVal = formatNameLastFirst(b.attendee_name).toLowerCase()
           break
         case 'purchaser_name':
-          aVal = a.purchaser_name?.toLowerCase() || ''
-          bVal = b.purchaser_name?.toLowerCase() || ''
+          aVal = formatNameLastFirst(a.purchaser_name).toLowerCase()
+          bVal = formatNameLastFirst(b.purchaser_name).toLowerCase()
           break
         case 'payment_status':
           aVal = a.payment_status
@@ -348,14 +349,14 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               <div key={attendee.id} className="px-6 py-3 hover:bg-zinc-800/50 grid grid-cols-3 gap-2 items-start">
                 <div>
                   <div className="text-sm font-medium text-white">
-                    {attendee.attendee_name}
+                    {formatNameLastFirst(attendee.attendee_name)}
                   </div>
                   {attendee.attendee_age && (
                     <span className="text-xs text-zinc-500">Age {attendee.attendee_age}</span>
                   )}
                   {attendee.purchaser_name && attendee.purchaser_name !== attendee.attendee_name && (
                     <div className="text-xs text-zinc-500 mt-0.5">
-                      by {attendee.purchaser_name}
+                      by {formatNameLastFirst(attendee.purchaser_name)}
                     </div>
                   )}
                 </div>

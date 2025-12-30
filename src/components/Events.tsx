@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { formatNameLastFirst } from '../lib/utils'
 import {
   Search,
   ChevronUp,
@@ -284,8 +285,8 @@ export default function Events({ onSelectFamily }: EventsProps) {
       let aVal: any, bVal: any
       switch (attendeeSortConfig.field) {
         case 'attendee_name':
-          aVal = a.attendee_name.toLowerCase()
-          bVal = b.attendee_name.toLowerCase()
+          aVal = formatNameLastFirst(a.attendee_name).toLowerCase()
+          bVal = formatNameLastFirst(b.attendee_name).toLowerCase()
           break
         case 'event_title':
           aVal = a.event_title.toLowerCase()
@@ -296,8 +297,8 @@ export default function Events({ onSelectFamily }: EventsProps) {
           bVal = b.event_date || ''
           break
         case 'purchaser_name':
-          aVal = a.purchaser_name?.toLowerCase() || ''
-          bVal = b.purchaser_name?.toLowerCase() || ''
+          aVal = formatNameLastFirst(a.purchaser_name).toLowerCase()
+          bVal = formatNameLastFirst(b.purchaser_name).toLowerCase()
           break
         case 'payment_status':
           aVal = a.payment_status
@@ -651,7 +652,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
                   {filteredAttendees.map((attendee) => (
                     <tr key={attendee.id} className="hover:bg-zinc-800/50">
                       <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-white">{attendee.attendee_name}</div>
+                        <div className="text-sm font-medium text-white">{formatNameLastFirst(attendee.attendee_name)}</div>
                         {attendee.attendee_age && (
                           <div className="text-xs text-zinc-500">Age {attendee.attendee_age}</div>
                         )}
@@ -663,7 +664,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
                         <div className="text-sm text-zinc-300">{formatDate(attendee.event_date)}</div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="text-sm text-zinc-300">{attendee.purchaser_name || '—'}</div>
+                        <div className="text-sm text-zinc-300">{attendee.purchaser_name ? formatNameLastFirst(attendee.purchaser_name) : '—'}</div>
                         <div className="text-xs text-zinc-500">{attendee.purchaser_email || ''}</div>
                       </td>
                       <td className="px-4 py-3">
