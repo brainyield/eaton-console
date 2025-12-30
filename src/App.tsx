@@ -6,6 +6,7 @@ import Teachers from './components/Teachers'
 import CommandCenter from './components/CommandCenter'
 import { CommandPalette } from './components/CommandPalette'
 import Invoicing from './components/Invoicing'
+import Payroll from './components/Payroll'
 import PublicInvoicePage from './components/PublicInvoicePage'
 import ActiveRoster from './components/ActiveRoster'
 import Events from './components/Events'
@@ -68,6 +69,11 @@ function AppContent() {
         <Route path="/invoicing" element={
           <Layout currentPath="/invoicing" onNavigate={(path) => navigate(path)}>
             <Invoicing />
+          </Layout>
+        } />
+        <Route path="/payroll" element={
+          <Layout currentPath="/payroll" onNavigate={(path) => navigate(path)}>
+            <Payroll />
           </Layout>
         } />
         <Route path="/teachers" element={

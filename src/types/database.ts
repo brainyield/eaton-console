@@ -4,6 +4,8 @@ export type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
 export type EmployeeStatus = 'active' | 'reserve' | 'inactive'
 export type BillingFrequency = 'per_session' | 'weekly' | 'monthly' | 'bi_monthly' | 'annual' | 'one_time'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'partial' | 'overdue' | 'void'
+export type PayrollRunStatus = 'draft' | 'review' | 'approved' | 'paid'
+export type RateSource = 'assignment' | 'service' | 'teacher'
 export type CommChannel = 'email' | 'sms' | 'call' | 'in_person' | 'other'
 export type CommDirection = 'inbound' | 'outbound'
 export type WorkflowStatus = 'queued' | 'running' | 'success' | 'error'
@@ -239,6 +241,56 @@ export interface TeacherPaymentLineItem {
   created_at: string
 }
 
+// Payroll Run - the pay period batch (parent)
+export interface PayrollRun {
+  id: string
+  period_start: string
+  period_end: string
+  status: PayrollRunStatus
+  total_calculated: number
+  total_adjusted: number
+  total_hours: number
+  teacher_count: number
+  approved_by: string | null
+  approved_at: string | null
+  paid_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Payroll Line Item - per-teacher/assignment pay details (child)
+export interface PayrollLineItem {
+  id: string
+  payroll_run_id: string
+  teacher_id: string
+  teacher_assignment_id: string | null
+  enrollment_id: string | null
+  service_id: string | null
+  description: string
+  calculated_hours: number
+  actual_hours: number
+  hourly_rate: number
+  rate_source: RateSource
+  calculated_amount: number
+  adjustment_amount: number
+  final_amount: number
+  adjustment_note: string | null
+  created_at: string
+}
+
+// Payroll Adjustment - carry-forward corrections between periods
+export interface PayrollAdjustment {
+  id: string
+  teacher_id: string
+  source_payroll_run_id: string | null
+  target_payroll_run_id: string | null
+  amount: number
+  reason: string
+  created_by: string | null
+  created_at: string
+}
+
 export interface EmailTemplate {
   id: string
   template_key: string
@@ -312,12 +364,27 @@ export interface EnrollmentWithDetails extends Enrollment {
 }
 
 export interface TeacherWithAssignments extends Teacher {
-  teacher_assignments: (TeacherAssignment & { 
-    enrollment: Enrollment & { 
+  teacher_assignments: (TeacherAssignment & {
+    enrollment: Enrollment & {
       student: Student | null
-      service: Service 
+      service: Service
     }
   })[]
+}
+
+// Payroll extended types
+export interface PayrollLineItemWithDetails extends PayrollLineItem {
+  teacher: Teacher
+  service?: Service
+  enrollment?: Enrollment & { student: Student | null }
+}
+
+export interface PayrollRunWithDetails extends PayrollRun {
+  line_items: PayrollLineItemWithDetails[]
+}
+
+export interface PayrollAdjustmentWithTeacher extends PayrollAdjustment {
+  teacher: Teacher
 }
 
 // View types

@@ -132,4 +132,19 @@ export const queryKeys = {
     search: (email: string) => ['gmail', 'search', email] as const,
     thread: (threadId: string) => ['gmail', 'thread', threadId] as const,
   },
+
+  // Payroll
+  payroll: {
+    all: ['payroll'] as const,
+    runs: (filters?: { status?: string }) =>
+      ['payroll', 'runs', filters] as const,
+    runDetail: (id: string) => ['payroll', 'run', id] as const,
+    runWithItems: (id: string) => ['payroll', 'run', id, 'items'] as const,
+    lineItems: (runId: string) => ['payroll', 'lineItems', runId] as const,
+    byTeacher: (teacherId: string) => ['payroll', 'teacher', teacherId] as const,
+    pendingAdjustments: (teacherId?: string) =>
+      teacherId
+        ? ['payroll', 'adjustments', 'pending', teacherId] as const
+        : ['payroll', 'adjustments', 'pending'] as const,
+  },
 }

@@ -2758,3 +2758,618 @@ export function useGmailSend() {
     },
   })
 }
+
+// =============================================================================
+// PAYROLL TYPES
+// =============================================================================
+
+export type PayrollRunStatus = 'draft' | 'review' | 'approved' | 'paid'
+export type RateSource = 'assignment' | 'service' | 'teacher'
+
+export interface PayrollRun {
+  id: string
+  period_start: string
+  period_end: string
+  status: PayrollRunStatus
+  total_calculated: number
+  total_adjusted: number
+  total_hours: number
+  teacher_count: number
+  approved_by: string | null
+  approved_at: string | null
+  paid_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PayrollLineItem {
+  id: string
+  payroll_run_id: string
+  teacher_id: string
+  teacher_assignment_id: string | null
+  enrollment_id: string | null
+  service_id: string | null
+  description: string
+  calculated_hours: number
+  actual_hours: number
+  hourly_rate: number
+  rate_source: RateSource
+  calculated_amount: number
+  adjustment_amount: number
+  final_amount: number
+  adjustment_note: string | null
+  created_at: string
+}
+
+export interface PayrollAdjustment {
+  id: string
+  teacher_id: string
+  source_payroll_run_id: string | null
+  target_payroll_run_id: string | null
+  amount: number
+  reason: string
+  created_by: string | null
+  created_at: string
+}
+
+export interface PayrollLineItemWithDetails extends PayrollLineItem {
+  teacher: Teacher
+  service?: Service
+  enrollment?: Enrollment & { student: Student | null }
+}
+
+export interface PayrollRunWithDetails extends PayrollRun {
+  line_items: PayrollLineItemWithDetails[]
+}
+
+export interface PayrollAdjustmentWithTeacher extends PayrollAdjustment {
+  teacher: Teacher
+}
+
+// =============================================================================
+// PAYROLL HELPER FUNCTIONS
+// =============================================================================
+
+/**
+ * Calculate hours for a pay period with proration for mid-period start/end
+ */
+function calculatePeriodHours(
+  hoursPerWeek: number | null,
+  periodStart: string,
+  periodEnd: string,
+  assignmentStart: string | null,
+  assignmentEnd: string | null
+): { hours: number; isVariable: boolean } {
+  if (hoursPerWeek === null) {
+    return { hours: 0, isVariable: true }
+  }
+
+  const pStart = new Date(periodStart)
+  const pEnd = new Date(periodEnd)
+  const aStart = assignmentStart ? new Date(assignmentStart) : null
+  const aEnd = assignmentEnd ? new Date(assignmentEnd) : null
+
+  // Calculate effective overlap period
+  const effectiveStart = aStart && aStart > pStart ? aStart : pStart
+  const effectiveEnd = aEnd && aEnd < pEnd ? aEnd : pEnd
+
+  // If assignment doesn't overlap with period
+  if (effectiveStart > effectiveEnd) {
+    return { hours: 0, isVariable: false }
+  }
+
+  // Calculate days in effective period (inclusive)
+  const activeDays = Math.floor((effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+
+  // Prorate: (hours_per_week / 7) * activeDays
+  const dailyHours = hoursPerWeek / 7
+  const periodHours = dailyHours * activeDays
+
+  // Round to 2 decimal places
+  return {
+    hours: Math.round(periodHours * 100) / 100,
+    isVariable: false,
+  }
+}
+
+/**
+ * Resolve hourly rate from hierarchy: assignment -> service -> teacher default
+ */
+function resolveHourlyRate(assignment: {
+  hourly_rate_teacher: number | null
+  enrollment?: { service?: Service | null } | null
+  service?: Service | null
+  teacher?: Teacher | null
+}): { rate: number; source: RateSource } {
+  // 1. Check assignment rate
+  if (assignment.hourly_rate_teacher && assignment.hourly_rate_teacher > 0) {
+    return { rate: assignment.hourly_rate_teacher, source: 'assignment' }
+  }
+
+  // 2. Check service default rate
+  const service = assignment.enrollment?.service || assignment.service
+  if (service?.default_teacher_rate && service.default_teacher_rate > 0) {
+    return { rate: service.default_teacher_rate, source: 'service' }
+  }
+
+  // 3. Fall back to teacher default
+  if (assignment.teacher?.default_hourly_rate && assignment.teacher.default_hourly_rate > 0) {
+    return { rate: assignment.teacher.default_hourly_rate, source: 'teacher' }
+  }
+
+  return { rate: 0, source: 'teacher' }
+}
+
+/**
+ * Generate CSV content for Relay Financial export
+ */
+export function generatePayrollCSV(run: PayrollRunWithDetails): string {
+  // Group line items by teacher and sum amounts
+  const byTeacher = run.line_items.reduce((acc, item) => {
+    if (!acc[item.teacher_id]) {
+      acc[item.teacher_id] = {
+        name: item.teacher?.display_name || 'Unknown Teacher',
+        total: 0,
+      }
+    }
+    acc[item.teacher_id].total += item.final_amount
+    return acc
+  }, {} as Record<string, { name: string; total: number }>)
+
+  // Format period label
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr)
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+  const periodLabel = `${formatDate(run.period_start)} - ${formatDate(run.period_end)}`
+
+  // Generate CSV rows
+  const headers = ['Name', 'Amount', 'Memo']
+  const rows = Object.values(byTeacher)
+    .filter(t => t.total > 0)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map(teacher => `"${teacher.name}",${teacher.total.toFixed(2)},"Eaton Academy Payroll ${periodLabel}"`)
+
+  return [headers.join(','), ...rows].join('\n')
+}
+
+/**
+ * Trigger CSV download in browser
+ */
+export function downloadPayrollCSV(content: string, filename: string) {
+  const blob = new Blob([content], { type: 'text/csv' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// =============================================================================
+// PAYROLL HOOKS
+// =============================================================================
+
+/**
+ * Fetch all payroll runs with optional status filter
+ */
+// Helper to access payroll tables (not yet in generated types)
+const payrollDb = supabase as any
+
+export function usePayrollRuns(filters?: { status?: string }) {
+  return useQuery({
+    queryKey: queryKeys.payroll.runs(filters),
+    queryFn: async () => {
+      let query = payrollDb.from('payroll_run')
+        .select('*')
+        .order('period_start', { ascending: false })
+
+      if (filters?.status && filters.status !== 'all') {
+        query = query.eq('status', filters.status)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      return data as PayrollRun[]
+    },
+  })
+}
+
+/**
+ * Fetch a single payroll run with all line items and teacher details
+ */
+export function usePayrollRunWithItems(runId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.payroll.runWithItems(runId || ''),
+    queryFn: async () => {
+      if (!runId) return null
+
+      // Fetch the run
+      const { data: run, error: runError } = await payrollDb.from('payroll_run')
+        .select('*')
+        .eq('id', runId)
+        .single()
+
+      if (runError) throw runError
+
+      // Fetch line items with related data
+      const { data: lineItems, error: itemsError } = await payrollDb.from('payroll_line_item')
+        .select(`
+          *,
+          teacher:teachers(*),
+          service:services(*),
+          enrollment:enrollments(*, student:students(*))
+        `)
+        .eq('payroll_run_id', runId)
+        .order('teacher_id')
+
+      if (itemsError) throw itemsError
+
+      return {
+        ...run,
+        line_items: lineItems || [],
+      } as PayrollRunWithDetails
+    },
+    enabled: !!runId,
+  })
+}
+
+/**
+ * Fetch pending adjustments that haven't been applied to a payroll run yet
+ */
+export function usePendingPayrollAdjustments(teacherId?: string) {
+  return useQuery({
+    queryKey: queryKeys.payroll.pendingAdjustments(teacherId),
+    queryFn: async () => {
+      let query = payrollDb.from('payroll_adjustment')
+        .select(`
+          *,
+          teacher:teachers(id, display_name, email)
+        `)
+        .is('target_payroll_run_id', null)
+        .order('created_at', { ascending: false })
+
+      if (teacherId) {
+        query = query.eq('teacher_id', teacherId)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      return data as PayrollAdjustmentWithTeacher[]
+    },
+  })
+}
+
+/**
+ * Payroll mutations for CRUD operations
+ */
+export function usePayrollMutations() {
+  const queryClient = useQueryClient()
+
+  /**
+   * Create a new payroll run and auto-generate line items from active assignments
+   */
+  const createPayrollRun = useMutation({
+    mutationFn: async ({
+      periodStart,
+      periodEnd,
+    }: {
+      periodStart: string
+      periodEnd: string
+    }) => {
+      // 1. Create the payroll run
+      const { data: run, error: runError } = await payrollDb.from('payroll_run')
+        .insert({
+          period_start: periodStart,
+          period_end: periodEnd,
+          status: 'draft',
+        })
+        .select()
+        .single()
+
+      if (runError) throw runError
+
+      // 2. Fetch all active teacher assignments with related data
+      const { data: assignments, error: assignError } = await (supabase.from('teacher_assignments') as any)
+        .select(`
+          *,
+          teacher:teachers(*),
+          enrollment:enrollments(
+            *,
+            student:students(full_name),
+            service:services(*)
+          )
+        `)
+        .eq('is_active', true)
+
+      if (assignError) throw assignError
+
+      // 3. Calculate and create line items for each assignment
+      const lineItems: Partial<PayrollLineItem>[] = []
+
+      for (const assignment of assignments || []) {
+        const { hours, isVariable } = calculatePeriodHours(
+          assignment.hours_per_week,
+          periodStart,
+          periodEnd,
+          assignment.start_date,
+          assignment.end_date
+        )
+
+        // Skip if no hours and not variable
+        if (hours === 0 && !isVariable) continue
+
+        const { rate, source } = resolveHourlyRate(assignment)
+        const calculatedAmount = hours * rate
+
+        // Build description
+        let description = ''
+        if (assignment.enrollment?.student?.full_name) {
+          description = assignment.enrollment.student.full_name
+        } else {
+          description = assignment.teacher?.display_name || 'Unknown'
+        }
+        const serviceName = assignment.enrollment?.service?.name
+        if (serviceName) {
+          description += ` - ${serviceName}`
+        }
+
+        lineItems.push({
+          payroll_run_id: run.id,
+          teacher_id: assignment.teacher_id,
+          teacher_assignment_id: assignment.id,
+          enrollment_id: assignment.enrollment_id,
+          service_id: assignment.enrollment?.service_id || null,
+          description,
+          calculated_hours: hours,
+          actual_hours: hours, // Default actual = calculated
+          hourly_rate: rate,
+          rate_source: source,
+          calculated_amount: calculatedAmount,
+          adjustment_amount: 0,
+          final_amount: calculatedAmount,
+        })
+      }
+
+      // 4. Insert all line items
+      if (lineItems.length > 0) {
+        const { error: itemsError } = await payrollDb.from('payroll_line_item')
+          .insert(lineItems)
+
+        if (itemsError) throw itemsError
+      }
+
+      // 5. Apply pending adjustments to this run
+      const { data: pendingAdjustments } = await payrollDb.from('payroll_adjustment')
+        .select('*')
+        .is('target_payroll_run_id', null)
+
+      if (pendingAdjustments && pendingAdjustments.length > 0) {
+        // Link adjustments to this run
+        const { error: adjError } = await payrollDb.from('payroll_adjustment')
+          .update({ target_payroll_run_id: run.id })
+          .is('target_payroll_run_id', null)
+
+        if (adjError) console.error('Failed to link adjustments:', adjError)
+
+        // Add adjustment amounts to corresponding teacher line items
+        for (const adj of pendingAdjustments) {
+          // Find existing line items for this teacher
+          const teacherItems = lineItems.filter(li => li.teacher_id === adj.teacher_id)
+          if (teacherItems.length > 0) {
+            // Add adjustment to first line item for this teacher
+            const firstItem = teacherItems[0]
+            await payrollDb.from('payroll_line_item')
+              .update({
+                adjustment_amount: adj.amount,
+                adjustment_note: adj.reason,
+                final_amount: (firstItem.calculated_amount || 0) + adj.amount,
+              })
+              .eq('payroll_run_id', run.id)
+              .eq('teacher_id', adj.teacher_id)
+              .limit(1)
+          }
+        }
+      }
+
+      // 6. Calculate and update run totals
+      const totalCalculated = lineItems.reduce((sum, li) => sum + (li.calculated_amount || 0), 0)
+      const totalAdjusted = lineItems.reduce((sum, li) => sum + (li.final_amount || 0), 0)
+      const totalHours = lineItems.reduce((sum, li) => sum + (li.actual_hours || 0), 0)
+      const teacherIds = new Set(lineItems.map(li => li.teacher_id))
+
+      const { error: updateError } = await payrollDb.from('payroll_run')
+        .update({
+          total_calculated: totalCalculated,
+          total_adjusted: totalAdjusted,
+          total_hours: totalHours,
+          teacher_count: teacherIds.size,
+        })
+        .eq('id', run.id)
+
+      if (updateError) console.error('Failed to update run totals:', updateError)
+
+      return run as PayrollRun
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.pendingAdjustments() })
+    },
+  })
+
+  /**
+   * Update payroll run status (workflow transitions)
+   */
+  const updateRunStatus = useMutation({
+    mutationFn: async ({
+      id,
+      status,
+      approvedBy,
+    }: {
+      id: string
+      status: PayrollRunStatus
+      approvedBy?: string
+    }) => {
+      const updateData: Partial<PayrollRun> = { status }
+
+      if (status === 'approved') {
+        updateData.approved_by = approvedBy || null
+        updateData.approved_at = new Date().toISOString()
+      } else if (status === 'paid') {
+        updateData.paid_at = new Date().toISOString()
+      }
+
+      const { data, error } = await payrollDb.from('payroll_run')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+      return data as PayrollRun
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(variables.id) })
+    },
+  })
+
+  /**
+   * Update a line item (for hour adjustments during review)
+   */
+  const updateLineItem = useMutation({
+    mutationFn: async ({
+      id,
+      actualHours,
+      adjustmentAmount,
+      adjustmentNote,
+    }: {
+      id: string
+      actualHours?: number
+      adjustmentAmount?: number
+      adjustmentNote?: string
+    }) => {
+      // First fetch current item to recalculate
+      const { data: current, error: fetchError } = await payrollDb.from('payroll_line_item')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      const hours = actualHours ?? current.actual_hours
+      const adjustment = adjustmentAmount ?? current.adjustment_amount
+      const calculatedAmount = hours * current.hourly_rate
+      const finalAmount = calculatedAmount + adjustment
+
+      const { data, error } = await payrollDb.from('payroll_line_item')
+        .update({
+          actual_hours: hours,
+          calculated_amount: calculatedAmount,
+          adjustment_amount: adjustment,
+          adjustment_note: adjustmentNote ?? current.adjustment_note,
+          final_amount: finalAmount,
+        })
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Recalculate run totals
+      await recalculateRunTotals(current.payroll_run_id)
+
+      return data as PayrollLineItem
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(data.payroll_run_id) })
+    },
+  })
+
+  /**
+   * Create a carry-forward adjustment for a future payroll run
+   */
+  const createAdjustment = useMutation({
+    mutationFn: async ({
+      teacherId,
+      sourceRunId,
+      amount,
+      reason,
+    }: {
+      teacherId: string
+      sourceRunId?: string
+      amount: number
+      reason: string
+    }) => {
+      const { data, error } = await payrollDb.from('payroll_adjustment')
+        .insert({
+          teacher_id: teacherId,
+          source_payroll_run_id: sourceRunId || null,
+          amount,
+          reason,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return data as PayrollAdjustment
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.pendingAdjustments() })
+    },
+  })
+
+  /**
+   * Delete a payroll run (only allowed for draft status)
+   */
+  const deletePayrollRun = useMutation({
+    mutationFn: async (id: string) => {
+      // Line items will cascade delete due to foreign key constraint
+      const { error } = await payrollDb.from('payroll_run')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+    },
+  })
+
+  return {
+    createPayrollRun,
+    updateRunStatus,
+    updateLineItem,
+    createAdjustment,
+    deletePayrollRun,
+  }
+}
+
+/**
+ * Helper to recalculate run totals after line item changes
+ */
+async function recalculateRunTotals(runId: string) {
+  const { data: items } = await payrollDb.from('payroll_line_item')
+    .select('actual_hours, calculated_amount, final_amount, teacher_id')
+    .eq('payroll_run_id', runId)
+
+  if (!items) return
+
+  const totalCalculated = items.reduce((sum: number, li: any) => sum + (li.calculated_amount || 0), 0)
+  const totalAdjusted = items.reduce((sum: number, li: any) => sum + (li.final_amount || 0), 0)
+  const totalHours = items.reduce((sum: number, li: any) => sum + (li.actual_hours || 0), 0)
+  const teacherIds = new Set(items.map((li: any) => li.teacher_id))
+
+  await payrollDb.from('payroll_run')
+    .update({
+      total_calculated: totalCalculated,
+      total_adjusted: totalAdjusted,
+      total_hours: totalHours,
+      teacher_count: teacherIds.size,
+    })
+    .eq('id', runId)
+}

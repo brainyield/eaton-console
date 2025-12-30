@@ -9,7 +9,8 @@ import {
   Settings,
   Search,
   ChevronDown,
-  CalendarDays
+  CalendarDays,
+  Wallet
 } from 'lucide-react'
 
 interface NavItem {
@@ -24,6 +25,7 @@ const navigation: NavItem[] = [
   { name: 'Active Roster', icon: ClipboardList, href: '/roster' },
   { name: 'Events', icon: CalendarDays, href: '/events' },
   { name: 'Invoicing', icon: Receipt, href: '/invoicing' },
+  { name: 'Payroll', icon: Wallet, href: '/payroll' },
   { name: 'Teachers', icon: GraduationCap, href: '/teachers' },
   { name: 'Reports', icon: BarChart3, href: '/reports' },
   { name: 'Settings', icon: Settings, href: '/settings' },
