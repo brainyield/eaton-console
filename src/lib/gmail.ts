@@ -1,6 +1,7 @@
 // Gmail API functions for n8n webhook integration
 
 import type {
+  GmailSearchParams,
   GmailSearchResponse,
   GmailThreadResponse,
   GmailSendResponse,
@@ -11,15 +12,20 @@ const N8N_BASE_URL = 'https://eatonacademic.app.n8n.cloud/webhook'
 
 /**
  * Search Gmail for emails to/from a specific email address
+ * Supports pagination and custom search queries
  */
 export async function searchGmail(
-  email: string,
-  maxResults: number = 20
+  params: GmailSearchParams
 ): Promise<GmailSearchResponse> {
   const response = await fetch(`${N8N_BASE_URL}/gmail-search`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, maxResults }),
+    body: JSON.stringify({
+      email: params.email,
+      query: params.query || '',
+      maxResults: params.maxResults || 20,
+      pageToken: params.pageToken || undefined,
+    }),
   })
 
   if (!response.ok) {

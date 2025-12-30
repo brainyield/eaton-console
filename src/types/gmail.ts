@@ -7,9 +7,13 @@ export interface GmailMessage {
   subject: string
   from: string
   to: string
-  date: string // ISO format
+  cc?: string
+  bcc?: string
+  date: string // ISO format - from Gmail internalDate
+  internalDate: number // Unix timestamp in milliseconds
   isOutbound: boolean
   labelIds: string[]
+  recipientCount: number // Total recipients (to + cc + bcc)
 }
 
 export interface GmailThread {
@@ -36,9 +40,18 @@ export interface SendEmailPayload {
   inReplyTo?: string // Message-ID header for proper threading
 }
 
+export interface GmailSearchParams {
+  email: string
+  query?: string // Additional Gmail search query (e.g., "subject:invoice")
+  maxResults?: number
+  pageToken?: string // For pagination
+}
+
 export interface GmailSearchResponse {
   success: boolean
   messages: GmailMessage[]
+  nextPageToken?: string // For loading more results
+  resultSizeEstimate?: number // Approximate total results
   error?: string
 }
 
@@ -65,6 +78,7 @@ export interface UnifiedEmailItem {
   date: string // ISO format
   isOutbound: boolean
   source: 'gmail' | 'console'
+  recipientCount?: number
   // For console-sent emails
   invoiceNumber?: string
   emailType?: string

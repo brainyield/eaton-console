@@ -1,7 +1,8 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
+import type { GmailSearchParams } from '../types/gmail'
 
 // =============================================================================
 // TYPE DEFINITIONS
@@ -2686,13 +2687,27 @@ export function formatMonthYear(date: Date): string {
 
 /**
  * Search Gmail for emails to/from a specific email address
+ * Supports pagination via infinite query and custom search queries
  */
-export function useGmailSearch(email: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.gmail.search(email || ''),
-    queryFn: () => searchGmail(email!),
+export function useGmailSearch(
+  email: string | undefined,
+  options?: { query?: string; maxResults?: number }
+) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.gmail.search(email || ''), options?.query || ''],
+    queryFn: ({ pageParam }) => {
+      const params: GmailSearchParams = {
+        email: email!,
+        query: options?.query,
+        maxResults: options?.maxResults || 20,
+        pageToken: pageParam as string | undefined,
+      }
+      return searchGmail(params)
+    },
     enabled: !!email,
     staleTime: 1000 * 60 * 2, // 2 minutes
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.nextPageToken,
   })
 }
 
@@ -2715,8 +2730,8 @@ export function useGmailSend() {
   return useMutation({
     mutationFn: sendGmail,
     onSuccess: (_, variables) => {
-      // Invalidate the search for the recipient's email
-      queryClient.invalidateQueries({ queryKey: queryKeys.gmail.search(variables.to) })
+      // Invalidate all gmail searches (since we don't know which queries are active)
+      queryClient.invalidateQueries({ queryKey: queryKeys.gmail.all })
       // If this was a reply, also invalidate the thread
       if (variables.threadId) {
         queryClient.invalidateQueries({ queryKey: queryKeys.gmail.thread(variables.threadId) })

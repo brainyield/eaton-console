@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { Mail, RefreshCw, AlertCircle, PenSquare } from 'lucide-react'
+import { useState, useMemo, useCallback } from 'react'
+import { Mail, RefreshCw, AlertCircle, PenSquare, Search, X, ChevronDown } from 'lucide-react'
 import { useGmailSearch, useInvoiceEmailsByFamily } from '../../lib/hooks'
 import { EmailItem } from './EmailItem'
 import { EmailThreadModal } from './EmailThreadModal'
@@ -9,8 +9,9 @@ import type { GmailMessage } from '../../types/gmail'
 interface EmailHistoryProps {
   email: string | null | undefined
   familyId?: string
-  // familyName reserved for future use (e.g., compose modal greeting)
 }
+
+const MASS_EMAIL_THRESHOLD = 5 // Emails with more recipients are considered "mass"
 
 export function EmailHistory({ email, familyId }: EmailHistoryProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
@@ -22,13 +23,33 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
     inReplyTo: string
   } | null>(null)
 
-  // Fetch Gmail emails
+  // Search and filter state
+  const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [showMassEmails, setShowMassEmails] = useState(false)
+
+  // Debounce search query
+  const handleSearchChange = useCallback((value: string) => {
+    setSearchQuery(value)
+    // Simple debounce - in production you might use useDebouncedValue hook
+    const timeoutId = setTimeout(() => {
+      setDebouncedQuery(value)
+    }, 300)
+    return () => clearTimeout(timeoutId)
+  }, [])
+
+  // Fetch Gmail emails with infinite query
   const {
     data: gmailData,
     isLoading: loadingGmail,
+    isFetchingNextPage,
     error: gmailError,
     refetch: refetchGmail,
-  } = useGmailSearch(email || undefined)
+    fetchNextPage,
+    hasNextPage,
+  } = useGmailSearch(email || undefined, {
+    query: debouncedQuery || undefined,
+  })
 
   // Fetch console-sent invoice emails
   const {
@@ -39,9 +60,12 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
   const isLoading = loadingGmail || loadingConsole
   const hasError = !!gmailError
 
-  // Merge Gmail and console emails into unified timeline
+  // Flatten pages and merge with console emails
   const unifiedEmails = useMemo(() => {
-    const gmailMessages = gmailData?.messages || []
+    // Flatten all pages of Gmail messages
+    const allGmailMessages: GmailMessage[] = gmailData?.pages?.flatMap(
+      (page) => page.messages || []
+    ) || []
 
     // Create a set of console email subjects+timestamps for deduplication
     const consoleSentKeys = new Set(
@@ -53,32 +77,47 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
       })
     )
 
-    // Filter Gmail messages to mark which are console-sent
-    const enrichedGmail = gmailMessages.map((msg) => {
-      const timestamp = new Date(msg.date).getTime()
-      const roundedTime = Math.floor(timestamp / 60000) * 60000
-      const key = `${msg.subject?.toLowerCase() || ''}:${roundedTime}`
-      const isConsoleSent = consoleSentKeys.has(key)
-      return { ...msg, isConsoleSent }
-    })
+    // Filter and enrich Gmail messages
+    const enrichedGmail = allGmailMessages
+      .map((msg) => {
+        // Use internalDate if available, fallback to date string
+        const timestamp = msg.internalDate || new Date(msg.date).getTime()
+        const roundedTime = Math.floor(timestamp / 60000) * 60000
+        const key = `${msg.subject?.toLowerCase() || ''}:${roundedTime}`
+        const isConsoleSent = consoleSentKeys.has(key)
+        return { ...msg, isConsoleSent, sortTimestamp: timestamp }
+      })
+      // Filter out mass emails unless toggle is on
+      .filter((msg) => {
+        if (showMassEmails) return true
+        return (msg.recipientCount || 1) < MASS_EMAIL_THRESHOLD
+      })
 
-    // Sort by date descending (newest first)
-    return enrichedGmail.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    )
-  }, [gmailData, consoleEmails])
+    // Sort by timestamp descending (newest first)
+    return enrichedGmail.sort((a, b) => b.sortTimestamp - a.sortTimestamp)
+  }, [gmailData, consoleEmails, showMassEmails])
+
+  // Count filtered out emails
+  const filteredOutCount = useMemo(() => {
+    if (showMassEmails) return 0
+    const allGmailMessages: GmailMessage[] = gmailData?.pages?.flatMap(
+      (page) => page.messages || []
+    ) || []
+    return allGmailMessages.filter(
+      (msg) => (msg.recipientCount || 1) >= MASS_EMAIL_THRESHOLD
+    ).length
+  }, [gmailData, showMassEmails])
 
   const handleView = (message: GmailMessage) => {
     setSelectedThreadId(message.threadId)
   }
 
   const handleReply = (message: GmailMessage) => {
-    // Will be populated with actual messageId when we fetch the thread
     setReplyTo({
       to: message.isOutbound ? message.to : message.from,
       subject: message.subject.startsWith('Re:') ? message.subject : `Re: ${message.subject}`,
       threadId: message.threadId,
-      inReplyTo: '', // Will be set when thread loads
+      inReplyTo: '',
     })
     setShowComposeModal(true)
   }
@@ -103,6 +142,12 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
     handleCloseThread()
   }
 
+  const handleLoadMore = () => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage()
+    }
+  }
+
   if (!email) {
     return (
       <div className="text-center py-8">
@@ -114,29 +159,67 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
   }
 
   return (
-    <div className="space-y-4">
-      {/* Header with Compose button */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => refetchGmail()}
-            disabled={isLoading}
-            className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-700 rounded transition-colors disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-          </button>
-          <span className="text-xs text-zinc-500">
-            {unifiedEmails.length} email{unifiedEmails.length !== 1 ? 's' : ''}
-          </span>
+    <div className="space-y-3">
+      {/* Search and Compose row */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => handleSearchChange(e.target.value)}
+            placeholder="Search emails..."
+            className="w-full pl-9 pr-8 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => {
+                setSearchQuery('')
+                setDebouncedQuery('')
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <button
           onClick={handleCompose}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+          className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
         >
           <PenSquare className="h-4 w-4" />
           Compose
         </button>
+      </div>
+
+      {/* Filter row */}
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => refetchGmail()}
+            disabled={isLoading}
+            className="flex items-center gap-1 text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
+            title="Refresh"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <span className="text-zinc-500">
+            {unifiedEmails.length} email{unifiedEmails.length !== 1 ? 's' : ''}
+            {filteredOutCount > 0 && !showMassEmails && (
+              <span className="text-zinc-600"> ({filteredOutCount} mass hidden)</span>
+            )}
+          </span>
+        </div>
+        <label className="flex items-center gap-2 text-zinc-400 cursor-pointer hover:text-zinc-300">
+          <input
+            type="checkbox"
+            checked={showMassEmails}
+            onChange={(e) => setShowMassEmails(e.target.checked)}
+            className="rounded bg-zinc-700 border-zinc-600 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
+          />
+          Show mass emails ({MASS_EMAIL_THRESHOLD}+ recipients)
+        </label>
       </div>
 
       {/* Loading state */}
@@ -169,9 +252,13 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
       {!isLoading && !hasError && unifiedEmails.length === 0 && (
         <div className="text-center py-8">
           <Mail className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
-          <p className="text-zinc-400">No emails found</p>
+          <p className="text-zinc-400">
+            {debouncedQuery ? 'No emails match your search' : 'No emails found'}
+          </p>
           <p className="text-zinc-500 text-sm mt-1">
-            Start a conversation by clicking Compose
+            {debouncedQuery
+              ? 'Try a different search term'
+              : 'Start a conversation by clicking Compose'}
           </p>
         </div>
       )}
@@ -188,6 +275,29 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
               isConsoleSent={(message as any).isConsoleSent}
             />
           ))}
+        </div>
+      )}
+
+      {/* Load More button */}
+      {hasNextPage && (
+        <div className="flex justify-center pt-2">
+          <button
+            onClick={handleLoadMore}
+            disabled={isFetchingNextPage}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-600 rounded transition-colors disabled:opacity-50"
+          >
+            {isFetchingNextPage ? (
+              <>
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                Loading...
+              </>
+            ) : (
+              <>
+                <ChevronDown className="h-4 w-4" />
+                Load More
+              </>
+            )}
+          </button>
         </div>
       )}
 
