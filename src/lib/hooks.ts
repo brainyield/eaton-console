@@ -1607,6 +1607,51 @@ export function usePendingEventOrders(familyId?: string) {
   })
 }
 
+// Type for pending class registration fees
+export interface PendingClassRegistrationFee {
+  id: string
+  family_id: string
+  total_cents: number
+  event_title: string
+  student_name: string | null
+  class_title: string | null
+}
+
+// Hook to fetch pending Step Up class registration fees
+// These are event_orders for classes (not single events) that haven't been invoiced yet
+export function usePendingClassRegistrationFees() {
+  return useQuery({
+    queryKey: ['event_orders', 'pending', 'classes'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('event_orders')
+        .select(`
+          id,
+          family_id,
+          total_cents,
+          event:event_events!inner(
+            title,
+            event_type
+          )
+        `)
+        .eq('payment_method', 'stepup')
+        .eq('payment_status', 'stepup_pending')
+        .is('invoice_id', null)
+        .eq('event.event_type', 'class')
+
+      if (error) throw error
+
+      // Transform to flat structure
+      return (data || []).map((order: any) => ({
+        id: order.id,
+        family_id: order.family_id,
+        total_cents: order.total_cents,
+        event_title: order.event?.title || 'Unknown Class',
+      })) as PendingClassRegistrationFee[]
+    },
+  })
+}
+
 // Hook to fetch email history for an invoice
 export function useInvoiceEmails(invoiceId: string) {
   return useQuery({

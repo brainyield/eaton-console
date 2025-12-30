@@ -13,10 +13,11 @@ import {
   useExistingInvoicesForPeriod,
   useInvoiceMutations,
   usePendingEventOrders,
+  usePendingClassRegistrationFees,
   getWeekBounds,
   getNextMonday,
 } from '../lib/hooks'
-import type { BillableEnrollment, PendingEventOrder } from '../lib/hooks'
+import type { BillableEnrollment, PendingEventOrder, PendingClassRegistrationFee } from '../lib/hooks'
 
 // ============================================================================
 // Types
@@ -221,6 +222,9 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   // Fetch pending event orders for events mode
   const { data: pendingEventOrders = [], isLoading: eventsLoading } = usePendingEventOrders()
 
+  // Fetch pending class registration fees for monthly mode (Step Up elective class fees)
+  const { data: pendingClassFees = [] } = usePendingClassRegistrationFees()
+
   const { generateDrafts, generateEventInvoice } = useInvoiceMutations()
 
   // Build preview items with overrides applied
@@ -320,10 +324,36 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     setSelectedEnrollments(autoSelect)
   }, [previewItems.length]) // Only on count change to avoid infinite loop
 
+  // Compute pending registration fees per family (only for monthly mode with elective classes)
+  const pendingFeesByFamily = useMemo(() => {
+    if (invoiceType !== 'monthly') return new Map<string, PendingClassRegistrationFee[]>()
+
+    // Find families that have elective_classes enrollments
+    const familiesWithElectives = new Set<string>()
+    sortedPreviewItems.forEach(item => {
+      if (item.enrollment.service?.code === 'elective_classes' && item.enrollment.family?.id) {
+        familiesWithElectives.add(item.enrollment.family.id)
+      }
+    })
+
+    // Group pending class fees by family (only for families with elective enrollments)
+    const feesByFamily = new Map<string, PendingClassRegistrationFee[]>()
+    pendingClassFees.forEach(fee => {
+      if (familiesWithElectives.has(fee.family_id)) {
+        if (!feesByFamily.has(fee.family_id)) {
+          feesByFamily.set(fee.family_id, [])
+        }
+        feesByFamily.get(fee.family_id)!.push(fee)
+      }
+    })
+
+    return feesByFamily
+  }, [invoiceType, sortedPreviewItems, pendingClassFees])
+
   // Group by family for display
   const groupedByFamily = useMemo(() => {
     const grouped = new Map<string, DraftPreviewItem[]>()
-    
+
     sortedPreviewItems.forEach(item => {
       const familyId = item.enrollment.family?.id || 'unknown'
       if (!grouped.has(familyId)) {
@@ -332,22 +362,56 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       grouped.get(familyId)!.push(item)
     })
 
-    return Array.from(grouped.entries()).map(([familyId, items]) => ({
-      familyId,
-      familyName: items[0].enrollment.family?.display_name || 'Unknown',
-      items,
-      totalAmount: items.reduce((sum, i) => sum + (selectedEnrollments.has(i.enrollment.id) ? i.finalAmount : 0), 0),
-      hasExisting: items.some(i => i.hasExisting),
-      allSelected: items.every(i => selectedEnrollments.has(i.enrollment.id)),
-      someSelected: items.some(i => selectedEnrollments.has(i.enrollment.id)),
-    }))
-  }, [sortedPreviewItems, selectedEnrollments])
+    return Array.from(grouped.entries()).map(([familyId, items]) => {
+      // Get pending registration fees for this family
+      const registrationFees = pendingFeesByFamily.get(familyId) || []
+      const registrationFeesTotal = registrationFees.reduce((sum, fee) => sum + fee.total_cents / 100, 0)
+
+      return {
+        familyId,
+        familyName: items[0].enrollment.family?.display_name || 'Unknown',
+        items,
+        registrationFees,
+        totalAmount: items.reduce((sum, i) => sum + (selectedEnrollments.has(i.enrollment.id) ? i.finalAmount : 0), 0) + registrationFeesTotal,
+        hasExisting: items.some(i => i.hasExisting),
+        allSelected: items.every(i => selectedEnrollments.has(i.enrollment.id)),
+        someSelected: items.some(i => selectedEnrollments.has(i.enrollment.id)),
+      }
+    })
+  }, [sortedPreviewItems, selectedEnrollments, pendingFeesByFamily])
 
   // Counts
   const selectedCount = selectedEnrollments.size
+
+  // Calculate total registration fees for families with selected elective enrollments
+  const totalRegistrationFees = useMemo(() => {
+    if (invoiceType !== 'monthly') return 0
+
+    // Get families that have selected elective_classes enrollments
+    const selectedElectiveFamilies = new Set<string>()
+    sortedPreviewItems.forEach(item => {
+      if (
+        item.enrollment.service?.code === 'elective_classes' &&
+        selectedEnrollments.has(item.enrollment.id) &&
+        item.enrollment.family?.id
+      ) {
+        selectedElectiveFamilies.add(item.enrollment.family.id)
+      }
+    })
+
+    // Sum up registration fees for those families
+    let total = 0
+    pendingFeesByFamily.forEach((fees, familyId) => {
+      if (selectedElectiveFamilies.has(familyId)) {
+        total += fees.reduce((sum, fee) => sum + fee.total_cents / 100, 0)
+      }
+    })
+    return total
+  }, [invoiceType, sortedPreviewItems, selectedEnrollments, pendingFeesByFamily])
+
   const totalAmount = sortedPreviewItems
     .filter(i => selectedEnrollments.has(i.enrollment.id))
-    .reduce((sum, i) => sum + i.finalAmount, 0)
+    .reduce((sum, i) => sum + i.finalAmount, 0) + totalRegistrationFees
   const familyCount = new Set(
     sortedPreviewItems
       .filter(i => selectedEnrollments.has(i.enrollment.id))
@@ -1104,6 +1168,36 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                           </div>
                         </div>
                       ))}
+
+                        {/* Pending Registration Fees */}
+                        {group.registrationFees.length > 0 && (
+                          <>
+                            {group.registrationFees.map(fee => (
+                              <div
+                                key={fee.id}
+                                className="flex items-center justify-between px-4 py-2 bg-pink-500/5"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-4" /> {/* Spacer to align with checkboxes */}
+                                  <span className="inline-flex px-1.5 py-0.5 text-xs font-medium rounded bg-pink-500/20 text-pink-400">
+                                    Reg Fee
+                                  </span>
+                                  <span className="text-sm text-zinc-300">
+                                    {fee.event_title}
+                                  </span>
+                                </div>
+                                <div className="text-right">
+                                  <div className="text-sm text-pink-400">
+                                    ${(fee.total_cents / 100).toFixed(2)}
+                                  </div>
+                                  <div className="text-xs text-zinc-500">
+                                    Step Up
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        )}
                     </div>
                   </div>
                 ))}
