@@ -1236,6 +1236,233 @@ export type Database = {
           },
         ]
       }
+      payroll_adjustment: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          id: string
+          reason: string
+          source_payroll_run_id: string | null
+          target_payroll_run_id: string | null
+          teacher_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason: string
+          source_payroll_run_id?: string | null
+          target_payroll_run_id?: string | null
+          teacher_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string
+          source_payroll_run_id?: string | null
+          target_payroll_run_id?: string | null
+          teacher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_adjustment_source_payroll_run_id_fkey"
+            columns: ["source_payroll_run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_adjustment_target_payroll_run_id_fkey"
+            columns: ["target_payroll_run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_adjustment_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_earnings_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_adjustment_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_load"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_adjustment_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_line_item: {
+        Row: {
+          actual_hours: number
+          adjustment_amount: number
+          adjustment_note: string | null
+          calculated_amount: number
+          calculated_hours: number
+          created_at: string
+          description: string
+          enrollment_id: string | null
+          final_amount: number
+          hourly_rate: number
+          id: string
+          payroll_run_id: string
+          rate_source: string
+          service_id: string | null
+          teacher_assignment_id: string | null
+          teacher_id: string
+        }
+        Insert: {
+          actual_hours?: number
+          adjustment_amount?: number
+          adjustment_note?: string | null
+          calculated_amount?: number
+          calculated_hours?: number
+          created_at?: string
+          description: string
+          enrollment_id?: string | null
+          final_amount?: number
+          hourly_rate?: number
+          id?: string
+          payroll_run_id: string
+          rate_source?: string
+          service_id?: string | null
+          teacher_assignment_id?: string | null
+          teacher_id: string
+        }
+        Update: {
+          actual_hours?: number
+          adjustment_amount?: number
+          adjustment_note?: string | null
+          calculated_amount?: number
+          calculated_hours?: number
+          created_at?: string
+          description?: string
+          enrollment_id?: string | null
+          final_amount?: number
+          hourly_rate?: number
+          id?: string
+          payroll_run_id?: string
+          rate_source?: string
+          service_id?: string | null
+          teacher_assignment_id?: string | null
+          teacher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payroll_line_item_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_line_item_payroll_run_id_fkey"
+            columns: ["payroll_run_id"]
+            isOneToOne: false
+            referencedRelation: "payroll_run"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_line_item_service_id_fkey"
+            columns: ["service_id"]
+            isOneToOne: false
+            referencedRelation: "services"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_line_item_teacher_assignment_id_fkey"
+            columns: ["teacher_assignment_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_assignments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_line_item_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_earnings_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_line_item_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_load"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payroll_line_item_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payroll_run: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string
+          id: string
+          notes: string | null
+          paid_at: string | null
+          period_end: string
+          period_start: string
+          status: string
+          teacher_count: number
+          total_adjusted: number
+          total_calculated: number
+          total_hours: number
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          period_end: string
+          period_start: string
+          status?: string
+          teacher_count?: number
+          total_adjusted?: number
+          total_calculated?: number
+          total_hours?: number
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          period_end?: string
+          period_start?: string
+          status?: string
+          teacher_count?: number
+          total_adjusted?: number
+          total_calculated?: number
+          total_hours?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       revenue_records: {
         Row: {
           class_title: string | null
