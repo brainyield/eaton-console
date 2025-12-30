@@ -203,6 +203,7 @@ CREATE TABLE enrollments (
   status enrollment_status NOT NULL DEFAULT 'trial',
   start_date date,
   end_date date,
+  enrollment_period text, -- e.g., "Spring 2026", "2025-2026" (semester or school year)
   annual_fee numeric(10,2),
   monthly_rate numeric(10,2),
   weekly_tuition numeric(10,2),

@@ -1,17 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Save, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   useEnrollmentMutations,
   type Enrollment,
   type EnrollmentStatus,
-  type BillingFrequency
+  type BillingFrequency,
+  type Service
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
+import { getPeriodOptions, getDefaultPeriod, type ServiceCode } from '../lib/enrollmentPeriod';
+
+interface EnrollmentWithService extends Enrollment {
+  service?: Service
+}
 
 interface EditEnrollmentModalProps {
   isOpen: boolean;
-  enrollment: Enrollment | null;
+  enrollment: EnrollmentWithService | null;
   onClose: () => void;
   onSuccess?: () => void;
 }
@@ -20,6 +26,7 @@ interface FormData {
   status: EnrollmentStatus;
   start_date: string;
   end_date: string;
+  enrollment_period: string;
   hourly_rate_customer: string;
   hours_per_week: string;
   monthly_rate: string;
@@ -58,6 +65,7 @@ export function EditEnrollmentModal({
     status: 'active',
     start_date: '',
     end_date: '',
+    enrollment_period: '',
     hourly_rate_customer: '',
     hours_per_week: '',
     monthly_rate: '',
@@ -70,6 +78,15 @@ export function EditEnrollmentModal({
   });
   const [error, setError] = useState<string | null>(null);
 
+  // Get service code for period options
+  const serviceCode = enrollment?.service?.code as ServiceCode | undefined;
+
+  // Generate period options based on service type
+  const periodOptions = useMemo(() => {
+    if (!serviceCode) return [];
+    return getPeriodOptions(serviceCode);
+  }, [serviceCode]);
+
   // Mutations
   const { updateEnrollment } = useEnrollmentMutations();
   const isSubmitting = updateEnrollment.isPending;
@@ -77,10 +94,17 @@ export function EditEnrollmentModal({
   // Populate form when enrollment changes
   useEffect(() => {
     if (enrollment) {
+      // If no period is set, default based on service type
+      let period = enrollment.enrollment_period || '';
+      if (!period && serviceCode) {
+        period = getDefaultPeriod(serviceCode);
+      }
+
       setFormData({
         status: enrollment.status,
         start_date: enrollment.start_date || '',
         end_date: enrollment.end_date || '',
+        enrollment_period: period,
         hourly_rate_customer: enrollment.hourly_rate_customer?.toString() || '',
         hours_per_week: enrollment.hours_per_week?.toString() || '',
         monthly_rate: enrollment.monthly_rate?.toString() || '',
@@ -92,7 +116,7 @@ export function EditEnrollmentModal({
         notes: enrollment.notes || '',
       });
     }
-  }, [enrollment]);
+  }, [enrollment, serviceCode]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
@@ -115,6 +139,7 @@ export function EditEnrollmentModal({
     // Handle nullable fields
     updateData.start_date = formData.start_date || null;
     updateData.end_date = formData.end_date || null;
+    updateData.enrollment_period = formData.enrollment_period || null;
     updateData.hourly_rate_customer = formData.hourly_rate_customer ? parseFloat(formData.hourly_rate_customer) : null;
     updateData.hours_per_week = formData.hours_per_week ? parseFloat(formData.hours_per_week) : null;
     updateData.monthly_rate = formData.monthly_rate ? parseFloat(formData.monthly_rate) : null;
@@ -235,6 +260,28 @@ export function EditEnrollmentModal({
                     className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Enrollment Period
+                </label>
+                <select
+                  name="enrollment_period"
+                  value={formData.enrollment_period}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select period...</option>
+                  {periodOptions.map(period => (
+                    <option key={period} value={period}>{period}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">
+                  {serviceCode && ['learning_pod', 'elective_classes'].includes(serviceCode)
+                    ? 'Semester (Fall/Spring/Summer)'
+                    : 'School Year'}
+                </p>
               </div>
             </div>
 

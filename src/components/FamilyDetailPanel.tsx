@@ -50,6 +50,7 @@ const EMAIL_TYPE_CONFIG: Record<string, { color: string; icon: any; label: strin
 
 export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDetailPanelProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'enrollments' | 'invoices' | 'history'>('overview')
+  const [showEndedEnrollments, setShowEndedEnrollments] = useState(false)
 
   // Modal states
   const [showEditFamily, setShowEditFamily] = useState(false)
@@ -105,6 +106,12 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
 
   // Count active enrollments from React Query data
   const activeEnrollmentCount = enrollments.filter(e => e.status === 'active').length
+  const endedEnrollmentCount = enrollments.filter(e => e.status === 'ended').length
+
+  // Filter enrollments for display (hide ended by default)
+  const visibleEnrollments = showEndedEnrollments
+    ? enrollments
+    : enrollments.filter((e: any) => e.status !== 'ended')
 
   // Build a map of student_id -> enrollment info for display
   const studentEnrollmentMap = new Map<string, { total: number; active: number; services: string[] }>()
@@ -315,37 +322,78 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
               ) : enrollments.length === 0 ? (
                 <p className="text-sm text-zinc-400 text-center py-8">No enrollments found</p>
               ) : (
-                enrollments.map((enrollment: any) => (
-                  <div
-                    key={enrollment.id}
-                    className="p-4 bg-zinc-800 rounded-lg"
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div>
-                        <div className="text-sm font-medium text-white">
-                          {enrollment.service?.name || 'Unknown Service'}
-                        </div>
-                        {enrollment.class_title && (
-                          <div className="text-xs text-zinc-400">{enrollment.class_title}</div>
-                        )}
-                      </div>
-                      <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${ENROLLMENT_STATUS_COLORS[enrollment.status as EnrollmentStatus]}`}>
-                        {enrollment.status}
+                <>
+                  {/* Toggle for ended enrollments */}
+                  {endedEnrollmentCount > 0 && (
+                    <div className="flex items-center justify-between pb-2 border-b border-zinc-700">
+                      <span className="text-xs text-zinc-500">
+                        {showEndedEnrollments
+                          ? `Showing ${endedEnrollmentCount} ended enrollment${endedEnrollmentCount !== 1 ? 's' : ''}`
+                          : `${endedEnrollmentCount} ended enrollment${endedEnrollmentCount !== 1 ? 's' : ''} hidden`}
                       </span>
+                      <button
+                        onClick={() => setShowEndedEnrollments(!showEndedEnrollments)}
+                        className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                      >
+                        {showEndedEnrollments ? 'Hide ended' : 'Show ended'}
+                      </button>
                     </div>
-                    <div className="flex items-center gap-4 text-xs text-zinc-400">
-                      {enrollment.monthly_rate && (
-                        <span>${enrollment.monthly_rate}/mo</span>
-                      )}
-                      {enrollment.hourly_rate_customer && (
-                        <span>${enrollment.hourly_rate_customer}/hr</span>
-                      )}
-                      {enrollment.hours_per_week && (
-                        <span>{enrollment.hours_per_week} hrs/wk</span>
-                      )}
-                    </div>
-                  </div>
-                ))
+                  )}
+
+                  {visibleEnrollments.length === 0 ? (
+                    <p className="text-sm text-zinc-400 text-center py-8">No active enrollments</p>
+                  ) : (
+                    visibleEnrollments.map((enrollment: any) => (
+                      <div
+                        key={enrollment.id}
+                        className={`p-4 bg-zinc-800 rounded-lg ${enrollment.status === 'ended' ? 'opacity-60' : ''}`}
+                      >
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="text-sm font-medium text-white">
+                              {enrollment.service?.name || 'Unknown Service'}
+                            </div>
+                            {enrollment.class_title && (
+                              <div className="text-xs text-zinc-400">{enrollment.class_title}</div>
+                            )}
+                            {/* Show student name for all enrollments */}
+                            {enrollment.student && (
+                              <div className="text-xs text-zinc-500 mt-1">
+                                {enrollment.student.full_name}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`text-xs font-medium rounded-full px-2 py-0.5 ${ENROLLMENT_STATUS_COLORS[enrollment.status as EnrollmentStatus]}`}>
+                              {enrollment.status}
+                            </span>
+                            {/* Show period for ended enrollments */}
+                            {enrollment.status === 'ended' && enrollment.enrollment_period && (
+                              <span className="text-xs text-zinc-500">
+                                {enrollment.enrollment_period}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-zinc-400">
+                          {enrollment.monthly_rate && (
+                            <span>${enrollment.monthly_rate}/mo</span>
+                          )}
+                          {enrollment.hourly_rate_customer && (
+                            <span>${enrollment.hourly_rate_customer}/hr</span>
+                          )}
+                          {enrollment.hours_per_week && (
+                            <span>{enrollment.hours_per_week} hrs/wk</span>
+                          )}
+                          {/* Show period for active enrollments too */}
+                          {enrollment.status !== 'ended' && enrollment.enrollment_period && (
+                            <span className="text-zinc-500">{enrollment.enrollment_period}</span>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </div>
           )}
