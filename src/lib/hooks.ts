@@ -2832,6 +2832,25 @@ export interface PayrollAdjustmentWithTeacher extends PayrollAdjustment {
 // =============================================================================
 
 /**
+ * Count weekdays (Monday-Friday) between two dates, inclusive
+ */
+function countWeekdays(startDate: Date, endDate: Date): number {
+  let count = 0
+  const current = new Date(startDate)
+
+  while (current <= endDate) {
+    const dayOfWeek = current.getDay()
+    // 0 = Sunday, 6 = Saturday, so 1-5 are weekdays
+    if (dayOfWeek >= 1 && dayOfWeek <= 5) {
+      count++
+    }
+    current.setDate(current.getDate() + 1)
+  }
+
+  return count
+}
+
+/**
  * Calculate hours for a pay period with proration for mid-period start/end
  */
 function calculatePeriodHours(
@@ -2859,12 +2878,13 @@ function calculatePeriodHours(
     return { hours: 0, isVariable: false }
   }
 
-  // Calculate days in effective period (inclusive)
-  const activeDays = Math.floor((effectiveEnd.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)) + 1
+  // Calculate weekdays (Mon-Fri) in effective period
+  const weekdaysInPeriod = countWeekdays(effectiveStart, effectiveEnd)
 
-  // Prorate: (hours_per_week / 7) * activeDays
-  const dailyHours = hoursPerWeek / 7
-  const periodHours = dailyHours * activeDays
+  // Prorate: (hours_per_week / 5) * weekdaysInPeriod
+  // Teachers work 5 days per week (Monday-Friday)
+  const dailyHours = hoursPerWeek / 5
+  const periodHours = dailyHours * weekdaysInPeriod
 
   // Round to 2 decimal places
   return {
