@@ -1271,6 +1271,24 @@ export type Database = {
           },
         ]
       }
+      invoice_number_counter: {
+        Row: {
+          last_number: number
+          updated_at: string
+          year: number
+        }
+        Insert: {
+          last_number?: number
+          updated_at?: string
+          year: number
+        }
+        Update: {
+          last_number?: number
+          updated_at?: string
+          year?: number
+        }
+        Relationships: []
+      }
       invoices: {
         Row: {
           amount_paid: number
@@ -1927,6 +1945,60 @@ export type Database = {
           requires_teacher?: boolean
         }
         Relationships: []
+      }
+      stripe_invoice_webhooks: {
+        Row: {
+          amount_paid: number | null
+          created_at: string
+          error_message: string | null
+          event_type: string
+          id: string
+          invoice_id: string | null
+          processed_at: string | null
+          processing_status: string
+          raw_payload: Json | null
+          stripe_event_id: string
+        }
+        Insert: {
+          amount_paid?: number | null
+          created_at?: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          invoice_id?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          raw_payload?: Json | null
+          stripe_event_id: string
+        }
+        Update: {
+          amount_paid?: number | null
+          created_at?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          invoice_id?: string | null
+          processed_at?: string | null
+          processing_status?: string
+          raw_payload?: Json | null
+          stripe_event_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stripe_invoice_webhooks_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "stripe_invoice_webhooks_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "overdue_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       students: {
         Row: {
@@ -2859,6 +2931,7 @@ export type Database = {
     }
     Functions: {
       derive_age_group: { Args: { age: number }; Returns: string }
+      generate_invoice_number: { Args: never; Returns: string }
       generate_public_id: { Args: never; Returns: string }
       mark_overdue_invoices: { Args: never; Returns: undefined }
       show_limit: { Args: never; Returns: number }
