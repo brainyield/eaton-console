@@ -14,9 +14,12 @@ import {
   Mail,
   Clock,
   CheckCircle,
+  DollarSign,
+  AlertTriangle,
+  Wrench,
 } from 'lucide-react'
 import type { InvoiceWithDetails } from '../lib/hooks'
-import { useInvoiceEmails, getReminderType, useInvoiceMutations } from '../lib/hooks'
+import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations } from '../lib/hooks'
 
 // ============================================================================
 // Types
@@ -115,10 +118,16 @@ export default function InvoiceDetailPanel({
 }: Props) {
   const statusConfig = STATUS_CONFIG[invoice.status] || STATUS_CONFIG.draft
   const [sendingReminder, setSendingReminder] = useState(false)
+  const [recordingPayment, setRecordingPayment] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentAmount, setPaymentAmount] = useState('')
+  const [paymentNotes, setPaymentNotes] = useState('')
+  const [fixingBalance, setFixingBalance] = useState(false)
 
-  // Fetch email history for this invoice
+  // Fetch email history and payment history for this invoice
   const { data: emailHistory, isLoading: loadingEmails } = useInvoiceEmails(invoice?.id)
-  const { sendReminder } = useInvoiceMutations()
+  const { data: paymentHistory, isLoading: loadingPayments } = useInvoicePayments(invoice?.id)
+  const { sendReminder, recordPayment, recalculateInvoiceBalance } = useInvoiceMutations()
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null || amount === undefined) return '-'
@@ -149,21 +158,24 @@ export default function InvoiceDetailPanel({
   const canVoid = ['sent', 'partial', 'overdue'].includes(invoice.status)
   const canEdit = isDraft
   const canRemind = ['sent', 'partial', 'overdue'].includes(invoice.status)
+  const balanceDue = invoice.balance_due ?? ((invoice.total_amount || 0) - (invoice.amount_paid || 0))
+  const canRecordPayment = ['sent', 'partial', 'overdue'].includes(invoice.status) && balanceDue > 0
+  const hasBalanceError = balanceDue < 0 || (invoice.amount_paid || 0) > (invoice.total_amount || 0)
 
   // Handler for sending individual reminder
   async function handleSendReminder() {
     if (!invoice || !invoice.family) return
-    
+
     const { type, label, daysOverdue } = getReminderType(invoice.due_date || '')
-    
+
     const confirmMsg = `Send "${label}" reminder to ${invoice.family.primary_email}?\n\nThis invoice is ${daysOverdue} days overdue.`
     if (!confirm(confirmMsg)) return
 
     setSendingReminder(true)
     try {
-      await sendReminder.mutateAsync({ 
-        invoice: invoice, 
-        reminderType: type 
+      await sendReminder.mutateAsync({
+        invoice: invoice,
+        reminderType: type
       })
       alert('Reminder sent successfully!')
     } catch (error) {
@@ -171,6 +183,74 @@ export default function InvoiceDetailPanel({
       alert('Failed to send reminder')
     } finally {
       setSendingReminder(false)
+    }
+  }
+
+  // Open payment modal with balance due as default amount
+  function openPaymentModal() {
+    if (balanceDue <= 0) return
+    setPaymentAmount(balanceDue.toFixed(2))
+    setPaymentNotes('')
+    setShowPaymentModal(true)
+  }
+
+  // Handler for fixing balance issues
+  async function handleFixBalance() {
+    if (!invoice || fixingBalance) return
+
+    const confirmMsg = `This will recalculate the invoice balance based on payment records. Continue?`
+    if (!confirm(confirmMsg)) return
+
+    setFixingBalance(true)
+    try {
+      await recalculateInvoiceBalance.mutateAsync(invoice.id)
+      alert('Invoice balance has been corrected!')
+    } catch (error: any) {
+      console.error('Failed to fix balance:', error)
+      alert(error?.message || 'Failed to fix balance')
+    } finally {
+      setFixingBalance(false)
+    }
+  }
+
+  // Handler for recording a payment
+  async function handleRecordPayment() {
+    if (!invoice || recordingPayment) return
+
+    const amount = parseFloat(paymentAmount)
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid payment amount')
+      return
+    }
+
+    if (balanceDue <= 0) {
+      alert('This invoice has no balance due')
+      setShowPaymentModal(false)
+      return
+    }
+
+    if (amount > balanceDue) {
+      alert(`Payment amount cannot exceed the balance due (${formatCurrency(balanceDue)})`)
+      return
+    }
+
+    setRecordingPayment(true)
+    try {
+      await recordPayment.mutateAsync({
+        invoiceId: invoice.id,
+        amount: amount,
+        notes: paymentNotes || undefined
+      })
+      setShowPaymentModal(false)
+      setPaymentAmount('')
+      setPaymentNotes('')
+      const newStatus = amount >= balanceDue ? 'paid' : 'partial'
+      alert(`Payment of ${formatCurrency(amount)} recorded! Invoice is now ${newStatus}.`)
+    } catch (error: any) {
+      console.error('Failed to record payment:', error)
+      alert(error?.message || 'Failed to record payment')
+    } finally {
+      setRecordingPayment(false)
     }
   }
 
@@ -312,13 +392,46 @@ export default function InvoiceDetailPanel({
             <div className="flex justify-between text-base pt-2 border-t border-zinc-700">
               <span className="text-white font-medium">Balance Due</span>
               <span className={`font-bold ${
-                isVoid 
+                isVoid
                   ? 'text-zinc-500 line-through'
+                  : hasBalanceError ? 'text-red-400'
                   : (invoice.balance_due || 0) > 0 ? 'text-amber-400' : 'text-green-400'
               }`}>
                 {formatCurrency(invoice.balance_due)}
               </span>
             </div>
+
+            {/* Balance Error Warning */}
+            {hasBalanceError && (
+              <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm text-red-400 font-medium">Balance calculation error</p>
+                    <p className="text-xs text-red-400/70 mt-1">
+                      The amount paid exceeds the total. This may be due to duplicate payments.
+                    </p>
+                    <button
+                      onClick={handleFixBalance}
+                      disabled={fixingBalance}
+                      className="mt-2 flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 transition-colors disabled:opacity-50"
+                    >
+                      {fixingBalance ? (
+                        <>
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          Fixing...
+                        </>
+                      ) : (
+                        <>
+                          <Wrench className="w-3 h-3" />
+                          Recalculate Balance
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Notes */}
@@ -329,13 +442,57 @@ export default function InvoiceDetailPanel({
             </div>
           )}
 
+          {/* Payment History Section */}
+          {(paymentHistory && paymentHistory.length > 0) && (
+            <div className="px-6 py-4 border-b border-zinc-800">
+              <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
+                <DollarSign className="w-4 h-4" />
+                Payment History
+              </h3>
+
+              {loadingPayments ? (
+                <div className="text-sm text-zinc-500">Loading...</div>
+              ) : (
+                <div className="space-y-2">
+                  {paymentHistory.map((payment) => (
+                    <div
+                      key={payment.id}
+                      className="p-3 bg-zinc-800/50 rounded-lg"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-green-400">
+                            {formatCurrency(payment.amount)}
+                          </div>
+                          <div className="text-xs text-zinc-500 mt-0.5">
+                            {new Date(payment.payment_date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                            {payment.payment_method && ` • ${payment.payment_method}`}
+                          </div>
+                        </div>
+                      </div>
+                      {payment.notes && (
+                        <p className="text-xs text-zinc-400 mt-2 italic">
+                          {payment.notes}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Email History Section */}
           <div className="px-6 py-4 border-b border-zinc-800">
             <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
               <Mail className="w-4 h-4" />
               Email History
             </h3>
-            
+
             {loadingEmails ? (
               <div className="text-sm text-zinc-500">Loading...</div>
             ) : emailHistory && emailHistory.length > 0 ? (
@@ -419,6 +576,17 @@ export default function InvoiceDetailPanel({
             </button>
           )}
 
+          {/* Record Payment button for outstanding invoices */}
+          {canRecordPayment && (
+            <button
+              onClick={openPaymentModal}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+            >
+              <DollarSign className="w-4 h-4" />
+              Record Payment
+            </button>
+          )}
+
           <button
             onClick={() => window.open(publicUrl, '_blank')}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
@@ -481,6 +649,89 @@ export default function InvoiceDetailPanel({
           )}
         </div>
       </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/60 z-[60]"
+            onClick={() => setShowPaymentModal(false)}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[70] p-4">
+            <div className="bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl w-full max-w-sm">
+              <div className="px-6 py-4 border-b border-zinc-800">
+                <h3 className="text-lg font-semibold text-white">Record Payment</h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Balance Due: {formatCurrency(balanceDue)}
+                </p>
+              </div>
+
+              <div className="px-6 py-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Payment Amount
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">$</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={paymentAmount}
+                      onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="w-full pl-8 pr-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="0.00"
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Enter the full amount for complete payment, or a partial amount.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-2">
+                    Notes <span className="text-zinc-500">(optional)</span>
+                  </label>
+                  <textarea
+                    value={paymentNotes}
+                    onChange={(e) => setPaymentNotes(e.target.value)}
+                    rows={2}
+                    className="w-full px-4 py-2.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none"
+                    placeholder="e.g., Partial payment via check #123"
+                  />
+                </div>
+              </div>
+
+              <div className="px-6 py-4 border-t border-zinc-800 flex gap-3">
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRecordPayment}
+                  disabled={recordingPayment || !paymentAmount}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {recordingPayment ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Recording...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Record Payment
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </>
   )
 }

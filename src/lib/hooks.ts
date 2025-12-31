@@ -1691,6 +1691,34 @@ export function useInvoiceEmails(invoiceId: string) {
   })
 }
 
+// Payment type for invoice payments
+export interface InvoicePayment {
+  id: string
+  invoice_id: string
+  amount: number
+  payment_date: string
+  payment_method: string | null
+  notes: string | null
+  created_at: string
+}
+
+// Hook to fetch payment history for an invoice
+export function useInvoicePayments(invoiceId: string) {
+  return useQuery({
+    queryKey: ['invoice_payments', invoiceId],
+    queryFn: async () => {
+      const { data, error } = await (supabase.from('payments') as any)
+        .select('*')
+        .eq('invoice_id', invoiceId)
+        .order('payment_date', { ascending: false })
+
+      if (error) throw error
+      return data as InvoicePayment[]
+    },
+    enabled: !!invoiceId,
+  })
+}
+
 // Get all invoice emails for a family (via invoices)
 export function useInvoiceEmailsByFamily(familyId: string) {
   return useQuery({
@@ -2133,6 +2161,155 @@ export function useInvoiceMutations() {
     },
   })
 
+  // Record payment - supports both full and partial payments
+  const recordPayment = useMutation({
+    mutationFn: async ({
+      invoiceId,
+      amount,
+      paymentMethod = 'manual',
+      notes = 'Payment recorded manually'
+    }: {
+      invoiceId: string
+      amount: number
+      paymentMethod?: string
+      notes?: string
+    }) => {
+      // First, get the invoice to know the current amounts
+      const { data: invoice, error: fetchError } = await (supabase.from('invoices') as any)
+        .select('id, total_amount, amount_paid, balance_due, status')
+        .eq('id', invoiceId)
+        .single()
+
+      if (fetchError) throw fetchError
+      if (!invoice) throw new Error('Invoice not found')
+
+      // Check if invoice is already paid
+      if (invoice.status === 'paid') {
+        throw new Error('Invoice is already fully paid')
+      }
+
+      // Calculate current balance due (in case it's not set correctly)
+      const currentBalanceDue = (invoice.total_amount || 0) - (invoice.amount_paid || 0)
+
+      // Prevent overpayments - cap amount at current balance due
+      const actualPaymentAmount = Math.min(amount, Math.max(0, currentBalanceDue))
+
+      if (actualPaymentAmount <= 0) {
+        throw new Error('Invoice has no balance due')
+      }
+
+      // Create a payment record
+      const { error: paymentError } = await (supabase.from('payments') as any)
+        .insert({
+          invoice_id: invoiceId,
+          amount: actualPaymentAmount,
+          payment_date: new Date().toISOString().split('T')[0],
+          payment_method: paymentMethod,
+          notes: notes,
+        })
+
+      if (paymentError) throw paymentError
+
+      // Calculate new amounts
+      const newAmountPaid = (invoice.amount_paid || 0) + actualPaymentAmount
+      const newBalanceDue = (invoice.total_amount || 0) - newAmountPaid
+
+      // Determine new status: paid if balance is 0, partial if some payment made
+      const newStatus = newBalanceDue <= 0 ? 'paid' : 'partial'
+
+      // Update the invoice status and amount_paid (balance_due is a computed column)
+      const { data: updatedInvoice, error: updateError } = await (supabase.from('invoices') as any)
+        .update({
+          status: newStatus,
+          amount_paid: newAmountPaid,
+        })
+        .eq('id', invoiceId)
+        .select()
+        .single()
+
+      if (updateError) throw updateError
+
+      // Sync event_orders when invoice is fully paid
+      if (newStatus === 'paid') {
+        const { error: syncError } = await (supabase.from('event_orders') as any)
+          .update({
+            payment_status: 'paid',
+            paid_at: new Date().toISOString(),
+          })
+          .eq('invoice_id', invoiceId)
+
+        if (syncError) {
+          console.error('Failed to sync event_orders payment status:', syncError)
+          // Don't throw - the invoice update succeeded
+        }
+      }
+
+      return updatedInvoice
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.invoiceId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: ['invoice_payments', variables.invoiceId] })
+    },
+  })
+
+  // Recalculate invoice balance from payments - fixes corrupted invoices
+  const recalculateInvoiceBalance = useMutation({
+    mutationFn: async (invoiceId: string) => {
+      // Get the invoice
+      const { data: invoice, error: invoiceError } = await (supabase.from('invoices') as any)
+        .select('id, total_amount, status')
+        .eq('id', invoiceId)
+        .single()
+
+      if (invoiceError) throw invoiceError
+      if (!invoice) throw new Error('Invoice not found')
+
+      // Get total of all payments for this invoice
+      const { data: payments, error: paymentsError } = await (supabase.from('payments') as any)
+        .select('amount')
+        .eq('invoice_id', invoiceId)
+
+      if (paymentsError) throw paymentsError
+
+      // Calculate actual amount paid from payment records
+      const actualAmountPaid = (payments || []).reduce((sum: number, p: { amount: number }) => sum + (p.amount || 0), 0)
+
+      // Calculate correct balance due
+      const totalAmount = invoice.total_amount || 0
+      const correctBalanceDue = Math.max(0, totalAmount - actualAmountPaid)
+
+      // Determine correct status
+      let correctStatus = invoice.status
+      if (correctBalanceDue <= 0 && actualAmountPaid > 0) {
+        correctStatus = 'paid'
+      } else if (actualAmountPaid > 0 && correctBalanceDue > 0) {
+        correctStatus = 'partial'
+      }
+
+      // Update the invoice with correct amounts (balance_due is a computed column)
+      const { data: updatedInvoice, error: updateError } = await (supabase.from('invoices') as any)
+        .update({
+          amount_paid: Math.min(actualAmountPaid, totalAmount), // Cap at total amount
+          status: correctStatus,
+        })
+        .eq('id', invoiceId)
+        .select()
+        .single()
+
+      if (updateError) throw updateError
+
+      return updatedInvoice
+    },
+    onSuccess: (_, invoiceId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(invoiceId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+    },
+  })
+
   const sendInvoice = useMutation({
     mutationFn: async (invoiceId: string) => {
       // First, get the full invoice with family and line items
@@ -2467,6 +2644,8 @@ export function useInvoiceMutations() {
     bulkDeleteInvoices,
     voidInvoice,
     bulkVoidInvoices,
+    recordPayment,
+    recalculateInvoiceBalance,
     sendInvoice,
     bulkSendInvoices,
     // Reminder mutations
