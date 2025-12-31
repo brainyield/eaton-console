@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { CheckCircle, Clock, AlertCircle, FileText, Building2, Calendar, CreditCard } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, FileText, Building2, Calendar, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
 
 interface Invoice {
   id: string;
@@ -109,11 +110,17 @@ function getStatusConfig(status: string) {
 }
 
 export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) {
+  const [searchParams] = useSearchParams();
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [family, setFamily] = useState<Family | null>(null);
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isLoadingStripe, setIsLoadingStripe] = useState(false);
+  const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  // Check for payment status from URL params (redirect from Stripe)
+  const paymentStatus = searchParams.get('payment');
 
   useEffect(() => {
     fetchInvoice();
@@ -170,6 +177,38 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
     }
   }
 
+  async function handleStripePayment() {
+    setIsLoadingStripe(true);
+    setPaymentError(null);
+
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-checkout-session`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ invoice_public_id: publicId }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create checkout session');
+      }
+
+      // Redirect to Stripe Checkout
+      window.location.href = data.checkout_url;
+    } catch (err) {
+      console.error('Stripe payment error:', err);
+      setPaymentError(err instanceof Error ? err.message : 'Payment failed. Please try again.');
+      setIsLoadingStripe(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -201,6 +240,31 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-3xl mx-auto">
+        {/* Payment Status Messages */}
+        {paymentStatus === 'success' && (
+          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <CheckCircle className="w-6 h-6 text-green-600" />
+              <div>
+                <p className="font-medium text-green-800">Payment Successful!</p>
+                <p className="text-sm text-green-700">Thank you for your payment. Your invoice will be updated shortly.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {paymentStatus === 'cancelled' && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-6 h-6 text-amber-600" />
+              <div>
+                <p className="font-medium text-amber-800">Payment Cancelled</p>
+                <p className="text-sm text-amber-700">Your payment was cancelled. You can try again when ready.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
           <div className="flex items-start justify-between mb-6">
@@ -324,19 +388,55 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
             </div>
           </div>
 
-          {/* Payment Info */}
+          {/* Payment Options */}
           {invoice.status !== 'paid' && (invoice.balance_due ?? 0) > 0 && (
             <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="flex items-start gap-3 p-4 bg-blue-50 rounded-lg">
-                <CreditCard className="w-5 h-5 text-blue-600 mt-0.5" />
-                <div>
-                  <h3 className="font-medium text-blue-900 mb-1">Payment Methods</h3>
-                  <p className="text-blue-800 text-sm">
-                    We accept payment via Step Up, Zelle, or debit/credit cards. 
-                    Please contact us at <a href="mailto:info@eatonacademic.com" className="underline">info@eatonacademic.com</a> for payment instructions.
-                  </p>
+              <h3 className="font-medium text-gray-900 mb-4">Payment Options</h3>
+
+              {paymentError && (
+                <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm">
+                  {paymentError}
                 </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                {/* Pay with Card Button */}
+                <button
+                  onClick={handleStripePayment}
+                  disabled={isLoadingStripe}
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isLoadingStripe ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <span>Processing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="w-5 h-5" />
+                      <span>Pay with Card</span>
+                    </>
+                  )}
+                </button>
+
+                {/* Pay with Step Up Button */}
+                <a
+                  href="https://www.stepupforstudents.org/login"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                  <span>Pay with Step Up</span>
+                </a>
               </div>
+
+              <p className="mt-4 text-sm text-gray-500 text-center">
+                Questions? Contact us at{' '}
+                <a href="mailto:info@eatonacademic.com" className="text-blue-600 hover:underline">
+                  info@eatonacademic.com
+                </a>
+              </p>
             </div>
           )}
 

@@ -1,8 +1,14 @@
 -- ============================================================================
 -- EATON ACADEMIC CUSTOMER OPERATIONS CONSOLE
 -- Database Schema for Supabase (PostgreSQL)
--- Version: 4.3 | Last Updated: 2024-12-28
+-- Version: 4.4 | Last Updated: 2024-12-31
 -- ============================================================================
+-- CHANGELOG v4.4:
+-- - Added invoice_number_counter table for auto-generating invoice numbers
+-- - Added generate_invoice_number() function (INV-YYYY-NNNN format)
+-- - Added trigger to auto-assign invoice numbers on invoice creation
+-- - Added stripe_invoice_webhooks table for Stripe payment tracking
+--
 -- CHANGELOG v4.3:
 -- - Fixed family_overview VIEW (Cartesian product bug causing inflated balances)
 -- - Added reminder_14_day email template
@@ -708,6 +714,76 @@ BEGIN
     AND balance_due > 0;
 END;
 $$ LANGUAGE plpgsql;
+
+-- ============================================================================
+-- INVOICE NUMBER GENERATION
+-- ============================================================================
+
+-- Counter table for year-based invoice numbering
+CREATE TABLE invoice_number_counter (
+  year INTEGER PRIMARY KEY,
+  last_number INTEGER NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Function to generate next invoice number (INV-YYYY-NNNN)
+CREATE OR REPLACE FUNCTION generate_invoice_number()
+RETURNS TEXT AS $$
+DECLARE
+  current_year INTEGER;
+  next_number INTEGER;
+BEGIN
+  current_year := EXTRACT(YEAR FROM CURRENT_DATE)::INTEGER;
+
+  INSERT INTO invoice_number_counter (year, last_number, updated_at)
+  VALUES (current_year, 1, now())
+  ON CONFLICT (year) DO UPDATE
+  SET last_number = invoice_number_counter.last_number + 1,
+      updated_at = now()
+  RETURNING last_number INTO next_number;
+
+  RETURN 'INV-' || current_year || '-' || LPAD(next_number::TEXT, 4, '0');
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger function to auto-assign invoice number on insert
+CREATE OR REPLACE FUNCTION set_invoice_number()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.invoice_number IS NULL THEN
+    NEW.invoice_number := generate_invoice_number();
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger on invoices table
+CREATE TRIGGER invoice_number_trigger
+  BEFORE INSERT ON invoices
+  FOR EACH ROW
+  EXECUTE FUNCTION set_invoice_number();
+
+-- ============================================================================
+-- STRIPE PAYMENT INTEGRATION
+-- ============================================================================
+
+-- Table to track processed Stripe webhook events (for idempotency)
+CREATE TABLE stripe_invoice_webhooks (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  stripe_event_id TEXT NOT NULL UNIQUE,
+  event_type TEXT NOT NULL,
+  invoice_id UUID REFERENCES invoices(id) ON DELETE SET NULL,
+  amount_paid NUMERIC(10,2),
+  processed_at TIMESTAMPTZ,
+  processing_status TEXT NOT NULL DEFAULT 'pending',
+  error_message TEXT,
+  raw_payload JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_stripe_invoice_webhooks_event_id ON stripe_invoice_webhooks(stripe_event_id);
+CREATE INDEX idx_stripe_invoice_webhooks_invoice_id ON stripe_invoice_webhooks(invoice_id);
+CREATE INDEX idx_stripe_invoice_webhooks_status ON stripe_invoice_webhooks(processing_status);
 
 -- ============================================================================
 -- ROW LEVEL SECURITY
