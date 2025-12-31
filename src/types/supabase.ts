@@ -194,6 +194,138 @@ export type Database = {
         }
         Relationships: []
       }
+      calendly_bookings: {
+        Row: {
+          calendly_event_uri: string
+          calendly_invitee_uri: string
+          cancel_reason: string | null
+          canceled_at: string | null
+          created_at: string
+          event_type: Database["public"]["Enums"]["calendly_booking_type"]
+          family_id: string | null
+          hub_session_id: string | null
+          id: string
+          invitee_email: string
+          invitee_name: string | null
+          invitee_phone: string | null
+          lead_id: string | null
+          notes: string | null
+          payment_method: string | null
+          raw_payload: Json | null
+          scheduled_at: string
+          status: Database["public"]["Enums"]["calendly_booking_status"]
+          student_age_group: string | null
+          student_id: string | null
+          student_name: string | null
+          updated_at: string
+        }
+        Insert: {
+          calendly_event_uri: string
+          calendly_invitee_uri: string
+          cancel_reason?: string | null
+          canceled_at?: string | null
+          created_at?: string
+          event_type: Database["public"]["Enums"]["calendly_booking_type"]
+          family_id?: string | null
+          hub_session_id?: string | null
+          id?: string
+          invitee_email: string
+          invitee_name?: string | null
+          invitee_phone?: string | null
+          lead_id?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          raw_payload?: Json | null
+          scheduled_at: string
+          status?: Database["public"]["Enums"]["calendly_booking_status"]
+          student_age_group?: string | null
+          student_id?: string | null
+          student_name?: string | null
+          updated_at?: string
+        }
+        Update: {
+          calendly_event_uri?: string
+          calendly_invitee_uri?: string
+          cancel_reason?: string | null
+          canceled_at?: string | null
+          created_at?: string
+          event_type?: Database["public"]["Enums"]["calendly_booking_type"]
+          family_id?: string | null
+          hub_session_id?: string | null
+          id?: string
+          invitee_email?: string
+          invitee_name?: string | null
+          invitee_phone?: string | null
+          lead_id?: string | null
+          notes?: string | null
+          payment_method?: string | null
+          raw_payload?: Json | null
+          scheduled_at?: string
+          status?: Database["public"]["Enums"]["calendly_booking_status"]
+          student_age_group?: string | null
+          student_id?: string | null
+          student_name?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_hub_session_id_fkey"
+            columns: ["hub_session_id"]
+            isOneToOne: false
+            referencedRelation: "hub_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_hub_session_id_fkey"
+            columns: ["hub_session_id"]
+            isOneToOne: false
+            referencedRelation: "unbilled_hub_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       communications: {
         Row: {
           channel: Database["public"]["Enums"]["comm_channel"]
@@ -229,6 +361,13 @@ export type Database = {
           workflow_run_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "communications_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
           {
             foreignKeyName: "communications_family_id_fkey"
             columns: ["family_id"]
@@ -401,6 +540,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "event_stepup_pending"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollments_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
           },
           {
             foreignKeyName: "enrollments_family_id_fkey"
@@ -710,6 +856,13 @@ export type Database = {
             foreignKeyName: "event_orders_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
             referencedRelation: "families"
             referencedColumns: ["id"]
           },
@@ -865,6 +1018,13 @@ export type Database = {
             foreignKeyName: "family_contacts_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "family_contacts_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
             referencedRelation: "families"
             referencedColumns: ["id"]
           },
@@ -894,6 +1054,13 @@ export type Database = {
           tag_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "family_tags_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
           {
             foreignKeyName: "family_tags_family_id_fkey"
             columns: ["family_id"]
@@ -1176,11 +1343,109 @@ export type Database = {
             foreignKeyName: "invoices_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
             referencedRelation: "families"
             referencedColumns: ["id"]
           },
           {
             foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      leads: {
+        Row: {
+          calendly_event_uri: string | null
+          calendly_invitee_uri: string | null
+          children_ages: string | null
+          converted_at: string | null
+          created_at: string
+          email: string
+          family_id: string | null
+          id: string
+          lead_type: Database["public"]["Enums"]["lead_type"]
+          name: string | null
+          notes: string | null
+          num_children: number | null
+          phone: string | null
+          preferred_days: string | null
+          preferred_time: string | null
+          scheduled_at: string | null
+          service_interest: string | null
+          source_url: string | null
+          status: Database["public"]["Enums"]["lead_status"]
+          updated_at: string
+        }
+        Insert: {
+          calendly_event_uri?: string | null
+          calendly_invitee_uri?: string | null
+          children_ages?: string | null
+          converted_at?: string | null
+          created_at?: string
+          email: string
+          family_id?: string | null
+          id?: string
+          lead_type: Database["public"]["Enums"]["lead_type"]
+          name?: string | null
+          notes?: string | null
+          num_children?: number | null
+          phone?: string | null
+          preferred_days?: string | null
+          preferred_time?: string | null
+          scheduled_at?: string | null
+          service_interest?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          updated_at?: string
+        }
+        Update: {
+          calendly_event_uri?: string | null
+          calendly_invitee_uri?: string | null
+          children_ages?: string | null
+          converted_at?: string | null
+          created_at?: string
+          email?: string
+          family_id?: string | null
+          id?: string
+          lead_type?: Database["public"]["Enums"]["lead_type"]
+          name?: string | null
+          notes?: string | null
+          num_children?: number | null
+          phone?: string | null
+          preferred_days?: string | null
+          preferred_time?: string | null
+          scheduled_at?: string | null
+          service_interest?: string | null
+          source_url?: string | null
+          status?: Database["public"]["Enums"]["lead_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
             referencedRelation: "family_overview"
@@ -1523,6 +1788,13 @@ export type Database = {
             foreignKeyName: "revenue_records_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "revenue_records_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
             referencedRelation: "families"
             referencedColumns: ["id"]
           },
@@ -1697,6 +1969,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "students_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
           {
             foreignKeyName: "students_family_id_fkey"
             columns: ["family_id"]
@@ -2130,6 +2409,13 @@ export type Database = {
             foreignKeyName: "event_orders_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
             referencedRelation: "families"
             referencedColumns: ["id"]
           },
@@ -2141,6 +2427,19 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      event_leads: {
+        Row: {
+          created_at: string | null
+          event_order_count: number | null
+          family_id: string | null
+          family_name: string | null
+          last_event_order_at: string | null
+          primary_email: string | null
+          primary_phone: string | null
+          total_event_spend: number | null
+        }
+        Relationships: []
       }
       event_orders_pending_billing: {
         Row: {
@@ -2192,6 +2491,13 @@ export type Database = {
             foreignKeyName: "event_orders_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
             referencedRelation: "families"
             referencedColumns: ["id"]
           },
@@ -2221,6 +2527,13 @@ export type Database = {
           total_cents: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
           {
             foreignKeyName: "event_orders_family_id_fkey"
             columns: ["family_id"]
@@ -2284,6 +2597,47 @@ export type Database = {
         }
         Relationships: []
       }
+      leads_pipeline: {
+        Row: {
+          created_at: string | null
+          days_in_pipeline: number | null
+          email: string | null
+          family_id: string | null
+          family_name: string | null
+          id: string | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          name: string | null
+          notes: string | null
+          num_children: number | null
+          phone: string | null
+          scheduled_at: string | null
+          service_interest: string | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       monthly_revenue_by_service: {
         Row: {
           month: string | null
@@ -2333,6 +2687,13 @@ export type Database = {
           viewed_at: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
           {
             foreignKeyName: "invoices_family_id_fkey"
             columns: ["family_id"]
@@ -2424,6 +2785,77 @@ export type Database = {
           },
         ]
       }
+      upcoming_calendly_bookings: {
+        Row: {
+          event_type:
+            | Database["public"]["Enums"]["calendly_booking_type"]
+            | null
+          family_id: string | null
+          family_name: string | null
+          hub_session_id: string | null
+          id: string | null
+          invitee_email: string | null
+          invitee_name: string | null
+          invitee_phone: string | null
+          lead_id: string | null
+          payment_method: string | null
+          scheduled_at: string | null
+          status: Database["public"]["Enums"]["calendly_booking_status"] | null
+          student_age_group: string | null
+          student_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_hub_session_id_fkey"
+            columns: ["hub_session_id"]
+            isOneToOne: false
+            referencedRelation: "hub_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_hub_session_id_fkey"
+            columns: ["hub_session_id"]
+            isOneToOne: false
+            referencedRelation: "unbilled_hub_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       derive_age_group: { Args: { age: number }; Returns: string }
@@ -2440,12 +2872,20 @@ export type Database = {
         | "bi_monthly"
         | "annual"
         | "one_time"
+      calendly_booking_status:
+        | "scheduled"
+        | "completed"
+        | "canceled"
+        | "no_show"
+      calendly_booking_type: "15min_call" | "hub_dropoff"
       comm_channel: "email" | "sms" | "call" | "in_person" | "other"
       comm_direction: "inbound" | "outbound"
       customer_status: "lead" | "trial" | "active" | "paused" | "churned"
       employee_status: "active" | "reserve" | "inactive"
       enrollment_status: "trial" | "active" | "paused" | "ended"
       invoice_status: "draft" | "sent" | "paid" | "partial" | "overdue" | "void"
+      lead_status: "new" | "contacted" | "converted" | "closed"
+      lead_type: "exit_intent" | "waitlist" | "calendly_call" | "event"
       workflow_status: "queued" | "running" | "success" | "error"
     }
     CompositeTypes: {
@@ -2582,12 +3022,21 @@ export const Constants = {
         "annual",
         "one_time",
       ],
+      calendly_booking_status: [
+        "scheduled",
+        "completed",
+        "canceled",
+        "no_show",
+      ],
+      calendly_booking_type: ["15min_call", "hub_dropoff"],
       comm_channel: ["email", "sms", "call", "in_person", "other"],
       comm_direction: ["inbound", "outbound"],
       customer_status: ["lead", "trial", "active", "paused", "churned"],
       employee_status: ["active", "reserve", "inactive"],
       enrollment_status: ["trial", "active", "paused", "ended"],
       invoice_status: ["draft", "sent", "paid", "partial", "overdue", "void"],
+      lead_status: ["new", "contacted", "converted", "closed"],
+      lead_type: ["exit_intent", "waitlist", "calendly_call", "event"],
       workflow_status: ["queued", "running", "success", "error"],
     },
   },
