@@ -131,6 +131,7 @@ export interface Invoice {
   status: InvoiceStatus
   sent_at: string | null
   sent_to?: string | null
+  viewed_at: string | null
   notes: string | null
   created_at: string
   updated_at: string

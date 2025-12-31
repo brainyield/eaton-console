@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
 import {
@@ -28,6 +29,7 @@ interface DashboardStats {
   activeTeachers: number
   outstandingBalance: number
   overdueInvoices: number
+  overdueInvoices30Plus: number
   unbilledHubSessions: number
   totalMRR: number
   // New metrics
@@ -46,6 +48,7 @@ interface DashboardStats {
   upcomingCalls: number
   upcomingHubDropoffs: number
   // Comparative
+  mrrThisMonth: number
   mrrLastMonth: number
   mrrChange: number
   enrollmentsLastMonth: number
@@ -78,6 +81,16 @@ function useDashboardStats() {
       const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
       const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString()
 
+      // For same-period enrollment comparison (first N days of each month)
+      const dayOfMonth = now.getDate()
+      const samePeriodLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, dayOfMonth).toISOString()
+
+      // For 90-day profit margin
+      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
+
+      // For 30+ day overdue calculation
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+
       // Fetch all stats in parallel
       const [
         studentsWithActiveEnrollmentsResult,
@@ -96,6 +109,8 @@ function useDashboardStats() {
         leadsResult,
         upcomingCalendlyResult,
         lastMonthInvoicesResult,
+        thisMonthInvoicesResult,
+        overdue30PlusResult,
       ] = await Promise.all([
         // Students with active/trial enrollments
         supabase
@@ -138,11 +153,12 @@ function useDashboardStats() {
           .from('event_stepup_pending')
           .select('total_cents'),
 
-        // Profit margin from invoice line items (paid invoices)
+        // Profit margin from invoice line items (paid invoices in last 90 days)
         supabase
           .from('invoice_line_items')
-          .select('amount, profit, invoice:invoices!inner(status)')
-          .eq('invoice.status', 'paid'),
+          .select('amount, profit, invoice:invoices!inner(status, paid_at)')
+          .eq('invoice.status', 'paid')
+          .gte('invoice.paid_at', ninetyDaysAgo),
 
         // New enrollments this month
         supabase
@@ -150,12 +166,12 @@ function useDashboardStats() {
           .select('id', { count: 'exact', head: true })
           .gte('start_date', monthStart),
 
-        // Enrollments last month (for comparison)
+        // Enrollments same period last month (first N days, for fair comparison)
         supabase
           .from('enrollments')
           .select('id', { count: 'exact', head: true })
           .gte('start_date', lastMonthStart)
-          .lte('start_date', lastMonthEnd),
+          .lte('start_date', samePeriodLastMonth),
 
         // Unopened invoices (sent but never viewed)
         supabase
@@ -191,6 +207,20 @@ function useDashboardStats() {
           .eq('status', 'paid')
           .gte('invoice_date', lastMonthStart)
           .lte('invoice_date', lastMonthEnd),
+
+        // This month paid invoices for proper MRR comparison (actual vs actual)
+        supabase
+          .from('invoices')
+          .select('total_amount')
+          .eq('status', 'paid')
+          .gte('invoice_date', monthStart),
+
+        // Overdue invoices 30+ days (due_date before 30 days ago)
+        supabase
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'overdue')
+          .lte('due_date', thirtyDaysAgo),
       ])
 
       // Type definitions
@@ -223,6 +253,9 @@ function useDashboardStats() {
       interface LastMonthInvoiceData {
         total_amount: number | null
       }
+      interface ThisMonthInvoiceData {
+        total_amount: number | null
+      }
 
       const invoices = (invoicesResult.data || []) as InvoiceData[]
       const enrollments = (enrollmentsResult.data || []) as EnrollmentData[]
@@ -231,6 +264,7 @@ function useDashboardStats() {
       const leads = (leadsResult.data || []) as LeadData[]
       const calendlyBookings = (upcomingCalendlyResult.data || []) as CalendlyData[]
       const lastMonthInvoices = (lastMonthInvoicesResult.data || []) as LastMonthInvoiceData[]
+      const thisMonthInvoices = (thisMonthInvoicesResult.data || []) as ThisMonthInvoiceData[]
 
       // Count unique students with active/trial enrollments
       interface StudentEnrollmentData {
@@ -295,9 +329,10 @@ function useDashboardStats() {
       const upcomingCalls = calendlyBookings.filter(b => b.event_type === '15min_call').length
       const upcomingHubDropoffs = calendlyBookings.filter(b => b.event_type === 'hub_dropoff').length
 
-      // Calculate last month MRR for comparison
+      // Calculate actual revenue comparison (paid invoices this month vs last month)
+      const mrrThisMonth = thisMonthInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
       const mrrLastMonth = lastMonthInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-      const mrrChange = mrrLastMonth > 0 ? ((totalMRR - mrrLastMonth) / mrrLastMonth) * 100 : 0
+      const mrrChange = mrrLastMonth > 0 ? ((mrrThisMonth - mrrLastMonth) / mrrLastMonth) * 100 : 0
 
       // Enrollments change
       const enrollmentsLastMonth = lastMonthEnrollmentsResult.count || 0
@@ -312,6 +347,7 @@ function useDashboardStats() {
         activeTeachers: teachersResult.count || 0,
         outstandingBalance,
         overdueInvoices,
+        overdueInvoices30Plus: overdue30PlusResult.count || 0,
         unbilledHubSessions: hubSessionsResult.count || 0,
         totalMRR,
         grossProfitMargin,
@@ -326,6 +362,7 @@ function useDashboardStats() {
         totalLeads,
         upcomingCalls,
         upcomingHubDropoffs,
+        mrrThisMonth,
         mrrLastMonth,
         mrrChange,
         enrollmentsLastMonth,
@@ -372,17 +409,18 @@ function ChangeIndicator({ value, suffix = '%' }: { value: number; suffix?: stri
 }
 
 export default function CommandCenter() {
+  const navigate = useNavigate()
   const { data: stats, isLoading, error } = useDashboardStats()
   const { data: upcomingBookings = [] } = useUpcomingBookings()
 
   // Derive alerts from stats
   const alerts: Alert[] = []
   if (stats) {
-    if (stats.overdueInvoices > 0) {
+    if (stats.overdueInvoices30Plus > 0) {
       alerts.push({
         type: 'error',
         message: 'invoices overdue 30+ days',
-        count: stats.overdueInvoices,
+        count: stats.overdueInvoices30Plus,
         action: 'View overdue',
         link: '/invoicing?status=overdue'
       })
@@ -404,7 +442,7 @@ export default function CommandCenter() {
         message: 'invoices sent but unopened',
         count: stats.unopenedInvoices,
         action: 'View',
-        link: '/invoicing?status=sent'
+        link: '/invoicing?filter=unopened'
       })
     }
 
@@ -639,8 +677,11 @@ export default function CommandCenter() {
                       <span className="font-medium">{alert.count}</span> {alert.message}
                     </span>
                   </div>
-                  {alert.action && (
-                    <button className="text-xs text-primary hover:underline">
+                  {alert.action && alert.link && (
+                    <button
+                      onClick={() => navigate(alert.link!)}
+                      className="text-xs text-primary hover:underline"
+                    >
                       {alert.action}
                     </button>
                   )}
@@ -725,7 +766,7 @@ export default function CommandCenter() {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3 rounded bg-background">
-              <div className="text-2xl font-bold text-status-churned">{stats?.overdueInvoices ?? 0}</div>
+              <div className="text-2xl font-bold text-status-churned">{stats?.overdueInvoices30Plus ?? 0}</div>
               <div className="text-xs text-muted-foreground">Overdue 30+ days</div>
             </div>
             <div className="p-3 rounded bg-background">

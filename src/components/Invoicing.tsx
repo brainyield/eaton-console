@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Search,
   FileText,
@@ -119,10 +120,13 @@ function SortableHeader({ field, label, sort, onSort, className = '' }: Sortable
 // ============================================================================
 
 export default function Invoicing() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
   // State
   const [activeTab, setActiveTab] = useState<TabKey>('drafts')
   const [searchQuery, setSearchQuery] = useState('')
   const [serviceFilter, setServiceFilter] = useState<string>('')
+  const [statusFilter, setStatusFilter] = useState<string>('') // For filtering within outstanding tab
   const [sort, setSort] = useState<SortConfig>({ field: 'due_date', direction: 'asc' })
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithDetails | null>(null)
@@ -130,6 +134,31 @@ export default function Invoicing() {
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingInvoice, setEditingInvoice] = useState<InvoiceWithDetails | null>(null)
   const [sendingReminders, setSendingReminders] = useState(false)
+
+  // Handle URL params for deep linking from Command Center
+  useEffect(() => {
+    const status = searchParams.get('status')
+    const filter = searchParams.get('filter')
+
+    if (status || filter) {
+      // Handle special filters like "unopened"
+      if (filter === 'unopened') {
+        setActiveTab('outstanding')
+        setStatusFilter('unopened')
+      } else if (status === 'overdue' || status === 'sent' || status === 'partial') {
+        setActiveTab('outstanding')
+        setStatusFilter(status)
+      } else if (status === 'draft') {
+        setActiveTab('drafts')
+      } else if (status === 'paid') {
+        setActiveTab('paid')
+      } else if (status === 'void') {
+        setActiveTab('voided')
+      }
+      // Clear URL params after applying
+      setSearchParams({}, { replace: true })
+    }
+  }, [searchParams, setSearchParams])
 
   // Data fetching - get all invoices, filter in component
   const { data: allInvoices = [], isLoading, refetch } = useInvoicesWithDetails()
@@ -156,20 +185,36 @@ export default function Invoicing() {
 
   // Filter invoices by tab - with explicit type annotations
   const tabFilteredInvoices = useMemo(() => {
+    let filtered: InvoiceWithDetails[]
     switch (activeTab) {
       case 'drafts':
-        return allInvoices.filter((i: InvoiceWithDetails) => i.status === 'draft')
+        filtered = allInvoices.filter((i: InvoiceWithDetails) => i.status === 'draft')
+        break
       case 'outstanding':
-        return allInvoices.filter((i: InvoiceWithDetails) => ['sent', 'partial', 'overdue'].includes(i.status))
+        filtered = allInvoices.filter((i: InvoiceWithDetails) => ['sent', 'partial', 'overdue'].includes(i.status))
+        // Apply status filter within outstanding tab
+        if (statusFilter) {
+          if (statusFilter === 'unopened') {
+            // Unopened = sent but never viewed
+            filtered = filtered.filter((i: InvoiceWithDetails) => i.sent_at && !i.viewed_at)
+          } else {
+            filtered = filtered.filter((i: InvoiceWithDetails) => i.status === statusFilter)
+          }
+        }
+        break
       case 'paid':
-        return allInvoices.filter((i: InvoiceWithDetails) => i.status === 'paid')
+        filtered = allInvoices.filter((i: InvoiceWithDetails) => i.status === 'paid')
+        break
       case 'voided':
-        return allInvoices.filter((i: InvoiceWithDetails) => i.status === 'void')
+        filtered = allInvoices.filter((i: InvoiceWithDetails) => i.status === 'void')
+        break
       case 'all':
       default:
-        return allInvoices.filter((i: InvoiceWithDetails) => i.status !== 'void') // Exclude voided from "All"
+        filtered = allInvoices.filter((i: InvoiceWithDetails) => i.status !== 'void') // Exclude voided from "All"
+        break
     }
-  }, [allInvoices, activeTab])
+    return filtered
+  }, [allInvoices, activeTab, statusFilter])
 
   // Apply search and service filters - with explicit type annotations
   const filteredInvoices = useMemo(() => {
@@ -318,11 +363,12 @@ export default function Invoicing() {
     }
   }, [selectedIds, allInvoices, bulkSendReminders])
 
-  // Clear selection when changing tabs
+  // Clear selection and filters when changing tabs
   const handleTabChange = useCallback((tab: TabKey) => {
     setActiveTab(tab)
     setSelectedIds(new Set())
     setSelectedInvoice(null)
+    setStatusFilter('') // Clear status filter when switching tabs
   }, [])
 
   // Format helpers
@@ -428,11 +474,29 @@ export default function Invoicing() {
             <option value="elective_classes">Elective Classes</option>
           </select>
 
-          {(searchQuery || serviceFilter) && (
+          {/* Status filter - only show when on outstanding tab */}
+          {activeTab === 'outstanding' && (
+            <select
+              value={statusFilter}
+              onChange={e => setStatusFilter(e.target.value)}
+              className={`px-3 py-2 bg-zinc-900 border rounded-lg text-white focus:outline-none focus:border-zinc-500 ${
+                statusFilter ? 'border-blue-500' : 'border-zinc-700'
+              }`}
+            >
+              <option value="">All Statuses</option>
+              <option value="sent">Sent</option>
+              <option value="partial">Partial</option>
+              <option value="overdue">Overdue</option>
+              <option value="unopened">Unopened (never viewed)</option>
+            </select>
+          )}
+
+          {(searchQuery || serviceFilter || statusFilter) && (
             <button
               onClick={() => {
                 setSearchQuery('')
                 setServiceFilter('')
+                setStatusFilter('')
               }}
               className="px-3 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors text-sm"
             >
