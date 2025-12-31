@@ -115,12 +115,12 @@ function extractFormAnswers(invitee: CalendlyInvitee): Record<string, string> {
   return answers
 }
 
-// Determine event type from Calendly event URI
-function getEventType(eventTypeUri: string): 'hub_dropoff' | '15min_call' | 'unknown' {
-  if (eventTypeUri.includes(EVENT_TYPE_SLUGS.HUB_DROPOFF)) {
+// Determine event type from Calendly event type slug
+function getEventType(slug: string): 'hub_dropoff' | '15min_call' | 'unknown' {
+  if (slug === EVENT_TYPE_SLUGS.HUB_DROPOFF || slug.includes('hub-drop-off')) {
     return 'hub_dropoff'
   }
-  if (eventTypeUri.includes(EVENT_TYPE_SLUGS.CALL_15MIN)) {
+  if (slug === EVENT_TYPE_SLUGS.CALL_15MIN || slug.includes('15min')) {
     return '15min_call'
   }
   return 'unknown'
@@ -166,10 +166,11 @@ Deno.serve(async (req) => {
 
     console.log(`Processing Calendly event: ${event}`, {
       eventType: data.event_type.name,
+      eventSlug: data.event_type.slug,
       inviteeEmail: data.invitee.email,
     })
 
-    const eventType = getEventType(data.event_type.uri)
+    const eventType = getEventType(data.event_type.slug)
     const formAnswers = extractFormAnswers(data.invitee)
     const inviteeEmail = data.invitee.email.toLowerCase()
     const scheduledAt = data.event.start_time
