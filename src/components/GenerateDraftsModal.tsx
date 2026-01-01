@@ -18,6 +18,7 @@ import {
   getNextMonday,
 } from '../lib/hooks'
 import type { BillableEnrollment, PendingEventOrder, PendingClassRegistrationFee } from '../lib/hooks'
+import { multiplyMoney, sumMoney, centsToDollars } from '../lib/moneyUtils'
 
 // ============================================================================
 // Types
@@ -276,7 +277,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           unitPrice = override.unit_price
         }
         
-        const finalAmount = quantity * unitPrice
+        const finalAmount = multiplyMoney(quantity, unitPrice)
         const baseAmount = baseQuantity * baseUnitPrice
         const isEdited = override?.quantity !== undefined || override?.unit_price !== undefined
         
@@ -369,14 +370,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     return Array.from(grouped.entries()).map(([familyId, items]) => {
       // Get pending registration fees for this family
       const registrationFees = pendingFeesByFamily.get(familyId) || []
-      const registrationFeesTotal = registrationFees.reduce((sum, fee) => sum + fee.total_cents / 100, 0)
+      const registrationFeesTotal = centsToDollars(registrationFees.reduce((sum, fee) => sum + fee.total_cents, 0))
 
       return {
         familyId,
         familyName: items[0].enrollment.family?.display_name || 'Unknown',
         items,
         registrationFees,
-        totalAmount: items.reduce((sum, i) => sum + (selectedEnrollments.has(i.enrollment.id) ? i.finalAmount : 0), 0) + registrationFeesTotal,
+        totalAmount: sumMoney(items.filter(i => selectedEnrollments.has(i.enrollment.id)).map(i => i.finalAmount)) + registrationFeesTotal,
         hasExisting: items.some(i => i.hasExisting),
         allSelected: items.every(i => selectedEnrollments.has(i.enrollment.id)),
         someSelected: items.some(i => selectedEnrollments.has(i.enrollment.id)),
@@ -407,15 +408,15 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     let total = 0
     pendingFeesByFamily.forEach((fees, familyId) => {
       if (selectedElectiveFamilies.has(familyId)) {
-        total += fees.reduce((sum, fee) => sum + fee.total_cents / 100, 0)
+        total += centsToDollars(fees.reduce((sum, fee) => sum + fee.total_cents, 0))
       }
     })
     return total
   }, [invoiceType, sortedPreviewItems, selectedEnrollments, pendingFeesByFamily])
 
-  const totalAmount = sortedPreviewItems
-    .filter(i => selectedEnrollments.has(i.enrollment.id))
-    .reduce((sum, i) => sum + i.finalAmount, 0) + totalRegistrationFees
+  const totalAmount = sumMoney(
+    sortedPreviewItems.filter(i => selectedEnrollments.has(i.enrollment.id)).map(i => i.finalAmount)
+  ) + totalRegistrationFees
   const familyCount = new Set(
     sortedPreviewItems
       .filter(i => selectedEnrollments.has(i.enrollment.id))
@@ -483,9 +484,9 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       familyId,
       familyName: orders[0].family_name || orders[0].purchaser_name || 'Unknown',
       orders,
-      totalAmount: orders
+      totalAmount: centsToDollars(orders
         .filter(o => selectedEventOrders.has(o.id))
-        .reduce((sum, o) => sum + o.total_cents / 100, 0),
+        .reduce((sum, o) => sum + o.total_cents, 0)),
       allSelected: orders.every(o => selectedEventOrders.has(o.id)),
       someSelected: orders.some(o => selectedEventOrders.has(o.id)),
     }))
@@ -493,9 +494,9 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
 
   // Event order counts
   const selectedEventCount = selectedEventOrders.size
-  const eventTotalAmount = pendingEventOrders
+  const eventTotalAmount = centsToDollars(pendingEventOrders
     .filter(o => selectedEventOrders.has(o.id))
-    .reduce((sum, o) => sum + o.total_cents / 100, 0)
+    .reduce((sum, o) => sum + o.total_cents, 0))
   const eventFamilyCount = new Set(
     pendingEventOrders
       .filter(o => selectedEventOrders.has(o.id))

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { X, DollarSign, Calendar, AlertCircle } from 'lucide-react'
 import { useTeacherAssignmentsByTeacher, useTeacherPaymentMutations } from '../lib/hooks'
 import type { Teacher } from '../lib/hooks'
+import { multiplyMoney } from '../lib/moneyUtils'
 
 interface LineItem {
   enrollment_id: string
@@ -104,7 +105,7 @@ export function RecordTeacherPaymentModal({
           description: `${a.student_name} - ${a.service_name}: ${hours} hrs × $${rate.toFixed(2)}`,
           hours: hours,
           hourly_rate: rate,
-          amount: hours * rate,
+          amount: multiplyMoney(hours, rate),
         }
       })
       setLineItems(items)
@@ -117,9 +118,9 @@ export function RecordTeacherPaymentModal({
       updated[index] = {
         ...updated[index],
         [field]: value,
-        amount: field === 'hours' 
-          ? value * updated[index].hourly_rate 
-          : updated[index].hours * value,
+        amount: field === 'hours'
+          ? multiplyMoney(value, updated[index].hourly_rate)
+          : multiplyMoney(updated[index].hours, value),
       }
       // Update description
       const assignment = assignments[index]

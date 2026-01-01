@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
 import { getTodayString } from './dateUtils'
+import { addMoney, centsToDollars } from './moneyUtils'
 import type { GmailSearchParams } from '../types/gmail'
 
 // =============================================================================
@@ -1861,7 +1862,7 @@ export function useInvoiceMutations() {
             }
           }
 
-          subtotal += amount
+          subtotal = addMoney(subtotal, amount)
 
           return {
             invoice_id: invoice.id,
@@ -1929,8 +1930,8 @@ export function useInvoiceMutations() {
         // Add registration fee line items
         let sortOrder = lineItems.length
         for (const regFee of pendingRegistrationFees) {
-          const amount = regFee.total_cents / 100
-          subtotal += amount
+          const amount = centsToDollars(regFee.total_cents)
+          subtotal = addMoney(subtotal, amount)
           lineItems.push({
             invoice_id: invoice.id,
             enrollment_id: null as any, // Registration fees don't link to enrollments
@@ -2009,8 +2010,8 @@ export function useInvoiceMutations() {
       // Create line items for each event order
       let subtotal = 0
       const lineItems = orders.map((order, idx) => {
-        const amount = order.total_cents / 100
-        subtotal += amount
+        const amount = centsToDollars(order.total_cents)
+        subtotal = addMoney(subtotal, amount)
 
         // Format event date
         const eventDate = order.event_date

@@ -13,6 +13,7 @@ import {
 import { useFamiliesWithStudents, useInvoiceMutations } from '../lib/hooks'
 import type { Family } from '../lib/hooks'
 import { getTodayString } from '../lib/dateUtils'
+import { multiplyMoney } from '../lib/moneyUtils'
 
 // ============================================================================
 // Types
@@ -107,12 +108,12 @@ export default function ImportHistoricalInvoiceModal({ onClose, onSuccess }: Pro
       if (item.id !== id) return item
       
       const updated = { ...item, [field]: value }
-      
+
       // Auto-calculate amount when quantity or unit_price changes
       if (field === 'quantity' || field === 'unit_price') {
-        updated.amount = updated.quantity * updated.unit_price
+        updated.amount = multiplyMoney(updated.quantity, updated.unit_price)
       }
-      
+
       return updated
     }))
   }

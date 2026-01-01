@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
+import { multiplyMoney, sumMoney } from '../lib/moneyUtils'
 
 // ============================================================================
 // Types
@@ -58,9 +59,9 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   }, [invoice.line_items])
 
   // Calculate total
-  const subtotal = lineItems
-    .filter(item => !item.isDeleted)
-    .reduce((sum, item) => sum + item.amount, 0)
+  const subtotal = sumMoney(
+    lineItems.filter(item => !item.isDeleted).map(item => item.amount)
+  )
 
   // Update amount when quantity or unit_price changes
   const updateLineItemAmount = (index: number, field: 'quantity' | 'unit_price', value: number) => {
@@ -69,9 +70,9 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
       updated[index] = {
         ...updated[index],
         [field]: value,
-        amount: field === 'quantity' 
-          ? value * updated[index].unit_price
-          : updated[index].quantity * value,
+        amount: field === 'quantity'
+          ? multiplyMoney(value, updated[index].unit_price)
+          : multiplyMoney(updated[index].quantity, value),
       }
       return updated
     })

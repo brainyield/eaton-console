@@ -356,16 +356,16 @@ export default function ActiveRoster() {
 
   function formatRate(enrollment: EnrollmentWithRelations): string {
     if (enrollment.hourly_rate_customer) {
-      return `$${enrollment.hourly_rate_customer}/hr`
+      return `$${enrollment.hourly_rate_customer.toFixed(2)}/hr`
     }
     if (enrollment.monthly_rate) {
-      return `$${enrollment.monthly_rate}/mo`
+      return `$${enrollment.monthly_rate.toFixed(2)}/mo`
     }
     if (enrollment.weekly_tuition) {
-      return `$${enrollment.weekly_tuition}/wk`
+      return `$${enrollment.weekly_tuition.toFixed(2)}/wk`
     }
     if (enrollment.daily_rate) {
-      return `$${enrollment.daily_rate}/day`
+      return `$${enrollment.daily_rate.toFixed(2)}/day`
     }
     return ''
   }

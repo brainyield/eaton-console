@@ -14,6 +14,7 @@ import {
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
 import { getTodayString } from '../lib/dateUtils';
+import { multiplyMoney } from '../lib/moneyUtils';
 
 // Extended family type with students
 interface FamilyWithStudents extends Family {
@@ -183,14 +184,14 @@ export function AddEnrollmentModal({
     const code = selectedService.code;
     
     if (code === 'academic_coaching' && formData.hourly_rate_customer && formData.hours_per_week) {
-      const weekly = parseFloat(formData.hourly_rate_customer) * parseFloat(formData.hours_per_week);
+      const weekly = multiplyMoney(parseFloat(formData.hourly_rate_customer), parseFloat(formData.hours_per_week));
       return `$${weekly.toFixed(2)}/week`;
     }
     
     if (code === 'eaton_online' && formData.weekly_tuition) {
       const weekly = parseFloat(formData.weekly_tuition);
       if (formData.number_of_weeks) {
-        const total = weekly * parseInt(formData.number_of_weeks);
+        const total = multiplyMoney(weekly, parseInt(formData.number_of_weeks));
         return `$${weekly.toFixed(2)}/week × ${formData.number_of_weeks} weeks = $${total.toFixed(2)} total`;
       }
       return `$${weekly.toFixed(2)}/week`;

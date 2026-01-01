@@ -17,6 +17,7 @@ import {
 import { useTeacherAssignmentsByEnrollment } from '../lib/hooks';
 import { EmailHistory } from './email';
 import { parseLocalDate } from '../lib/dateUtils';
+import { multiplyMoney } from '../lib/moneyUtils';
 
 // Types
 type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended';
@@ -116,23 +117,23 @@ export function EnrollmentDetailPanel({
 
   function formatRate(): string {
     if (enrollment.hourly_rate_customer && enrollment.hours_per_week) {
-      return `$${enrollment.hourly_rate_customer}/hr × ${enrollment.hours_per_week} hrs/wk`;
+      return `$${enrollment.hourly_rate_customer.toFixed(2)}/hr × ${enrollment.hours_per_week} hrs/wk`;
     }
     if (enrollment.monthly_rate) {
-      return `$${enrollment.monthly_rate}/mo`;
+      return `$${enrollment.monthly_rate.toFixed(2)}/mo`;
     }
     if (enrollment.weekly_tuition) {
-      return `$${enrollment.weekly_tuition}/wk`;
+      return `$${enrollment.weekly_tuition.toFixed(2)}/wk`;
     }
     if (enrollment.daily_rate) {
-      return `$${enrollment.daily_rate}/day`;
+      return `$${enrollment.daily_rate.toFixed(2)}/day`;
     }
     return 'Rate not set';
   }
 
   function formatWeeklyRevenue(): string | null {
     if (enrollment.hourly_rate_customer && enrollment.hours_per_week) {
-      return `$${(enrollment.hourly_rate_customer * enrollment.hours_per_week).toFixed(2)}/wk`;
+      return `$${multiplyMoney(enrollment.hourly_rate_customer, enrollment.hours_per_week).toFixed(2)}/wk`;
     }
     return null;
   }
