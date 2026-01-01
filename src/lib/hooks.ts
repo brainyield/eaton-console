@@ -3598,6 +3598,11 @@ export interface Lead {
   mailchimp_status: string | null
   mailchimp_last_synced_at: string | null
   mailchimp_tags: string[] | null
+  // Engagement fields - optional until migration is run
+  mailchimp_opens?: number | null
+  mailchimp_clicks?: number | null
+  mailchimp_engagement_score?: number | null
+  mailchimp_engagement_updated_at?: string | null
   created_at: string
   updated_at: string
 }

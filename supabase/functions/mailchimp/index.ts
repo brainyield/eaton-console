@@ -168,6 +168,30 @@ async function getSubscriberActivity(config: MailchimpConfig, email: string): Pr
   return response.json()
 }
 
+// Calculate engagement score from activity
+// Opens = 1 point, Clicks = 3 points
+interface ActivityItem {
+  action: string
+  timestamp: string
+  campaign_id?: string
+}
+
+function calculateEngagement(activity: ActivityItem[]): { opens: number; clicks: number; score: number } {
+  let opens = 0
+  let clicks = 0
+
+  for (const item of activity) {
+    if (item.action === 'open') {
+      opens++
+    } else if (item.action === 'click') {
+      clicks++
+    }
+  }
+
+  const score = opens * 1 + clicks * 3
+  return { opens, clicks, score }
+}
+
 // Get recent campaigns
 async function getCampaigns(config: MailchimpConfig, count: number = 10): Promise<unknown> {
   const endpoint = `/campaigns?count=${count}&sort_field=send_time&sort_dir=DESC`
@@ -340,6 +364,115 @@ Deno.serve(async (req) => {
           throw new Error('Email is required')
         }
         result = await getSubscriberActivity(config, payload.email)
+        break
+
+      case 'sync_engagement':
+        // Sync engagement data for a single lead
+        if (!payload?.email || !payload?.leadId) {
+          throw new Error('email and leadId are required')
+        }
+        {
+          const activityResult = await getSubscriberActivity(config, payload.email) as { activity: ActivityItem[] }
+          const engagement = calculateEngagement(activityResult.activity || [])
+
+          // Update lead with engagement data
+          const supabaseEngagement = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          )
+          await supabaseEngagement
+            .from('leads')
+            .update({
+              mailchimp_opens: engagement.opens,
+              mailchimp_clicks: engagement.clicks,
+              mailchimp_engagement_score: engagement.score,
+              mailchimp_engagement_updated_at: new Date().toISOString(),
+            })
+            .eq('id', payload.leadId)
+
+          result = {
+            ...engagement,
+            updated: true,
+          }
+        }
+        break
+
+      case 'bulk_sync_engagement':
+        // Sync engagement for multiple leads
+        if (!Array.isArray(payload?.leads)) {
+          throw new Error('leads array is required (each with email and id)')
+        }
+        {
+          const engagementResults: { leadId: string; email: string; opens: number; clicks: number; score: number; error?: string }[] = []
+          const supabaseBulk = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          )
+
+          // Process in batches to avoid rate limits
+          const ENG_BATCH_SIZE = 5
+          const ENG_DELAY_MS = 500
+
+          for (let i = 0; i < payload.leads.length; i += ENG_BATCH_SIZE) {
+            const batch = payload.leads.slice(i, i + ENG_BATCH_SIZE)
+
+            for (const lead of batch) {
+              try {
+                if (!lead.email || !lead.id) {
+                  engagementResults.push({
+                    leadId: lead.id || 'unknown',
+                    email: lead.email || 'unknown',
+                    opens: 0,
+                    clicks: 0,
+                    score: 0,
+                    error: 'Missing email or id',
+                  })
+                  continue
+                }
+
+                const actResult = await getSubscriberActivity(config, lead.email) as { activity: ActivityItem[] }
+                const eng = calculateEngagement(actResult.activity || [])
+
+                await supabaseBulk
+                  .from('leads')
+                  .update({
+                    mailchimp_opens: eng.opens,
+                    mailchimp_clicks: eng.clicks,
+                    mailchimp_engagement_score: eng.score,
+                    mailchimp_engagement_updated_at: new Date().toISOString(),
+                  })
+                  .eq('id', lead.id)
+
+                engagementResults.push({
+                  leadId: lead.id,
+                  email: lead.email,
+                  ...eng,
+                })
+              } catch (err) {
+                engagementResults.push({
+                  leadId: lead.id,
+                  email: lead.email,
+                  opens: 0,
+                  clicks: 0,
+                  score: 0,
+                  error: err instanceof Error ? err.message : String(err),
+                })
+              }
+            }
+
+            // Delay between batches
+            if (i + ENG_BATCH_SIZE < payload.leads.length) {
+              await new Promise(resolve => setTimeout(resolve, ENG_DELAY_MS))
+            }
+          }
+
+          result = {
+            total: payload.leads.length,
+            success: engagementResults.filter(r => !r.error).length,
+            failed: engagementResults.filter(r => r.error).length,
+            results: engagementResults,
+          }
+        }
         break
 
       case 'get_campaigns':

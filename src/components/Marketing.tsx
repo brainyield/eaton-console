@@ -18,8 +18,10 @@ import { useLeads, useLeadMutations, type LeadWithFamily, type LeadType, type Le
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
-import { bulkSyncLeadsToMailchimp } from '../lib/mailchimp'
+import { bulkSyncLeadsToMailchimp, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
+
+type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
 
 const leadTypeLabels: Record<LeadType, string> = {
   exit_intent: 'Exit Intent',
@@ -54,6 +56,7 @@ export default function Marketing() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<LeadType | ''>('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('')
+  const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>('')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingLead, setEditingLead] = useState<LeadWithFamily | null>(null)
@@ -64,22 +67,28 @@ export default function Marketing() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
 
-  const { data: leads = [], isLoading, error } = useLeads({
+  const { data: allLeads = [], isLoading, error } = useLeads({
     type: typeFilter || undefined,
     status: statusFilter || undefined,
     search: search || undefined,
   })
 
+  // Filter leads by engagement (client-side)
+  const leads = useMemo(() => {
+    if (!engagementFilter) return allLeads
+    return allLeads.filter(lead => getEngagementLevel(lead.mailchimp_engagement_score) === engagementFilter)
+  }, [allLeads, engagementFilter])
+
   // Stats
   const stats = useMemo(() => {
-    const all = leads || []
+    const all = allLeads || []
     return {
       total: all.length,
       new: all.filter(l => l.status === 'new').length,
       contacted: all.filter(l => l.status === 'contacted').length,
       converted: all.filter(l => l.status === 'converted').length,
     }
-  }, [leads])
+  }, [allLeads])
 
   const selectedLead = leads?.find(l => l.id === selectedLeadId)
 
@@ -299,11 +308,23 @@ export default function Marketing() {
             <option value="closed">Closed</option>
           </select>
 
-          {(typeFilter || statusFilter || search) && (
+          <select
+            value={engagementFilter}
+            onChange={(e) => setEngagementFilter(e.target.value as EngagementFilter)}
+            className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+          >
+            <option value="">All Engagement</option>
+            <option value="hot">Hot (6+)</option>
+            <option value="warm">Warm (1-5)</option>
+            <option value="cold">Cold (0)</option>
+          </select>
+
+          {(typeFilter || statusFilter || engagementFilter || search) && (
             <button
               onClick={() => {
                 setTypeFilter('')
                 setStatusFilter('')
+                setEngagementFilter('')
                 setSearch('')
               }}
               className="flex items-center gap-1 px-3 py-2 text-sm text-zinc-400 hover:text-white"

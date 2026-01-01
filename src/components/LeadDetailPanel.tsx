@@ -18,9 +18,15 @@ import {
   Clock
 } from 'lucide-react'
 import { useLeadMutations, useLeadActivities, useLeadActivityMutations, type LeadWithFamily, type LeadStatus, type ContactType } from '../lib/hooks'
-import { syncLeadToMailchimp } from '../lib/mailchimp'
+import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { AddFamilyModal } from './AddFamilyModal'
+
+const engagementColors = {
+  cold: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
+  warm: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  hot: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+}
 
 const contactTypeIcons: Record<ContactType, typeof Phone> = {
   call: PhoneCall,
@@ -64,6 +70,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
 
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isSyncingEngagement, setIsSyncingEngagement] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [showConvertModal, setShowConvertModal] = useState(false)
   const [showActivityForm, setShowActivityForm] = useState(false)
@@ -104,6 +111,20 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       setSyncError(err instanceof Error ? err.message : 'Failed to sync')
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  const handleSyncEngagement = async () => {
+    if (!lead.mailchimp_id) return
+    setIsSyncingEngagement(true)
+    setSyncError(null)
+    try {
+      await syncLeadEngagement(lead.id, lead.email)
+      await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Failed to sync engagement')
+    } finally {
+      setIsSyncingEngagement(false)
     }
   }
 
@@ -436,7 +457,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
             <p className="text-xs text-red-400 mb-2">{syncError}</p>
           )}
           {lead.mailchimp_id ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-2 rounded-full bg-green-500" />
                 <span className="text-sm text-zinc-300">Synced</span>
@@ -446,8 +467,51 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
                   Last synced: {formatDate(lead.mailchimp_last_synced_at)}
                 </p>
               )}
+
+              {/* Engagement Stats */}
+              <div className="bg-zinc-800/50 rounded-lg p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Engagement</span>
+                  <button
+                    onClick={handleSyncEngagement}
+                    disabled={isSyncingEngagement}
+                    className="flex items-center gap-1 px-2 py-0.5 text-xs bg-zinc-700 text-zinc-300 rounded hover:bg-zinc-600 disabled:opacity-50"
+                  >
+                    {isSyncingEngagement ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3" />
+                    )}
+                    Refresh
+                  </button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${engagementColors[getEngagementLevel(lead.mailchimp_engagement_score)]}`}>
+                    {getEngagementLevel(lead.mailchimp_engagement_score).toUpperCase()}
+                  </span>
+                  <span className="text-xs text-zinc-400">
+                    Score: {lead.mailchimp_engagement_score || 0}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center justify-between bg-zinc-800 rounded px-2 py-1">
+                    <span className="text-zinc-400">Opens</span>
+                    <span className="text-zinc-200">{lead.mailchimp_opens || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-zinc-800 rounded px-2 py-1">
+                    <span className="text-zinc-400">Clicks</span>
+                    <span className="text-zinc-200">{lead.mailchimp_clicks || 0}</span>
+                  </div>
+                </div>
+                {lead.mailchimp_engagement_updated_at && (
+                  <p className="text-xs text-zinc-500">
+                    Updated: {formatDate(lead.mailchimp_engagement_updated_at)}
+                  </p>
+                )}
+              </div>
+
               {lead.mailchimp_tags && lead.mailchimp_tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1">
                   {lead.mailchimp_tags.map((tag) => (
                     <span
                       key={tag}

@@ -157,3 +157,48 @@ export async function getCampaigns(count: number = 10): Promise<CampaignsRespons
 export async function getAudienceStats(): Promise<AudienceStats> {
   return callMailchimpFunction<AudienceStats>('get_audience_stats', {})
 }
+
+interface EngagementResult {
+  opens: number
+  clicks: number
+  score: number
+  updated: boolean
+}
+
+interface BulkEngagementResult {
+  total: number
+  success: number
+  failed: number
+  results: Array<{
+    leadId: string
+    email: string
+    opens: number
+    clicks: number
+    score: number
+    error?: string
+  }>
+}
+
+/**
+ * Sync engagement data for a single lead
+ */
+export async function syncLeadEngagement(leadId: string, email: string): Promise<EngagementResult> {
+  return callMailchimpFunction<EngagementResult>('sync_engagement', { leadId, email })
+}
+
+/**
+ * Sync engagement data for multiple leads
+ */
+export async function bulkSyncEngagement(leads: Array<{ id: string; email: string }>): Promise<BulkEngagementResult> {
+  return callMailchimpFunction<BulkEngagementResult>('bulk_sync_engagement', { leads })
+}
+
+/**
+ * Get engagement level label based on score
+ * cold = 0, warm = 1-5, hot = 6+
+ */
+export function getEngagementLevel(score: number | null | undefined): 'cold' | 'warm' | 'hot' {
+  if (!score || score === 0) return 'cold'
+  if (score <= 5) return 'warm'
+  return 'hot'
+}

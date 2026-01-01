@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       _backup_enrollments_consulting: {
@@ -340,6 +315,13 @@ export type Database = {
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
             referencedColumns: ["id"]
           },
           {
@@ -1401,6 +1383,55 @@ export type Database = {
             columns: ["family_id"]
             isOneToOne: false
             referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_activities: {
+        Row: {
+          contact_type: Database["public"]["Enums"]["contact_type"]
+          contacted_at: string
+          created_at: string
+          id: string
+          lead_id: string
+          notes: string | null
+        }
+        Insert: {
+          contact_type: Database["public"]["Enums"]["contact_type"]
+          contacted_at?: string
+          created_at?: string
+          id?: string
+          lead_id: string
+          notes?: string | null
+        }
+        Update: {
+          contact_type?: Database["public"]["Enums"]["contact_type"]
+          contacted_at?: string
+          created_at?: string
+          id?: string
+          lead_id?: string
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
             referencedColumns: ["id"]
           },
         ]
@@ -2751,6 +2782,59 @@ export type Database = {
           },
         ]
       }
+      leads_with_activity: {
+        Row: {
+          calendly_event_uri: string | null
+          calendly_invitee_uri: string | null
+          children_ages: string | null
+          contact_count: number | null
+          converted_at: string | null
+          created_at: string | null
+          email: string | null
+          family_id: string | null
+          id: string | null
+          last_contacted_at: string | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_id: string | null
+          mailchimp_last_synced_at: string | null
+          mailchimp_status: string | null
+          mailchimp_tags: string[] | null
+          name: string | null
+          notes: string | null
+          num_children: number | null
+          phone: string | null
+          preferred_days: string | null
+          preferred_time: string | null
+          scheduled_at: string | null
+          service_interest: string | null
+          source_url: string | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       monthly_revenue_by_service: {
         Row: {
           month: string | null
@@ -2967,6 +3051,13 @@ export type Database = {
             referencedRelation: "leads_pipeline"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -2994,6 +3085,7 @@ export type Database = {
       calendly_booking_type: "15min_call" | "hub_dropoff"
       comm_channel: "email" | "sms" | "call" | "in_person" | "other"
       comm_direction: "inbound" | "outbound"
+      contact_type: "call" | "email" | "text" | "other"
       customer_status: "lead" | "trial" | "active" | "paused" | "churned"
       employee_status: "active" | "reserve" | "inactive"
       enrollment_status: "trial" | "active" | "paused" | "ended"
@@ -3131,9 +3223,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {
       billing_frequency: [
@@ -3153,6 +3242,7 @@ export const Constants = {
       calendly_booking_type: ["15min_call", "hub_dropoff"],
       comm_channel: ["email", "sms", "call", "in_person", "other"],
       comm_direction: ["inbound", "outbound"],
+      contact_type: ["call", "email", "text", "other"],
       customer_status: ["lead", "trial", "active", "paused", "churned"],
       employee_status: ["active", "reserve", "inactive"],
       enrollment_status: ["trial", "active", "paused", "ended"],
