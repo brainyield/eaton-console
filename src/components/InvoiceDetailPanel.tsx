@@ -128,6 +128,9 @@ export default function InvoiceDetailPanel({
   const [paymentNotes, setPaymentNotes] = useState('')
   const [fixingBalance, setFixingBalance] = useState(false)
 
+  // Global processing state to prevent concurrent actions
+  const isProcessing = sendingReminder || recordingPayment || fixingBalance || isSending || isVoiding
+
   // Fetch email history and payment history for this invoice
   const { data: emailHistory, isLoading: loadingEmails } = useInvoiceEmails(invoice?.id)
   const { data: paymentHistory, isLoading: loadingPayments } = useInvoicePayments(invoice?.id)
@@ -170,7 +173,7 @@ export default function InvoiceDetailPanel({
 
   // Handler for sending individual reminder
   async function handleSendReminder() {
-    if (!invoice || !invoice.family) return
+    if (!invoice || !invoice.family || isProcessing) return
 
     const { type, label, daysOverdue } = getReminderType(invoice.due_date || '')
 
@@ -202,7 +205,7 @@ export default function InvoiceDetailPanel({
 
   // Handler for fixing balance issues
   async function handleFixBalance() {
-    if (!invoice || fixingBalance) return
+    if (!invoice || isProcessing) return
 
     const confirmMsg = `This will recalculate the invoice balance based on payment records. Continue?`
     if (!confirm(confirmMsg)) return
@@ -221,7 +224,7 @@ export default function InvoiceDetailPanel({
 
   // Handler for recording a payment
   async function handleRecordPayment() {
-    if (!invoice || recordingPayment) return
+    if (!invoice || isProcessing) return
 
     const amount = parseFloat(paymentAmount)
     if (isNaN(amount) || amount <= 0) {

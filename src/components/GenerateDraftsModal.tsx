@@ -651,29 +651,35 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   const handleGenerateEvents = useCallback(async () => {
     if (selectedEventCount === 0) return
 
-    try {
-      // Group selected orders by family
-      const ordersByFamily = new Map<string, PendingEventOrder[]>()
-      pendingEventOrders
-        .filter(o => selectedEventOrders.has(o.id))
-        .forEach(order => {
-          const familyId = order.family_id || 'unlinked'
-          if (!ordersByFamily.has(familyId)) {
-            ordersByFamily.set(familyId, [])
-          }
-          ordersByFamily.get(familyId)!.push(order)
-        })
+    // Track successes and failures
+    const succeeded: string[] = []
+    const failed: string[] = []
 
-      // Create one invoice per family
-      for (const [familyId, orders] of ordersByFamily) {
-        if (familyId === 'unlinked') {
-          alert(`Cannot create invoice for unlinked orders (${orders.map(o => o.event_title).join(', ')}). Please link these orders to a family first.`)
-          continue
+    // Group selected orders by family
+    const ordersByFamily = new Map<string, PendingEventOrder[]>()
+    pendingEventOrders
+      .filter(o => selectedEventOrders.has(o.id))
+      .forEach(order => {
+        const familyId = order.family_id || 'unlinked'
+        if (!ordersByFamily.has(familyId)) {
+          ordersByFamily.set(familyId, [])
         }
+        ordersByFamily.get(familyId)!.push(order)
+      })
 
+    // Create one invoice per family
+    for (const [familyId, orders] of ordersByFamily) {
+      const familyName = orders[0].family_name || orders[0].purchaser_name || 'Unknown'
+
+      if (familyId === 'unlinked') {
+        failed.push(`Unlinked: ${orders.map(o => o.event_title).join(', ')}`)
+        continue
+      }
+
+      try {
         await generateEventInvoice.mutateAsync({
           familyId,
-          familyName: orders[0].family_name || orders[0].purchaser_name || 'Unknown',
+          familyName,
           orderIds: orders.map(o => o.id),
           orders: orders.map(o => ({
             id: o.id,
@@ -683,12 +689,25 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           })),
           dueDate,
         })
+        succeeded.push(familyName)
+      } catch (error) {
+        console.error(`Failed to generate invoice for ${familyName}:`, error)
+        failed.push(familyName)
       }
+    }
 
+    // Report results
+    if (failed.length > 0) {
+      if (succeeded.length > 0) {
+        alert(`Generated ${succeeded.length} invoice(s) successfully.\n\nFailed (${failed.length}):\n${failed.join('\n')}`)
+      } else {
+        alert(`Failed to generate invoices:\n${failed.join('\n')}`)
+      }
+    }
+
+    // Only call onSuccess if at least one succeeded
+    if (succeeded.length > 0) {
       onSuccess()
-    } catch (error) {
-      console.error('Failed to generate event invoices:', error)
-      alert('Failed to generate event invoices. Check console for details.')
     }
   }, [selectedEventCount, pendingEventOrders, selectedEventOrders, generateEventInvoice, dueDate, onSuccess])
 

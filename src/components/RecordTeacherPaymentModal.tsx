@@ -27,7 +27,6 @@ export function RecordTeacherPaymentModal({
   onSuccess,
 }: RecordTeacherPaymentModalProps) {
   const [lineItems, setLineItems] = useState<LineItem[]>([])
-  const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   
   // Form state
@@ -46,6 +45,9 @@ export function RecordTeacherPaymentModal({
 
   // Get create payment mutation
   const { createPayment } = useTeacherPaymentMutations()
+
+  // Use mutation's isPending for loading state (avoids manual state management issues)
+  const saving = createPayment.isPending
 
   // Transform assignments data for display
   const assignments = useMemo(() => {
@@ -186,14 +188,15 @@ export function RecordTeacherPaymentModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
-    
+
     if (lineItems.length === 0 || totalAmount === 0) {
       setError('No line items to record')
       return
     }
-    
-    setSaving(true)
-    
+
+    // Prevent double submission
+    if (saving) return
+
     try {
       // FIX: Include line_items in the mutation call (the mutation handles insertion)
       const paymentData = await createPayment.mutateAsync({
@@ -227,8 +230,6 @@ export function RecordTeacherPaymentModal({
     } catch (err) {
       console.error('Error recording payment:', err)
       setError(err instanceof Error ? err.message : 'Failed to record payment. Please try again.')
-    } finally {
-      setSaving(false)
     }
   }
 

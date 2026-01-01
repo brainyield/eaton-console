@@ -343,6 +343,8 @@ export function AddEnrollmentModal({
 
     createEnrollment.mutate(enrollmentData, {
       onSuccess: async (enrollment) => {
+        let assignmentError = false;
+
         // Create teacher assignment if teacher selected
         if (formData.teacher_id && enrollment?.id) {
           const assignmentData: Record<string, unknown> = {
@@ -363,7 +365,7 @@ export function AddEnrollmentModal({
             await createAssignment.mutateAsync(assignmentData);
           } catch (err) {
             console.error('Error creating teacher assignment:', err);
-            // Don't throw - enrollment was created, just log the error
+            assignmentError = true;
           }
         }
 
@@ -371,9 +373,15 @@ export function AddEnrollmentModal({
         queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all });
         queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() });
         queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() });
-        
-        onSuccess?.();
-        handleClose();
+
+        // Report partial failure to user
+        if (assignmentError) {
+          setError('Enrollment created successfully, but teacher assignment failed. Please assign the teacher manually.');
+          // Don't close - let user see the warning
+        } else {
+          onSuccess?.();
+          handleClose();
+        }
       },
       onError: (err) => {
         console.error('Error creating enrollment:', err);

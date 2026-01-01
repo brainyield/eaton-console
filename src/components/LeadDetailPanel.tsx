@@ -155,16 +155,19 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   const handleLogActivity = async () => {
     if (!activityType) return
     setIsLoggingActivity(true)
+    // Capture current status to avoid stale closure
+    const currentStatus = lead.status
+    const leadId = lead.id
     try {
       await createActivity.mutateAsync({
-        lead_id: lead.id,
+        lead_id: leadId,
         contact_type: activityType,
         notes: activityNotes.trim() || null,
         contacted_at: new Date().toISOString(),
       })
-      // Auto-update status to contacted if still new
-      if (lead.status === 'new') {
-        await updateLead.mutateAsync({ id: lead.id, status: 'contacted' })
+      // Auto-update status to contacted if still new (using captured value)
+      if (currentStatus === 'new') {
+        await updateLead.mutateAsync({ id: leadId, status: 'contacted' })
       }
       setActivityNotes('')
       setShowActivityForm(false)

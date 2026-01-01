@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Command } from 'cmdk'
 import { Search, Users, GraduationCap, UserCircle, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -44,6 +44,9 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
   const [results, setResults] = useState<SearchResult[]>([])
   const [loading, setLoading] = useState(false)
 
+  // Track request IDs to prevent stale results from overwriting newer ones
+  const requestIdRef = useRef(0)
+
   // Toggle with ⌘K or Ctrl+K
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -67,12 +70,15 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
     return () => document.removeEventListener('keydown', handleEsc)
   }, [open])
 
-  // Search across tables
+  // Search across tables with request cancellation to prevent stale results
   const search = useCallback(async (searchQuery: string) => {
     if (!searchQuery.trim()) {
       setResults([])
       return
     }
+
+    // Increment request ID to track this specific request
+    const currentRequestId = ++requestIdRef.current
 
     setLoading(true)
     const searchTerm = `%${searchQuery}%`
@@ -85,6 +91,9 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
         .or(`display_name.ilike.${searchTerm},primary_email.ilike.${searchTerm}`)
         .limit(5)
 
+      // Check if this request is still the latest before continuing
+      if (currentRequestId !== requestIdRef.current) return
+
       const families = (familiesData || []) as FamilyResult[]
 
       // Search students - include family_id for navigation
@@ -94,6 +103,9 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
         .ilike('full_name', searchTerm)
         .limit(5)
 
+      // Check again before continuing
+      if (currentRequestId !== requestIdRef.current) return
+
       const students = (studentsData || []) as StudentResult[]
 
       // Search teachers
@@ -102,6 +114,9 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
         .select('id, display_name, role, status')
         .or(`display_name.ilike.${searchTerm},email.ilike.${searchTerm}`)
         .limit(5)
+
+      // Final check before updating state
+      if (currentRequestId !== requestIdRef.current) return
 
       const teachers = (teachersData || []) as TeacherResult[]
 
@@ -116,7 +131,7 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
           id: s.id,
           type: 'student' as const,
           name: s.full_name,
-          subtitle: s.grade_level 
+          subtitle: s.grade_level
             ? `${s.grade_level} • ${s.family?.display_name || ''}`
             : s.family?.display_name || '',
           familyId: s.family_id,
@@ -129,11 +144,20 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
         })),
       ]
 
-      setResults(combined)
+      // Only update results if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        setResults(combined)
+      }
     } catch (error) {
-      console.error('Search error:', error)
+      // Only log error if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        console.error('Search error:', error)
+      }
     } finally {
-      setLoading(false)
+      // Only clear loading if this is still the latest request
+      if (currentRequestId === requestIdRef.current) {
+        setLoading(false)
+      }
     }
   }, [])
 

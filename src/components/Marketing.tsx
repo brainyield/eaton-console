@@ -171,7 +171,7 @@ export default function Marketing() {
 
   const { updateLead, deleteLead } = useLeadMutations()
 
-  // Bulk status change
+  // Bulk status change with error tracking
   const handleBulkStatusChange = async (newStatus: LeadStatus) => {
     const selectedLeadIds = Array.from(selectedIds)
     if (selectedLeadIds.length === 0) return
@@ -180,9 +180,17 @@ export default function Marketing() {
     setShowStatusDropdown(false)
 
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedLeadIds.map(id => updateLead.mutateAsync({ id, status: newStatus }))
       )
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length
+      const failed = results.filter(r => r.status === 'rejected').length
+
+      if (failed > 0) {
+        alert(`Updated ${succeeded} leads. ${failed} failed to update.`)
+      }
+
       setSelectedIds(new Set())
     } catch (err) {
       console.error('Failed to update leads:', err)
@@ -191,7 +199,7 @@ export default function Marketing() {
     }
   }
 
-  // Bulk delete
+  // Bulk delete with error tracking
   const handleBulkDelete = async () => {
     const selectedLeadIds = Array.from(selectedIds)
     if (selectedLeadIds.length === 0) return
@@ -203,9 +211,17 @@ export default function Marketing() {
     setIsBulkDeleting(true)
 
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         selectedLeadIds.map(id => deleteLead.mutateAsync(id))
       )
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length
+      const failed = results.filter(r => r.status === 'rejected').length
+
+      if (failed > 0) {
+        alert(`Deleted ${succeeded} leads. ${failed} failed to delete.`)
+      }
+
       setSelectedIds(new Set())
     } catch (err) {
       console.error('Failed to delete leads:', err)
@@ -369,10 +385,15 @@ export default function Marketing() {
                     className="flex items-center gap-3 p-2 bg-zinc-800/50 rounded-lg group"
                   >
                     <button
-                      onClick={() => completeFollowUp.mutateAsync(followUp.id)}
-                      className="flex-shrink-0 text-zinc-500 hover:text-green-400"
+                      onClick={() => completeFollowUp.mutate(followUp.id)}
+                      disabled={completeFollowUp.isPending}
+                      className="flex-shrink-0 text-zinc-500 hover:text-green-400 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      <Circle className="w-4 h-4" />
+                      {completeFollowUp.isPending ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Circle className="w-4 h-4" />
+                      )}
                     </button>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">

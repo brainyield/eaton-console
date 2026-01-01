@@ -677,12 +677,16 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
 
   // Handle bulk status change
   const handleBulkStatusChange = (status: CustomerStatus) => {
+    // Prevent duplicate submissions
+    if (bulkUpdateStatus.isPending) return
     if (!confirm(`Change status of ${selectedIds.size} families to "${status}"?`)) return
     bulkUpdateStatus.mutate({ ids: Array.from(selectedIds), status })
   }
 
   // Handle bulk delete
   const handleBulkDelete = () => {
+    // Prevent duplicate submissions
+    if (bulkDelete.isPending) return
     if (!confirm(`Delete ${selectedIds.size} families? This cannot be undone.`)) return
     bulkDelete.mutate(Array.from(selectedIds))
   }

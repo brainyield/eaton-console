@@ -175,23 +175,83 @@ export function EditEnrollmentModal({
     const teacherChanged = formData.teacher_id !== (currentActiveAssignment?.teacher_id || '');
     const teacherHourlyRate = formData.teacher_hourly_rate ? parseFloat(formData.teacher_hourly_rate) : null;
 
+    // Track completed operations for partial failure reporting
+    const completedOps: string[] = [];
+    const failedOps: string[] = [];
+
     try {
       // Update enrollment first
-      await new Promise<void>((resolve, reject) => {
-        updateEnrollment.mutate(
-          { id: enrollment.id, data: updateData },
-          {
-            onSuccess: () => resolve(),
-            onError: (err) => reject(err)
-          }
-        );
-      });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          updateEnrollment.mutate(
+            { id: enrollment.id, data: updateData },
+            {
+              onSuccess: () => resolve(),
+              onError: (err) => reject(err)
+            }
+          );
+        });
+        completedOps.push('Enrollment details updated');
+      } catch (err) {
+        console.error('Failed to update enrollment:', err);
+        // Enrollment update is critical - fail early
+        throw new Error('Failed to update enrollment details. No changes were made.');
+      }
 
       // Handle teacher assignment if changed
       if (teacherChanged) {
         if (formData.teacher_id) {
           // End current assignment if exists
           if (currentActiveAssignment) {
+            try {
+              await new Promise<void>((resolve, reject) => {
+                updateAssignment.mutate(
+                  {
+                    id: currentActiveAssignment.id,
+                    data: {
+                      is_active: false,
+                      end_date: getTodayString()
+                    }
+                  },
+                  {
+                    onSuccess: () => resolve(),
+                    onError: (err) => reject(err)
+                  }
+                );
+              });
+              completedOps.push('Previous teacher assignment ended');
+            } catch (err) {
+              console.error('Failed to end previous assignment:', err);
+              failedOps.push('End previous teacher assignment');
+            }
+          }
+
+          // Create new assignment
+          try {
+            await new Promise<void>((resolve, reject) => {
+              createAssignment.mutate(
+                {
+                  enrollment_id: enrollment.id,
+                  teacher_id: formData.teacher_id,
+                  hourly_rate_teacher: teacherHourlyRate,
+                  hours_per_week: formData.hours_per_week ? parseFloat(formData.hours_per_week) : null,
+                  is_active: true,
+                  start_date: getTodayString(),
+                },
+                {
+                  onSuccess: () => resolve(),
+                  onError: (err) => reject(err)
+                }
+              );
+            });
+            completedOps.push('New teacher assigned');
+          } catch (err) {
+            console.error('Failed to create new assignment:', err);
+            failedOps.push('Assign new teacher');
+          }
+        } else if (currentActiveAssignment) {
+          // Just end the current assignment (removing teacher)
+          try {
             await new Promise<void>((resolve, reject) => {
               updateAssignment.mutate(
                 {
@@ -207,59 +267,34 @@ export function EditEnrollmentModal({
                 }
               );
             });
+            completedOps.push('Teacher assignment removed');
+          } catch (err) {
+            console.error('Failed to end assignment:', err);
+            failedOps.push('Remove teacher assignment');
           }
-
-          // Create new assignment
-          await new Promise<void>((resolve, reject) => {
-            createAssignment.mutate(
-              {
-                enrollment_id: enrollment.id,
-                teacher_id: formData.teacher_id,
-                hourly_rate_teacher: teacherHourlyRate,
-                hours_per_week: formData.hours_per_week ? parseFloat(formData.hours_per_week) : null,
-                is_active: true,
-                start_date: getTodayString(),
-              },
-              {
-                onSuccess: () => resolve(),
-                onError: (err) => reject(err)
-              }
-            );
-          });
-        } else if (currentActiveAssignment) {
-          // Just end the current assignment (removing teacher)
-          await new Promise<void>((resolve, reject) => {
-            updateAssignment.mutate(
-              {
-                id: currentActiveAssignment.id,
-                data: {
-                  is_active: false,
-                  end_date: getTodayString()
-                }
-              },
-              {
-                onSuccess: () => resolve(),
-                onError: (err) => reject(err)
-              }
-            );
-          });
         }
       } else if (currentActiveAssignment && formData.teacher_id) {
         // Teacher didn't change, but hourly rate might have
         const rateChanged = teacherHourlyRate !== currentActiveAssignment.hourly_rate_teacher;
         if (rateChanged) {
-          await new Promise<void>((resolve, reject) => {
-            updateAssignment.mutate(
-              {
-                id: currentActiveAssignment.id,
-                data: { hourly_rate_teacher: teacherHourlyRate }
-              },
-              {
-                onSuccess: () => resolve(),
-                onError: (err) => reject(err)
-              }
-            );
-          });
+          try {
+            await new Promise<void>((resolve, reject) => {
+              updateAssignment.mutate(
+                {
+                  id: currentActiveAssignment.id,
+                  data: { hourly_rate_teacher: teacherHourlyRate }
+                },
+                {
+                  onSuccess: () => resolve(),
+                  onError: (err) => reject(err)
+                }
+              );
+            });
+            completedOps.push('Teacher hourly rate updated');
+          } catch (err) {
+            console.error('Failed to update teacher rate:', err);
+            failedOps.push('Update teacher hourly rate');
+          }
         }
       }
 
@@ -270,8 +305,13 @@ export function EditEnrollmentModal({
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() });
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byEnrollment(enrollment.id) });
 
-      onSuccess?.();
-      handleClose();
+      // Report partial failures if any
+      if (failedOps.length > 0) {
+        setError(`Partial save: ${completedOps.join(', ')}. Failed: ${failedOps.join(', ')}. Please retry the failed operations.`);
+      } else {
+        onSuccess?.();
+        handleClose();
+      }
     } catch (err) {
       console.error('Error updating enrollment:', err);
       setError(err instanceof Error ? err.message : 'Failed to update enrollment. Please try again.');

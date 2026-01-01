@@ -125,11 +125,14 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
     })
   }
 
-  // Save changes
+  // Save changes with error tracking and partial failure handling
   const handleSave = async () => {
     setIsSaving(true)
+    const errors: string[] = []
+    let invoiceUpdated = false
+
     try {
-      // Update invoice details - FIX: wrap fields in data object
+      // Update invoice details first
       await updateInvoice.mutateAsync({
         id: invoice.id,
         data: {
@@ -142,21 +145,15 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
           total_amount: subtotal,
         },
       })
+      invoiceUpdated = true
 
-      // Update line items
-      for (const item of lineItems) {
-        if (item.isDeleted && item.id) {
-          // Delete existing item
-          // Note: Would need a deleteLineItem mutation - for now skip
-          console.log('Would delete:', item.id)
-        } else if (item.isNew) {
-          // Create new item
-          // Note: Would need a createLineItem mutation - for now skip
-          console.log('Would create:', item)
-        } else if (item.id) {
-          // Update existing item - FIX: wrap fields in data object
+      // Update line items with individual error tracking
+      const lineItemsToUpdate = lineItems.filter(item => item.id && !item.isDeleted && !item.isNew)
+
+      for (const item of lineItemsToUpdate) {
+        try {
           await updateLineItem.mutateAsync({
-            id: item.id,
+            id: item.id!,
             data: {
               description: item.description,
               quantity: item.quantity,
@@ -164,13 +161,37 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
               amount: item.amount,
             },
           })
+        } catch (err) {
+          errors.push(`Failed to update line item: ${item.description || item.id}`)
+          console.error(`Failed to update line item ${item.id}:`, err)
         }
       }
 
-      onSuccess()
+      // Handle new items (log for now - would need createLineItem mutation)
+      const newItems = lineItems.filter(item => item.isNew && !item.isDeleted)
+      if (newItems.length > 0) {
+        console.log('New items to create:', newItems)
+      }
+
+      // Handle deleted items (log for now - would need deleteLineItem mutation)
+      const deletedItems = lineItems.filter(item => item.isDeleted && item.id)
+      if (deletedItems.length > 0) {
+        console.log('Items to delete:', deletedItems)
+      }
+
+      // Report results
+      if (errors.length > 0) {
+        alert(`Invoice saved with ${errors.length} error(s):\n${errors.join('\n')}\n\nPlease review and retry failed items.`)
+      } else {
+        onSuccess()
+      }
     } catch (error) {
       console.error('Failed to save invoice:', error)
-      alert('Failed to save changes. Check console for details.')
+      if (invoiceUpdated) {
+        alert('Invoice header was saved but line items could not be updated. Please try again.')
+      } else {
+        alert('Failed to save changes. Check console for details.')
+      }
     } finally {
       setIsSaving(false)
     }
