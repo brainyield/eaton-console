@@ -3740,7 +3740,7 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
         }
         // Use DB score if available, otherwise calculate client-side
         const computedScore = lead.lead_score ?? calculateLeadScore({
-          lead_type: lead.lead_type,
+          lead_type: (lead.lead_type || 'exit_intent') as LeadType,
           created_at: lead.created_at,
           mailchimp_engagement_score: lead.mailchimp_engagement_score,
           contact_count: contactCount,

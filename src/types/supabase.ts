@@ -325,6 +325,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "calendly_bookings_student_id_fkey"
             columns: ["student_id"]
             isOneToOne: false
@@ -1434,6 +1441,13 @@ export type Database = {
             referencedRelation: "leads_with_activity"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
         ]
       }
       leads: {
@@ -1446,9 +1460,14 @@ export type Database = {
           email: string
           family_id: string | null
           id: string
+          lead_score: number | null
           lead_type: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_clicks: number | null
+          mailchimp_engagement_score: number | null
+          mailchimp_engagement_updated_at: string | null
           mailchimp_id: string | null
           mailchimp_last_synced_at: string | null
+          mailchimp_opens: number | null
           mailchimp_status: string | null
           mailchimp_tags: string[] | null
           name: string | null
@@ -1472,9 +1491,14 @@ export type Database = {
           email: string
           family_id?: string | null
           id?: string
+          lead_score?: number | null
           lead_type?: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_clicks?: number | null
+          mailchimp_engagement_score?: number | null
+          mailchimp_engagement_updated_at?: string | null
           mailchimp_id?: string | null
           mailchimp_last_synced_at?: string | null
+          mailchimp_opens?: number | null
           mailchimp_status?: string | null
           mailchimp_tags?: string[] | null
           name?: string | null
@@ -1498,9 +1522,14 @@ export type Database = {
           email?: string
           family_id?: string | null
           id?: string
+          lead_score?: number | null
           lead_type?: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_clicks?: number | null
+          mailchimp_engagement_score?: number | null
+          mailchimp_engagement_updated_at?: string | null
           mailchimp_id?: string | null
           mailchimp_last_synced_at?: string | null
+          mailchimp_opens?: number | null
           mailchimp_status?: string | null
           mailchimp_tags?: string[] | null
           name?: string | null
@@ -2835,6 +2864,65 @@ export type Database = {
           },
         ]
       }
+      leads_with_scores: {
+        Row: {
+          calculated_score: number | null
+          calendly_event_uri: string | null
+          calendly_invitee_uri: string | null
+          children_ages: string | null
+          contact_count: number | null
+          converted_at: string | null
+          created_at: string | null
+          email: string | null
+          family_id: string | null
+          id: string | null
+          last_contacted_at: string | null
+          lead_score: number | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_clicks: number | null
+          mailchimp_engagement_score: number | null
+          mailchimp_engagement_updated_at: string | null
+          mailchimp_id: string | null
+          mailchimp_last_synced_at: string | null
+          mailchimp_opens: number | null
+          mailchimp_status: string | null
+          mailchimp_tags: string[] | null
+          name: string | null
+          notes: string | null
+          num_children: number | null
+          phone: string | null
+          preferred_days: string | null
+          preferred_time: string | null
+          scheduled_at: string | null
+          service_interest: string | null
+          source_url: string | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "leads_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       monthly_revenue_by_service: {
         Row: {
           month: string | null
@@ -3058,10 +3146,26 @@ export type Database = {
             referencedRelation: "leads_with_activity"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
     Functions: {
+      calculate_lead_score: {
+        Args: {
+          p_contact_count: number
+          p_created_at: string
+          p_engagement_score: number
+          p_lead_type: string
+        }
+        Returns: number
+      }
       derive_age_group: { Args: { age: number }; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
       generate_public_id: { Args: never; Returns: string }
