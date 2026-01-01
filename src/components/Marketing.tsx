@@ -18,11 +18,13 @@ import { useLeads, useLeadMutations, getScoreLabel, type LeadWithFamily, type Le
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
+import { ConversionAnalytics } from './ConversionAnalytics'
 import { bulkSyncLeadsToMailchimp, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
 type SortOption = 'created_desc' | 'created_asc' | 'score_desc' | 'score_asc'
+type TabType = 'leads' | 'analytics'
 
 const scoreLabelColors: Record<'hot' | 'warm' | 'cold', string> = {
   hot: 'bg-red-500/20 text-red-400',
@@ -60,6 +62,7 @@ const statusColors: Record<LeadStatus, string> = {
 
 export default function Marketing() {
   const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState<TabType>('leads')
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<LeadType | ''>('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('')
@@ -242,64 +245,96 @@ export default function Marketing() {
               <h1 className="text-2xl font-semibold text-white">Marketing</h1>
               <p className="text-sm text-zinc-400 mt-1">Manage leads and marketing campaigns</p>
             </div>
-            <button
-              onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              Import Leads
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Tabs */}
+              <div className="flex bg-zinc-800 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab('leads')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'leads'
+                      ? 'bg-zinc-700 text-white'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Leads
+                </button>
+                <button
+                  onClick={() => setActiveTab('analytics')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'analytics'
+                      ? 'bg-zinc-700 text-white'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Analytics
+                </button>
+              </div>
+              {activeTab === 'leads' && (
+                <button
+                  onClick={() => setShowImportModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Upload className="w-4 h-4" />
+                  Import Leads
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* Stats Cards */}
-          <div className="grid grid-cols-4 gap-4">
-            <div className="bg-zinc-800/50 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-zinc-700 rounded-lg">
-                  <Users className="w-5 h-5 text-zinc-400" />
+          {/* Stats Cards - only show on Leads tab */}
+          {activeTab === 'leads' && (
+            <div className="grid grid-cols-4 gap-4">
+              <div className="bg-zinc-800/50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-zinc-700 rounded-lg">
+                    <Users className="w-5 h-5 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-semibold text-white">{stats.total}</p>
+                    <p className="text-sm text-zinc-400">Total Leads</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-2xl font-semibold text-white">{stats.total}</p>
-                  <p className="text-sm text-zinc-400">Total Leads</p>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-yellow-500/20 rounded-lg">
+                    <Clock className="w-5 h-5 text-yellow-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-semibold text-white">{stats.new}</p>
+                    <p className="text-sm text-zinc-400">New</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-blue-500/20 rounded-lg">
+                    <Mail className="w-5 h-5 text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-semibold text-white">{stats.contacted}</p>
+                    <p className="text-sm text-zinc-400">Contacted</p>
+                  </div>
+                </div>
+              </div>
+              <div className="bg-zinc-800/50 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-500/20 rounded-lg">
+                    <CheckCircle className="w-5 h-5 text-green-400" />
+                  </div>
+                  <div>
+                    <p className="text-2xl font-semibold text-white">{stats.converted}</p>
+                    <p className="text-sm text-zinc-400">Converted</p>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="bg-zinc-800/50 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-yellow-500/20 rounded-lg">
-                  <Clock className="w-5 h-5 text-yellow-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold text-white">{stats.new}</p>
-                  <p className="text-sm text-zinc-400">New</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-500/20 rounded-lg">
-                  <Mail className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold text-white">{stats.contacted}</p>
-                  <p className="text-sm text-zinc-400">Contacted</p>
-                </div>
-              </div>
-            </div>
-            <div className="bg-zinc-800/50 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-500/20 rounded-lg">
-                  <CheckCircle className="w-5 h-5 text-green-400" />
-                </div>
-                <div>
-                  <p className="text-2xl font-semibold text-white">{stats.converted}</p>
-                  <p className="text-sm text-zinc-400">Converted</p>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
 
+        {/* Leads Tab Content */}
+        {activeTab === 'leads' && (
+          <>
         {/* Filters */}
         <div className="p-4 border-b border-zinc-800 flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
@@ -591,6 +626,13 @@ export default function Marketing() {
             </table>
           )}
         </div>
+          </>
+        )}
+
+        {/* Analytics Tab Content */}
+        {activeTab === 'analytics' && (
+          <ConversionAnalytics />
+        )}
       </div>
 
       {/* Detail Panel */}

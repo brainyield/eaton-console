@@ -3966,3 +3966,160 @@ export function useLeadActivityMutations() {
     deleteActivity,
   }
 }
+
+// =============================================================================
+// CONVERSION ANALYTICS
+// =============================================================================
+
+export interface ConversionStats {
+  // Overall metrics
+  totalLeads: number
+  convertedLeads: number
+  conversionRate: number
+  avgDaysToConvert: number
+
+  // Funnel breakdown
+  funnel: {
+    new: number
+    contacted: number
+    converted: number
+    closed: number
+  }
+
+  // By lead type
+  byLeadType: Array<{
+    type: LeadType
+    total: number
+    converted: number
+    rate: number
+  }>
+
+  // Monthly trend (last 6 months)
+  monthlyTrend: Array<{
+    month: string
+    leads: number
+    conversions: number
+    rate: number
+  }>
+
+  // Top converting sources
+  topSources: Array<{
+    source: string
+    conversions: number
+  }>
+}
+
+/**
+ * Fetch conversion analytics data
+ */
+export function useConversionAnalytics() {
+  return useQuery({
+    queryKey: [...queryKeys.leads.all, 'analytics'],
+    queryFn: async () => {
+      // Fetch all leads for analytics
+      const { data: leads, error } = await supabase
+        .from('leads')
+        .select('id, lead_type, status, created_at, converted_at, source_url')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      const allLeads = leads || []
+      const convertedLeads = allLeads.filter(l => l.status === 'converted')
+
+      // Calculate average days to convert
+      const daysToConvert = convertedLeads
+        .filter(l => l.converted_at)
+        .map(l => {
+          const created = new Date(l.created_at)
+          const converted = new Date(l.converted_at!)
+          return Math.floor((converted.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
+        })
+      const avgDaysToConvert = daysToConvert.length > 0
+        ? Math.round(daysToConvert.reduce((a, b) => a + b, 0) / daysToConvert.length)
+        : 0
+
+      // Funnel breakdown
+      const funnel = {
+        new: allLeads.filter(l => l.status === 'new').length,
+        contacted: allLeads.filter(l => l.status === 'contacted').length,
+        converted: allLeads.filter(l => l.status === 'converted').length,
+        closed: allLeads.filter(l => l.status === 'closed').length,
+      }
+
+      // By lead type
+      const leadTypes: LeadType[] = ['event', 'calendly_call', 'waitlist', 'exit_intent']
+      const byLeadType = leadTypes.map(type => {
+        const typeLeads = allLeads.filter(l => l.lead_type === type)
+        const typeConverted = typeLeads.filter(l => l.status === 'converted')
+        return {
+          type,
+          total: typeLeads.length,
+          converted: typeConverted.length,
+          rate: typeLeads.length > 0 ? Math.round((typeConverted.length / typeLeads.length) * 100) : 0,
+        }
+      }).filter(t => t.total > 0)
+
+      // Monthly trend (last 6 months)
+      const now = new Date()
+      const monthlyTrend: ConversionStats['monthlyTrend'] = []
+      for (let i = 5; i >= 0; i--) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59)
+        const monthName = monthStart.toLocaleDateString('en-US', { month: 'short', year: '2-digit' })
+
+        const monthLeads = allLeads.filter(l => {
+          const created = new Date(l.created_at)
+          return created >= monthStart && created <= monthEnd
+        })
+        const monthConversions = convertedLeads.filter(l => {
+          if (!l.converted_at) return false
+          const converted = new Date(l.converted_at)
+          return converted >= monthStart && converted <= monthEnd
+        })
+
+        monthlyTrend.push({
+          month: monthName,
+          leads: monthLeads.length,
+          conversions: monthConversions.length,
+          rate: monthLeads.length > 0 ? Math.round((monthConversions.length / monthLeads.length) * 100) : 0,
+        })
+      }
+
+      // Top converting sources (from source_url)
+      const sourceMap = new Map<string, number>()
+      convertedLeads.forEach(lead => {
+        const source = lead.source_url ? extractDomain(lead.source_url) : 'Direct'
+        sourceMap.set(source, (sourceMap.get(source) || 0) + 1)
+      })
+      const topSources = Array.from(sourceMap.entries())
+        .map(([source, conversions]) => ({ source, conversions }))
+        .sort((a, b) => b.conversions - a.conversions)
+        .slice(0, 5)
+
+      return {
+        totalLeads: allLeads.length,
+        convertedLeads: convertedLeads.length,
+        conversionRate: allLeads.length > 0 ? Math.round((convertedLeads.length / allLeads.length) * 100) : 0,
+        avgDaysToConvert,
+        funnel,
+        byLeadType,
+        monthlyTrend,
+        topSources,
+      } as ConversionStats
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
+/**
+ * Helper to extract domain from URL
+ */
+function extractDomain(url: string): string {
+  try {
+    const parsed = new URL(url)
+    return parsed.hostname.replace('www.', '')
+  } catch {
+    return url.split('/')[0] || 'Unknown'
+  }
+}
