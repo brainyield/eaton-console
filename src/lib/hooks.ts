@@ -4123,3 +4123,183 @@ function extractDomain(url: string): string {
     return url.split('/')[0] || 'Unknown'
   }
 }
+
+// =============================================================================
+// LEAD FOLLOW-UPS
+// =============================================================================
+
+export type TaskPriority = 'low' | 'medium' | 'high'
+
+export interface LeadFollowUp {
+  id: string
+  lead_id: string
+  title: string
+  description: string | null
+  due_date: string
+  due_time: string | null
+  priority: TaskPriority
+  completed: boolean
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface UpcomingFollowUp extends LeadFollowUp {
+  lead_name: string | null
+  lead_email: string
+  lead_phone: string | null
+  lead_type: LeadType
+  lead_status: LeadStatus
+  urgency: 'overdue' | 'today' | 'tomorrow' | 'this_week' | 'later'
+}
+
+/**
+ * Fetch follow-ups for a specific lead
+ */
+export function useLeadFollowUps(leadId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.leadFollowUps.byLead(leadId || ''),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_follow_ups')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('due_date', { ascending: true })
+        .order('due_time', { ascending: true, nullsFirst: false })
+      if (error) throw error
+      return data as LeadFollowUp[]
+    },
+    enabled: !!leadId,
+  })
+}
+
+/**
+ * Fetch all upcoming (non-completed) follow-ups
+ */
+export function useUpcomingFollowUps() {
+  return useQuery({
+    queryKey: queryKeys.leadFollowUps.upcoming(),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('upcoming_follow_ups')
+        .select('*')
+        .limit(50)
+      if (error) throw error
+      return data as UpcomingFollowUp[]
+    },
+  })
+}
+
+/**
+ * Follow-up mutations
+ */
+export function useFollowUpMutations() {
+  const queryClient = useQueryClient()
+
+  const createFollowUp = useMutation({
+    mutationFn: async (followUp: Omit<LeadFollowUp, 'id' | 'created_at' | 'updated_at' | 'completed' | 'completed_at'>) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_follow_ups')
+        .insert(followUp)
+        .select()
+        .single()
+      if (error) throw error
+      return data as LeadFollowUp
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(variables.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
+    },
+  })
+
+  const updateFollowUp = useMutation({
+    mutationFn: async ({ id, ...updates }: Partial<LeadFollowUp> & { id: string }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_follow_ups')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as LeadFollowUp
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.all })
+    },
+  })
+
+  const completeFollowUp = useMutation({
+    mutationFn: async (id: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_follow_ups')
+        .update({ completed: true, completed_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as LeadFollowUp
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.all })
+    },
+  })
+
+  const deleteFollowUp = useMutation({
+    mutationFn: async ({ id }: { id: string; leadId: string }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('lead_follow_ups')
+        .delete()
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(variables.leadId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
+    },
+  })
+
+  return {
+    createFollowUp,
+    updateFollowUp,
+    completeFollowUp,
+    deleteFollowUp,
+  }
+}
+
+/**
+ * Get urgency color classes
+ */
+export function getUrgencyColor(urgency: UpcomingFollowUp['urgency']): string {
+  switch (urgency) {
+    case 'overdue':
+      return 'text-red-400 bg-red-500/20'
+    case 'today':
+      return 'text-orange-400 bg-orange-500/20'
+    case 'tomorrow':
+      return 'text-yellow-400 bg-yellow-500/20'
+    case 'this_week':
+      return 'text-blue-400 bg-blue-500/20'
+    default:
+      return 'text-zinc-400 bg-zinc-500/20'
+  }
+}
+
+/**
+ * Get priority color classes
+ */
+export function getPriorityColor(priority: TaskPriority): string {
+  switch (priority) {
+    case 'high':
+      return 'text-red-400'
+    case 'medium':
+      return 'text-yellow-400'
+    case 'low':
+      return 'text-zinc-400'
+  }
+}

@@ -162,4 +162,11 @@ export const queryKeys = {
     all: ['leadActivities'] as const,
     byLead: (leadId: string) => ['leadActivities', 'byLead', leadId] as const,
   },
+
+  // Lead Follow-ups
+  leadFollowUps: {
+    all: ['leadFollowUps'] as const,
+    byLead: (leadId: string) => ['leadFollowUps', 'byLead', leadId] as const,
+    upcoming: () => ['leadFollowUps', 'upcoming'] as const,
+  },
 }

@@ -15,9 +15,12 @@ import {
   MessageSquare,
   PhoneCall,
   Plus,
-  Clock
+  Clock,
+  Calendar,
+  AlertCircle,
+  Circle
 } from 'lucide-react'
-import { useLeadMutations, useLeadActivities, useLeadActivityMutations, type LeadWithFamily, type LeadStatus, type ContactType } from '../lib/hooks'
+import { useLeadMutations, useLeadActivities, useLeadActivityMutations, useLeadFollowUps, useFollowUpMutations, getPriorityColor, type LeadWithFamily, type LeadStatus, type ContactType, type TaskPriority } from '../lib/hooks'
 import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { AddFamilyModal } from './AddFamilyModal'
@@ -67,6 +70,8 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   const { updateLead, deleteLead, convertToFamily } = useLeadMutations()
   const { data: activities, isLoading: activitiesLoading } = useLeadActivities(lead.id)
   const { createActivity } = useLeadActivityMutations()
+  const { data: followUps, isLoading: followUpsLoading } = useLeadFollowUps(lead.id)
+  const { createFollowUp, completeFollowUp, deleteFollowUp } = useFollowUpMutations()
 
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -77,6 +82,13 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   const [activityType, setActivityType] = useState<ContactType>('call')
   const [activityNotes, setActivityNotes] = useState('')
   const [isLoggingActivity, setIsLoggingActivity] = useState(false)
+
+  // Follow-up form state
+  const [showFollowUpForm, setShowFollowUpForm] = useState(false)
+  const [followUpTitle, setFollowUpTitle] = useState('')
+  const [followUpDueDate, setFollowUpDueDate] = useState('')
+  const [followUpPriority, setFollowUpPriority] = useState<TaskPriority>('medium')
+  const [isCreatingFollowUp, setIsCreatingFollowUp] = useState(false)
 
   const handleStatusChange = async (newStatus: LeadStatus) => {
     await updateLead.mutateAsync({ id: lead.id, status: newStatus })
@@ -160,6 +172,64 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     } finally {
       setIsLoggingActivity(false)
     }
+  }
+
+  const handleCreateFollowUp = async () => {
+    if (!followUpTitle.trim() || !followUpDueDate) return
+    setIsCreatingFollowUp(true)
+    try {
+      await createFollowUp.mutateAsync({
+        lead_id: lead.id,
+        title: followUpTitle.trim(),
+        description: null,
+        due_date: followUpDueDate,
+        due_time: null,
+        priority: followUpPriority,
+      })
+      setFollowUpTitle('')
+      setFollowUpDueDate('')
+      setFollowUpPriority('medium')
+      setShowFollowUpForm(false)
+    } catch (err) {
+      console.error('Failed to create follow-up:', err)
+    } finally {
+      setIsCreatingFollowUp(false)
+    }
+  }
+
+  const handleCompleteFollowUp = async (id: string) => {
+    await completeFollowUp.mutateAsync(id)
+  }
+
+  const handleDeleteFollowUp = async (id: string) => {
+    if (!confirm('Delete this follow-up?')) return
+    await deleteFollowUp.mutateAsync({ id, leadId: lead.id })
+  }
+
+  const getFollowUpUrgency = (dueDate: string): string => {
+    const due = new Date(dueDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    due.setHours(0, 0, 0, 0)
+    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (diffDays < 0) return 'text-red-400'
+    if (diffDays === 0) return 'text-orange-400'
+    if (diffDays === 1) return 'text-yellow-400'
+    return 'text-zinc-400'
+  }
+
+  const formatFollowUpDate = (dueDate: string): string => {
+    const due = new Date(dueDate)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    due.setHours(0, 0, 0, 0)
+    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+    if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`
+    if (diffDays === 0) return 'Today'
+    if (diffDays === 1) return 'Tomorrow'
+    return due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   }
 
   const formatDate = (dateString: string) => {
@@ -431,6 +501,132 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
             </div>
           ) : (
             <p className="text-xs text-zinc-500">No contact activity logged yet</p>
+          )}
+        </div>
+
+        {/* Follow-ups */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              Follow-ups
+            </h4>
+            <button
+              onClick={() => setShowFollowUpForm(!showFollowUpForm)}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+            >
+              <Plus className="w-3 h-3" />
+              Add
+            </button>
+          </div>
+
+          {/* Follow-up Form */}
+          {showFollowUpForm && (
+            <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3 mb-3 space-y-3">
+              <input
+                type="text"
+                value={followUpTitle}
+                onChange={(e) => setFollowUpTitle(e.target.value)}
+                placeholder="Follow-up title..."
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+              />
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-zinc-500 block mb-1">Due Date</label>
+                  <input
+                    type="date"
+                    value={followUpDueDate}
+                    onChange={(e) => setFollowUpDueDate(e.target.value)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-zinc-500 block mb-1">Priority</label>
+                  <select
+                    value={followUpPriority}
+                    onChange={(e) => setFollowUpPriority(e.target.value as TaskPriority)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 focus:outline-none focus:border-zinc-600"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowFollowUpForm(false)}
+                  className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCreateFollowUp}
+                  disabled={isCreatingFollowUp || !followUpTitle.trim() || !followUpDueDate}
+                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isCreatingFollowUp ? 'Creating...' : 'Create'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Follow-ups List */}
+          {followUpsLoading ? (
+            <p className="text-xs text-zinc-500">Loading follow-ups...</p>
+          ) : followUps && followUps.length > 0 ? (
+            <div className="space-y-2">
+              {followUps.filter(f => !f.completed).map((followUp) => (
+                <div
+                  key={followUp.id}
+                  className="flex items-start gap-2 p-2 bg-zinc-800/30 rounded-lg group"
+                >
+                  <button
+                    onClick={() => handleCompleteFollowUp(followUp.id)}
+                    className="flex-shrink-0 mt-0.5 text-zinc-500 hover:text-green-400"
+                  >
+                    <Circle className="w-4 h-4" />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-zinc-200">{followUp.title}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`text-xs flex items-center gap-1 ${getFollowUpUrgency(followUp.due_date)}`}>
+                        <Calendar className="w-3 h-3" />
+                        {formatFollowUpDate(followUp.due_date)}
+                      </span>
+                      {followUp.priority !== 'medium' && (
+                        <span className={`text-xs flex items-center gap-1 ${getPriorityColor(followUp.priority)}`}>
+                          <AlertCircle className="w-3 h-3" />
+                          {followUp.priority}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDeleteFollowUp(followUp.id)}
+                    className="flex-shrink-0 p-1 text-zinc-500 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
+              {/* Completed follow-ups */}
+              {followUps.filter(f => f.completed).length > 0 && (
+                <div className="pt-2 mt-2 border-t border-zinc-800">
+                  <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Completed</p>
+                  {followUps.filter(f => f.completed).slice(0, 3).map((followUp) => (
+                    <div
+                      key={followUp.id}
+                      className="flex items-center gap-2 py-1 text-xs text-zinc-500"
+                    >
+                      <CheckCircle className="w-3 h-3 text-green-500" />
+                      <span className="line-through">{followUp.title}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500">No follow-ups scheduled</p>
           )}
         </div>
 

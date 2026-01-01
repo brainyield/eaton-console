@@ -12,9 +12,13 @@ import {
   CheckCircle,
   Send,
   Trash2,
-  ChevronDown
+  ChevronDown,
+  Bell,
+  ChevronRight,
+  Calendar,
+  Circle
 } from 'lucide-react'
-import { useLeads, useLeadMutations, getScoreLabel, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
@@ -77,12 +81,16 @@ export default function Marketing() {
   const [isBulkUpdating, setIsBulkUpdating] = useState(false)
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
+  const [showUpcomingFollowUps, setShowUpcomingFollowUps] = useState(true)
 
   const { data: allLeads = [], isLoading, error } = useLeads({
     type: typeFilter || undefined,
     status: statusFilter || undefined,
     search: search || undefined,
   })
+
+  const { data: upcomingFollowUps = [] } = useUpcomingFollowUps()
+  const { completeFollowUp } = useFollowUpMutations()
 
   // Filter and sort leads (client-side)
   const leads = useMemo(() => {
@@ -335,6 +343,73 @@ export default function Marketing() {
         {/* Leads Tab Content */}
         {activeTab === 'leads' && (
           <>
+        {/* Upcoming Follow-ups */}
+        {upcomingFollowUps.length > 0 && (
+          <div className="border-b border-zinc-800">
+            <button
+              onClick={() => setShowUpcomingFollowUps(!showUpcomingFollowUps)}
+              className="w-full px-4 py-2 flex items-center justify-between hover:bg-zinc-800/50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Bell className="w-4 h-4 text-orange-400" />
+                <span className="text-sm font-medium text-zinc-300">
+                  Upcoming Follow-ups
+                </span>
+                <span className="px-1.5 py-0.5 text-xs bg-orange-500/20 text-orange-400 rounded">
+                  {upcomingFollowUps.length}
+                </span>
+              </div>
+              <ChevronRight className={`w-4 h-4 text-zinc-500 transition-transform ${showUpcomingFollowUps ? 'rotate-90' : ''}`} />
+            </button>
+            {showUpcomingFollowUps && (
+              <div className="px-4 pb-3 space-y-2">
+                {upcomingFollowUps.slice(0, 5).map((followUp) => (
+                  <div
+                    key={followUp.id}
+                    className="flex items-center gap-3 p-2 bg-zinc-800/50 rounded-lg group"
+                  >
+                    <button
+                      onClick={() => completeFollowUp.mutateAsync(followUp.id)}
+                      className="flex-shrink-0 text-zinc-500 hover:text-green-400"
+                    >
+                      <Circle className="w-4 h-4" />
+                    </button>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-zinc-200 truncate">{followUp.title}</span>
+                        <span className={`px-1.5 py-0.5 text-[10px] rounded ${getUrgencyColor(followUp.urgency)}`}>
+                          {followUp.urgency === 'overdue' ? 'Overdue' : followUp.urgency === 'today' ? 'Today' : followUp.urgency === 'tomorrow' ? 'Tomorrow' : 'This week'}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-zinc-500">
+                        <span>{followUp.lead_name || followUp.lead_email}</span>
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {new Date(followUp.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const lead = leads.find(l => l.id === followUp.lead_id)
+                        if (lead) setSelectedLeadId(lead.id)
+                      }}
+                      className="flex-shrink-0 p-1 text-zinc-500 hover:text-white"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+                {upcomingFollowUps.length > 5 && (
+                  <p className="text-xs text-zinc-500 text-center py-1">
+                    +{upcomingFollowUps.length - 5} more follow-ups
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Filters */}
         <div className="p-4 border-b border-zinc-800 flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
