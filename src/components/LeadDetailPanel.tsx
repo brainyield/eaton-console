@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   X,
   Mail,
@@ -17,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useLeadMutations, type LeadWithFamily, type LeadStatus } from '../lib/hooks'
 import { syncLeadToMailchimp } from '../lib/mailchimp'
+import { queryKeys } from '../lib/queryClient'
 
 interface LeadDetailPanelProps {
   lead: LeadWithFamily
@@ -39,6 +41,7 @@ const statusColors: Record<LeadStatus, string> = {
 }
 
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
+  const queryClient = useQueryClient()
   const { updateLead, deleteLead } = useLeadMutations()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -72,7 +75,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
         phone: lead.phone,
       })
       // Refetch lead data to show updated mailchimp_id
-      updateLead.mutate({ id: lead.id })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Failed to sync')
     } finally {

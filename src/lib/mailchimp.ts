@@ -85,11 +85,13 @@ async function callMailchimpFunction<T>(action: string, payload?: unknown): Prom
   })
 
   if (error) {
+    console.error('Mailchimp function error:', error)
     throw new Error(error.message || 'Failed to call Mailchimp function')
   }
 
-  if (!data.success) {
-    throw new Error(data.error || 'Mailchimp operation failed')
+  if (!data?.success) {
+    console.error('Mailchimp operation failed:', data)
+    throw new Error(data?.error || 'Mailchimp operation failed')
   }
 
   return data.data as T
@@ -113,6 +115,7 @@ export async function syncLeadToMailchimp(lead: {
  * Sync multiple leads to Mailchimp
  */
 export async function bulkSyncLeadsToMailchimp(leads: Array<{
+  id?: string
   email: string
   name?: string | null
   lead_type: string

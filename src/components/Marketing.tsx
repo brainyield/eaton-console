@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   Search,
   Upload,
@@ -23,6 +24,7 @@ import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
 import { bulkSyncLeadsToMailchimp } from '../lib/mailchimp'
+import { queryKeys } from '../lib/queryClient'
 
 const leadTypeLabels: Record<LeadType, string> = {
   exit_intent: 'Exit Intent',
@@ -53,6 +55,7 @@ const statusColors: Record<LeadStatus, string> = {
 }
 
 export default function Marketing() {
+  const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<LeadType | ''>('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('')
@@ -130,6 +133,7 @@ export default function Marketing() {
     try {
       const result = await bulkSyncLeadsToMailchimp(
         selectedLeads.map(l => ({
+          id: l.id,
           email: l.email,
           name: l.name,
           lead_type: l.lead_type,
@@ -137,6 +141,8 @@ export default function Marketing() {
       )
       setBulkSyncResult({ success: result.success, failed: result.failed })
       setSelectedIds(new Set())
+      // Refresh leads to show updated mailchimp status
+      await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
       setBulkSyncResult({ success: 0, failed: selectedLeads.length })
     } finally {
