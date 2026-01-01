@@ -1,0 +1,225 @@
+{
+  "name": "Exit Intent → Supabase Lead",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "exit-intent",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6982c8d2-0092-4957-b375-16c8451a2acd",
+      "name": "Exit Intent Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        64
+      ],
+      "webhookId": "exit-intent-webhook"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "/**\n * Transform exit intent form data for ingest-lead API\n * \n * Expected input from website:\n * {\n *   email: string (required)\n *   name?: string (optional)\n *   source_url?: string (optional - page where popup appeared)\n * }\n */\n\nconst src = $json.body || $json;\n\nfunction val(key, fallback = '') {\n  const v = src[key];\n  return (v === undefined || v === null) ? fallback : String(v).trim();\n}\n\nconst email = val('email').toLowerCase();\nconst name = val('name') || null;\nconst sourceUrl = val('source_url') || val('sourceUrl') || val('page_url') || null;\n\n// Validate email\nif (!email || !email.includes('@')) {\n  return {\n    json: {\n      error: 'Valid email is required',\n      valid: false\n    }\n  };\n}\n\nreturn {\n  json: {\n    lead_type: 'exit_intent',\n    email: email,\n    name: name,\n    source_url: sourceUrl,\n    valid: true\n  }\n};"
+      },
+      "id": "1cb9cda2-28c2-4d5b-b01a-98461722555e",
+      "name": "Transform & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -480,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-valid",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aac44ac2-67ef-455a-af58-e688595c7450",
+      "name": "Is Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lxebvngzgabuqfugyqfj.supabase.co/functions/v1/ingest-lead",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "eaton_leads_2025_abc1313"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4ZWJ2bmd6Z2FidXFmdWd5cWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0Mjk2OTIsImV4cCI6MjA4MjAwNTY5Mn0.GlnXWwcCmJGntZcfMsbLiZLw14iqwnjoLjJUy3ZNv_U"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ lead_type: $json.lead_type, email: $json.email, name: $json.name, source_url: $json.source_url }) }}",
+        "options": {}
+      },
+      "id": "dc456092-38d1-455b-874f-9648bb79058a",
+      "name": "POST to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, leadId: $json.leadId, action: $json.action }) }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "5d9a598c-d330-46ff-b8b5-c7bebacd4e19",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: false, error: $json.error || 'Invalid request' }) }}",
+        "options": {
+          "responseCode": 400,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "4311f89e-d9e8-4c9d-9909-089db482c385",
+      "name": "Respond Error",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        192
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Exit Intent Webhook": {
+      "main": [
+        [
+          {
+            "node": "Transform & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform & Validate": {
+      "main": [
+        [
+          {
+            "node": "Is Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Valid?": {
+      "main": [
+        [
+          {
+            "node": "POST to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "versionId": "7b51679c-c8fd-4aeb-ab8b-5d2c9bc5e7fa",
+  "meta": {
+    "instanceId": "4c5007cf4d68baa608da0379e4583e8d681ec5df0dddd9e0cb002ccb78e865ea"
+  },
+  "id": "4bN5AqrQYXn6neej",
+  "tags": [
+    {
+      "name": "leads",
+      "id": "sDtTN9n3JnqGPHtp",
+      "updatedAt": "2025-12-31T14:45:43.055Z",
+      "createdAt": "2025-12-31T14:45:43.055Z"
+    }
+  ]
+}

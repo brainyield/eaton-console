@@ -1,0 +1,273 @@
+{
+  "name": "Homestead Location Waitlist → Supabase",
+  "nodes": [
+    {
+      "parameters": {
+        "formTitle": "Eaton — Homestead FL Location Waitlist",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "Parent Name",
+              "placeholder": "(Ex: Marquez, Lisa)",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Parent Email",
+              "fieldType": "email",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "How many children do you want to register?",
+              "fieldType": "number",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Child(ren) Age(s)",
+              "placeholder": "Use commas to separate ages (Ex: 7, 10, 15)",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "What day(s) of the week do you prefer?",
+              "placeholder": "(Ex: Mondays and Thursdays)",
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "What time of day do you prefer?",
+              "fieldType": "checkbox",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Mornings 9am-12pm"
+                  },
+                  {
+                    "option": "Afternoons 12pm-4pm"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "What service are you interested in?",
+              "fieldType": "checkbox",
+              "fieldOptions": {
+                "values": [
+                  {
+                    "option": "Learning pod"
+                  },
+                  {
+                    "option": "Tutoring"
+                  },
+                  {
+                    "option": "Enrichment classes"
+                  }
+                ]
+              },
+              "requiredField": true
+            },
+            {
+              "fieldLabel": "Anything else you'd like to tell us?",
+              "fieldType": "textarea"
+            }
+          ]
+        },
+        "options": {
+          "appendAttribution": true,
+          "buttonLabel": "Send",
+          "respondWithOptions": {
+            "values": {
+              "formSubmittedText": "Thanks! We have received your waitlist request."
+            }
+          }
+        }
+      },
+      "id": "7e5dcf91-21d0-4174-adb7-6663c0ed6ca9",
+      "name": "Homestead Location Waitlist Form",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.3,
+      "position": [
+        -960,
+        64
+      ],
+      "webhookId": "e7cead32-ded2-4b6b-926d-0f6929443208"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "/**\n * Transform waitlist form data for ingest-lead API\n */\n\nconst src = $json;\n\n// ---------- helpers ----------\nfunction val(key, fallback = '') {\n  const v = src[key];\n  return (v === undefined || v === null) ? fallback : String(v).trim();\n}\n\nfunction formatList(value) {\n  if (Array.isArray(value)) {\n    return value.join(', ');\n  }\n  return String(value || '').trim();\n}\n\nfunction cap(s) {\n  return String(s || '')\n    .trim()\n    .replace(/\\s+/g, ' ')\n    .split(' ')\n    .map(w => (w ? w[0].toUpperCase() + w.slice(1).toLowerCase() : ''))\n    .join(' ');\n}\n\nfunction toLastFirst(name) {\n  const raw = String(name || '').trim();\n  if (!raw) return '';\n  \n  if (raw.includes(',')) {\n    const parts = raw.split(',').map(p => cap(p.trim()));\n    return parts.join(', ');\n  }\n  \n  const parts = raw.split(/\\s+/).filter(Boolean);\n  if (parts.length === 1) {\n    return cap(parts[0]);\n  }\n  \n  const last = cap(parts.pop());\n  const first = parts.map(cap).join(' ');\n  return `${last}, ${first}`;\n}\n\nfunction normalizeAges(input) {\n  const raw = String(input || '').trim();\n  if (!raw) return '';\n  \n  const ages = raw.match(/\\d+/g);\n  if (!ages || ages.length === 0) return raw;\n  \n  return ages\n    .map(Number)\n    .sort((a, b) => a - b)\n    .join(', ');\n}\n\n// ---------- extract form values ----------\nconst parentEmail = val('Parent Email').toLowerCase();\nconst parentName = toLastFirst(val('Parent Name'));\nconst numChildren = parseInt(val('How many children do you want to register?')) || null;\nconst childrenAges = normalizeAges(val('Child(ren) Age(s)'));\nconst preferredDays = val(\"What day(s) of the week do you prefer?\");\nconst preferredTime = formatList(src[\"What time of day do you prefer?\"]);\nconst serviceInterest = formatList(src[\"What service are you interested in?\"]);\nconst additionalNotes = val(\"Anything else you'd like to tell us?\");\n\n// ---------- build payload for ingest-lead API ----------\nreturn {\n  json: {\n    lead_type: 'waitlist',\n    email: parentEmail,\n    name: parentName,\n    source_url: 'https://eatonacademic.com/homestead-waitlist',\n    num_children: numChildren,\n    children_ages: childrenAges,\n    preferred_days: preferredDays,\n    preferred_time: preferredTime,\n    service_interest: serviceInterest,\n    notes: additionalNotes || null\n  }\n};"
+      },
+      "id": "f612ee04-226a-4d89-ab6c-9424f25c9bb5",
+      "name": "Transform for API",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://lxebvngzgabuqfugyqfj.supabase.co/functions/v1/ingest-lead",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-api-key",
+              "value": "eaton_leads_2025_abc1313"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imx4ZWJ2bmd6Z2FidXFmdWd5cWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY0Mjk2OTIsImV4cCI6MjA4MjAwNTY5Mn0.GlnXWwcCmJGntZcfMsbLiZLw14iqwnjoLjJUy3ZNv_U"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {}
+      },
+      "id": "b6b640c4-3219-4fc9-8378-9f2e27418006",
+      "name": "POST to Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -480,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition-success",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b08ced3e-b5b4-4714-94ed-f403fbbaad6d",
+      "name": "Check Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -240,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "dff70f82-caa8-45b1-997e-09ab0ea455a2",
+      "name": "Log Success",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "3bfcaaba-2e2b-467f-956f-9c6335a57499",
+      "name": "Log Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        128
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Homestead Location Waitlist Form": {
+      "main": [
+        [
+          {
+            "node": "Transform for API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Transform for API": {
+      "main": [
+        [
+          {
+            "node": "POST to Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST to Supabase": {
+      "main": [
+        [
+          {
+            "node": "Check Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Success": {
+      "main": [
+        [
+          {
+            "node": "Log Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "versionId": "ee9f5a97-65c5-48c4-93c1-8e059dc742b5",
+  "meta": {
+    "instanceId": "4c5007cf4d68baa608da0379e4583e8d681ec5df0dddd9e0cb002ccb78e865ea"
+  },
+  "id": "4NAAqdzDRlOwc50x",
+  "tags": [
+    {
+      "name": "leads",
+      "id": "sDtTN9n3JnqGPHtp",
+      "updatedAt": "2025-12-31T14:45:43.055Z",
+      "createdAt": "2025-12-31T14:45:43.055Z"
+    }
+  ]
+}

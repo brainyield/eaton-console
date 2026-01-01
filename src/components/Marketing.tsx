@@ -10,9 +10,11 @@ import {
   Users,
   Clock,
   CheckCircle,
-  Send
+  Send,
+  Trash2,
+  ChevronDown
 } from 'lucide-react'
-import { useLeads, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeads, useLeadMutations, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
@@ -58,6 +60,9 @@ export default function Marketing() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkSyncing, setIsBulkSyncing] = useState(false)
   const [bulkSyncResult, setBulkSyncResult] = useState<{ success: number; failed: number } | null>(null)
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false)
 
   const { data: leads = [], isLoading, error } = useLeads({
     type: typeFilter || undefined,
@@ -114,6 +119,51 @@ export default function Marketing() {
   }
 
   const isAllSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id))
+
+  const { updateLead, deleteLead } = useLeadMutations()
+
+  // Bulk status change
+  const handleBulkStatusChange = async (newStatus: LeadStatus) => {
+    const selectedLeadIds = Array.from(selectedIds)
+    if (selectedLeadIds.length === 0) return
+
+    setIsBulkUpdating(true)
+    setShowStatusDropdown(false)
+
+    try {
+      await Promise.all(
+        selectedLeadIds.map(id => updateLead.mutateAsync({ id, status: newStatus }))
+      )
+      setSelectedIds(new Set())
+    } catch (err) {
+      console.error('Failed to update leads:', err)
+    } finally {
+      setIsBulkUpdating(false)
+    }
+  }
+
+  // Bulk delete
+  const handleBulkDelete = async () => {
+    const selectedLeadIds = Array.from(selectedIds)
+    if (selectedLeadIds.length === 0) return
+
+    if (!confirm(`Are you sure you want to delete ${selectedLeadIds.length} lead(s)? This cannot be undone.`)) {
+      return
+    }
+
+    setIsBulkDeleting(true)
+
+    try {
+      await Promise.all(
+        selectedLeadIds.map(id => deleteLead.mutateAsync(id))
+      )
+      setSelectedIds(new Set())
+    } catch (err) {
+      console.error('Failed to delete leads:', err)
+    } finally {
+      setIsBulkDeleting(false)
+    }
+  }
 
   // Bulk sync to Mailchimp
   const handleBulkSync = async () => {
@@ -267,9 +317,41 @@ export default function Marketing() {
         {/* Bulk Actions Bar */}
         {selectedIds.size > 0 && (
           <div className="px-4 py-3 bg-blue-900/30 border-b border-blue-800/50 flex items-center gap-4">
-            <span className="text-sm text-blue-300">
+            <span className="text-sm text-blue-300 font-medium">
               {selectedIds.size} selected
             </span>
+
+            {/* Status Change Dropdown */}
+            <div className="relative">
+              <button
+                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                disabled={isBulkUpdating}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors disabled:opacity-50"
+              >
+                {isBulkUpdating ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+                Change Status
+                <ChevronDown className="w-3 h-3" />
+              </button>
+              {showStatusDropdown && (
+                <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-lg shadow-lg z-10 py-1 min-w-[140px]">
+                  {(['new', 'contacted', 'converted', 'closed'] as LeadStatus[]).map((status) => (
+                    <button
+                      key={status}
+                      onClick={() => handleBulkStatusChange(status)}
+                      className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white capitalize"
+                    >
+                      {status}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Sync to Mailchimp */}
             <button
               onClick={handleBulkSync}
               disabled={isBulkSyncing}
@@ -282,6 +364,22 @@ export default function Marketing() {
               )}
               Sync to Mailchimp
             </button>
+
+            {/* Delete */}
+            <button
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-900/50 hover:bg-red-800/50 text-red-300 hover:text-red-200 rounded-md transition-colors disabled:opacity-50"
+            >
+              {isBulkDeleting ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
+              Delete
+            </button>
+
+            {/* Clear Selection */}
             <button
               onClick={() => setSelectedIds(new Set())}
               className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
@@ -289,6 +387,8 @@ export default function Marketing() {
               <X className="w-4 h-4" />
               Clear
             </button>
+
+            {/* Sync Result */}
             {bulkSyncResult && (
               <span className={`text-sm ${bulkSyncResult.failed > 0 ? 'text-amber-400' : 'text-green-400'}`}>
                 {bulkSyncResult.success} synced{bulkSyncResult.failed > 0 && `, ${bulkSyncResult.failed} failed`}
