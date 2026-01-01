@@ -3603,6 +3603,8 @@ export interface Lead {
   mailchimp_clicks?: number | null
   mailchimp_engagement_score?: number | null
   mailchimp_engagement_updated_at?: string | null
+  // Lead score - optional until migration is run
+  lead_score?: number | null
   created_at: string
   updated_at: string
 }
@@ -3615,6 +3617,61 @@ export interface LeadWithFamily extends Lead {
   days_in_pipeline?: number
   contact_count?: number
   last_contacted_at?: string | null
+  // Computed score (calculated client-side if not in DB)
+  computed_score?: number
+}
+
+/**
+ * Calculate lead score client-side (fallback when DB score not available)
+ * Scoring:
+ * - Source Quality (0-30): event=30, calendly=25, waitlist=15, exit_intent=10
+ * - Recency (0-25): 0-7 days=25, 8-14=20, 15-30=15, 31-60=10, 61-90=5, 90+=0
+ * - Engagement (0-30): mailchimp_engagement_score capped at 30
+ * - Contact Activity (0-15): 3 points per contact, max 5 contacts
+ */
+export function calculateLeadScore(lead: {
+  lead_type: LeadType
+  created_at: string
+  mailchimp_engagement_score?: number | null
+  contact_count?: number
+}): number {
+  let score = 0
+
+  // Source quality (0-30)
+  const sourceScores: Record<LeadType, number> = {
+    event: 30,
+    calendly_call: 25,
+    waitlist: 15,
+    exit_intent: 10,
+  }
+  score += sourceScores[lead.lead_type] || 5
+
+  // Recency (0-25)
+  const daysOld = Math.floor(
+    (Date.now() - new Date(lead.created_at).getTime()) / (1000 * 60 * 60 * 24)
+  )
+  if (daysOld <= 7) score += 25
+  else if (daysOld <= 14) score += 20
+  else if (daysOld <= 30) score += 15
+  else if (daysOld <= 60) score += 10
+  else if (daysOld <= 90) score += 5
+
+  // Engagement (0-30, capped)
+  score += Math.min(lead.mailchimp_engagement_score || 0, 30)
+
+  // Contact activity (0-15, 3 points per contact, max 5)
+  score += Math.min((lead.contact_count || 0) * 3, 15)
+
+  return score
+}
+
+/**
+ * Get score label based on score value
+ */
+export function getScoreLabel(score: number): 'hot' | 'warm' | 'cold' {
+  if (score >= 60) return 'hot'
+  if (score >= 30) return 'warm'
+  return 'cold'
 }
 
 /**
@@ -3673,12 +3730,26 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
         }
       }
 
-      // Merge stats into leads
-      return (leads || []).map(lead => ({
-        ...lead,
-        contact_count: statsMap.get(lead.id)?.count || 0,
-        last_contacted_at: statsMap.get(lead.id)?.lastContacted || null,
-      })) as LeadWithFamily[]
+      // Merge stats into leads and calculate scores
+      return (leads || []).map(lead => {
+        const contactCount = statsMap.get(lead.id)?.count || 0
+        const leadWithStats = {
+          ...lead,
+          contact_count: contactCount,
+          last_contacted_at: statsMap.get(lead.id)?.lastContacted || null,
+        }
+        // Use DB score if available, otherwise calculate client-side
+        const computedScore = lead.lead_score ?? calculateLeadScore({
+          lead_type: lead.lead_type,
+          created_at: lead.created_at,
+          mailchimp_engagement_score: lead.mailchimp_engagement_score,
+          contact_count: contactCount,
+        })
+        return {
+          ...leadWithStats,
+          computed_score: computedScore,
+        }
+      }) as LeadWithFamily[]
     },
   })
 }

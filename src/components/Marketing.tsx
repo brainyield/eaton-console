@@ -14,7 +14,7 @@ import {
   Trash2,
   ChevronDown
 } from 'lucide-react'
-import { useLeads, useLeadMutations, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeads, useLeadMutations, getScoreLabel, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
@@ -22,6 +22,13 @@ import { bulkSyncLeadsToMailchimp, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
+type SortOption = 'created_desc' | 'created_asc' | 'score_desc' | 'score_asc'
+
+const scoreLabelColors: Record<'hot' | 'warm' | 'cold', string> = {
+  hot: 'bg-red-500/20 text-red-400',
+  warm: 'bg-orange-500/20 text-orange-400',
+  cold: 'bg-zinc-500/20 text-zinc-400',
+}
 
 const leadTypeLabels: Record<LeadType, string> = {
   exit_intent: 'Exit Intent',
@@ -57,6 +64,7 @@ export default function Marketing() {
   const [typeFilter, setTypeFilter] = useState<LeadType | ''>('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('')
   const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>('')
+  const [sortOption, setSortOption] = useState<SortOption>('score_desc')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingLead, setEditingLead] = useState<LeadWithFamily | null>(null)
@@ -73,11 +81,32 @@ export default function Marketing() {
     search: search || undefined,
   })
 
-  // Filter leads by engagement (client-side)
+  // Filter and sort leads (client-side)
   const leads = useMemo(() => {
-    if (!engagementFilter) return allLeads
-    return allLeads.filter(lead => getEngagementLevel(lead.mailchimp_engagement_score) === engagementFilter)
-  }, [allLeads, engagementFilter])
+    let filtered = allLeads
+
+    // Filter by engagement
+    if (engagementFilter) {
+      filtered = filtered.filter(lead => getEngagementLevel(lead.mailchimp_engagement_score) === engagementFilter)
+    }
+
+    // Sort
+    const sorted = [...filtered].sort((a, b) => {
+      switch (sortOption) {
+        case 'score_desc':
+          return (b.computed_score ?? 0) - (a.computed_score ?? 0)
+        case 'score_asc':
+          return (a.computed_score ?? 0) - (b.computed_score ?? 0)
+        case 'created_asc':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+        case 'created_desc':
+        default:
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+    })
+
+    return sorted
+  }, [allLeads, engagementFilter, sortOption])
 
   // Stats
   const stats = useMemo(() => {
@@ -319,6 +348,17 @@ export default function Marketing() {
             <option value="cold">Cold (0)</option>
           </select>
 
+          <select
+            value={sortOption}
+            onChange={(e) => setSortOption(e.target.value as SortOption)}
+            className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
+          >
+            <option value="score_desc">Score (High to Low)</option>
+            <option value="score_asc">Score (Low to High)</option>
+            <option value="created_desc">Newest First</option>
+            <option value="created_asc">Oldest First</option>
+          </select>
+
           {(typeFilter || statusFilter || engagementFilter || search) && (
             <button
               onClick={() => {
@@ -455,6 +495,9 @@ export default function Marketing() {
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Status
                   </th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Score
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Phone
                   </th>
@@ -507,6 +550,14 @@ export default function Marketing() {
                       <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[lead.status]}`}>
                         {statusLabels[lead.status]}
                       </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span className="text-sm font-medium text-white">{lead.computed_score ?? 0}</span>
+                        <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-medium rounded ${scoreLabelColors[getScoreLabel(lead.computed_score ?? 0)]}`}>
+                          {getScoreLabel(lead.computed_score ?? 0).toUpperCase()}
+                        </span>
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
                       {lead.phone || '-'}
