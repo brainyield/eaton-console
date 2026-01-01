@@ -10,7 +10,8 @@ import {
   Search,
   ChevronDown,
   CalendarDays,
-  Wallet
+  Wallet,
+  Train
 } from 'lucide-react'
 
 interface NavItem {
@@ -56,8 +57,9 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
   return (
     <div className="flex h-full w-56 flex-col bg-zinc-900 border-r border-zinc-800">
       {/* Logo */}
-      <div className="flex h-14 items-center px-4 border-b border-zinc-800">
-        <span className="text-lg font-semibold text-white">EATON ACADEMIC</span>
+      <div className="flex h-14 items-center gap-2 px-4 border-b border-zinc-800">
+        <Train className="w-5 h-5 text-blue-400" />
+        <span className="text-lg font-semibold text-white">NON-STOP TRAIN</span>
       </div>
 
       {/* Search */}
