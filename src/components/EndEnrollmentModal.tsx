@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { X, Loader2, UserMinus, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { 
+import {
   useEnrollmentMutations,
   useTeacherAssignmentMutations,
   type Enrollment
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
+import { getTodayString } from '../lib/dateUtils';
 
 interface EndEnrollmentModalProps {
   isOpen: boolean;
@@ -26,7 +27,7 @@ export function EndEnrollmentModal({
   onSuccess
 }: EndEnrollmentModalProps) {
   const queryClient = useQueryClient();
-  const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(getTodayString());
   const [error, setError] = useState<string | null>(null);
 
   // Mutations
@@ -74,7 +75,7 @@ export function EndEnrollmentModal({
   }
 
   function handleClose() {
-    setEndDate(new Date().toISOString().split('T')[0]);
+    setEndDate(getTodayString());
     setError(null);
     updateEnrollment.reset();
     endAssignmentsByEnrollment.reset();

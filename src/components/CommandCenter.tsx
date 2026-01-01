@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
+import { formatDateLocal } from '../lib/dateUtils'
 import {
   Users,
   GraduationCap,
@@ -89,7 +90,7 @@ function useDashboardStats() {
       const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
       // For 30+ day overdue calculation
-      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      const thirtyDaysAgo = formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000))
 
       // Fetch all stats in parallel
       const [

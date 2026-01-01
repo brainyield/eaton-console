@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatNameLastFirst } from '../lib/utils'
+import { getTodayString } from '../lib/dateUtils'
 import {
   Search,
   ChevronUp,
@@ -393,7 +394,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `event-attendees-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `event-attendees-${getTodayString()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

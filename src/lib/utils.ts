@@ -1,3 +1,5 @@
+import { parseLocalDate } from './dateUtils'
+
 /**
  * Formats a name to "Last Name, First Name" format.
  *
@@ -44,13 +46,17 @@ export function formatNameLastFirst(name: string | null | undefined): string {
  * Calculates age from a date of birth string.
  * Returns null if the DOB is not provided or invalid.
  *
- * @param dob - Date of birth in ISO format (YYYY-MM-DD) or other parseable date string
+ * @param dob - Date of birth in ISO format (YYYY-MM-DD)
  * @returns Age in years, or null if DOB is not available
  */
 export function calculateAge(dob: string | null | undefined): number | null {
   if (!dob) return null;
 
-  const birthDate = new Date(dob);
+  // Validate format (YYYY-MM-DD)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dob)) return null;
+
+  // Parse as local date to avoid timezone issues
+  const birthDate = parseLocalDate(dob);
   if (isNaN(birthDate.getTime())) return null;
 
   const today = new Date();

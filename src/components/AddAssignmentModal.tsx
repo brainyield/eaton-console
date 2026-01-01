@@ -10,6 +10,7 @@ import {
   type Service,
   type EnrollmentWithDetails,
 } from '../lib/hooks'
+import { getTodayString } from '../lib/dateUtils'
 
 interface AddAssignmentModalProps {
   isOpen: boolean
@@ -44,7 +45,7 @@ export function AddAssignmentModal({
   const [hourlyRate, setHourlyRate] = useState(defaultRate?.toString() || '')
   const [hoursPerWeek, setHoursPerWeek] = useState('')
   const [notes, setNotes] = useState('')
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
+  const [startDate, setStartDate] = useState(getTodayString())
   const [searchQuery, setSearchQuery] = useState('')
   
   // Error state
@@ -180,7 +181,7 @@ export function AddAssignmentModal({
     setHourlyRate(defaultRate?.toString() || '')
     setHoursPerWeek('')
     setNotes('')
-    setStartDate(new Date().toISOString().split('T')[0])
+    setStartDate(getTodayString())
     setSearchQuery('')
     setError(null)
     createAssignment.reset()

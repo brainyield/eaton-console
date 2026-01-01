@@ -23,6 +23,7 @@ import {
 import { useEnrollments, useActiveServices } from '../lib/hooks'
 import type { Service, Enrollment } from '../lib/hooks'
 import { queryKeys } from '../lib/queryClient'
+import { getTodayString } from '../lib/dateUtils'
 import { EnrollmentDetailPanel } from './EnrollmentDetailPanel'
 import { AddEnrollmentModal } from './AddEnrollmentModal'
 import { EditEnrollmentModal } from './EditEnrollmentModal'
@@ -401,7 +402,7 @@ export default function ActiveRoster() {
   // CSV Export function
   function exportServiceToCSV(serviceName: string, serviceCode: string | undefined, enrollments: EnrollmentWithRelations[]) {
     const columns = getServiceColumns(serviceCode)
-    const today = new Date().toISOString().split('T')[0]
+    const today = getTodayString()
     const filename = `${serviceName.toLowerCase().replace(/\s+/g, '-')}-roster-${today}.csv`
 
     // Build headers

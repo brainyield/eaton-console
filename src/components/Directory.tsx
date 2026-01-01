@@ -3,6 +3,7 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
 import { addRecentlyViewed } from '../lib/useRecentlyViewed'
+import { getTodayString } from '../lib/dateUtils'
 import type { CustomerStatus, LeadType } from '../lib/hooks'
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
@@ -669,7 +670,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `families-export-${new Date().toISOString().split('T')[0]}.csv`
+    a.download = `families-export-${getTodayString()}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }

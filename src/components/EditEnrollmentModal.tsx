@@ -14,6 +14,7 @@ import {
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
 import { getPeriodOptions, getDefaultPeriod, type ServiceCode } from '../lib/enrollmentPeriod';
+import { getTodayString } from '../lib/dateUtils';
 
 interface EnrollmentWithService extends Enrollment {
   service?: Service
@@ -197,7 +198,7 @@ export function EditEnrollmentModal({
                   id: currentActiveAssignment.id,
                   data: {
                     is_active: false,
-                    end_date: new Date().toISOString().split('T')[0]
+                    end_date: getTodayString()
                   }
                 },
                 {
@@ -217,7 +218,7 @@ export function EditEnrollmentModal({
                 hourly_rate_teacher: teacherHourlyRate,
                 hours_per_week: formData.hours_per_week ? parseFloat(formData.hours_per_week) : null,
                 is_active: true,
-                start_date: new Date().toISOString().split('T')[0],
+                start_date: getTodayString(),
               },
               {
                 onSuccess: () => resolve(),
@@ -233,7 +234,7 @@ export function EditEnrollmentModal({
                 id: currentActiveAssignment.id,
                 data: {
                   is_active: false,
-                  end_date: new Date().toISOString().split('T')[0]
+                  end_date: getTodayString()
                 }
               },
               {

@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { X, Loader2, Plus, AlertCircle, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { 
-  useFamiliesWithStudents, 
-  useActiveServices, 
+import {
+  useFamiliesWithStudents,
+  useActiveServices,
   useActiveTeachers,
   useEnrollmentMutations,
   useTeacherAssignmentMutations,
@@ -13,6 +13,7 @@ import {
   type Student
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
+import { getTodayString } from '../lib/dateUtils';
 
 // Extended family type with students
 interface FamilyWithStudents extends Family {
@@ -76,7 +77,7 @@ const INITIAL_FORM: FormData = {
   student_id: '',
   service_id: '',
   status: 'active',
-  start_date: new Date().toISOString().split('T')[0],
+  start_date: getTodayString(),
   hourly_rate_customer: '',
   hours_per_week: '',
   monthly_rate: '',
@@ -347,7 +348,7 @@ export function AddEnrollmentModal({
             enrollment_id: enrollment.id,
             teacher_id: formData.teacher_id,
             is_active: true,
-            start_date: formData.start_date || new Date().toISOString().split('T')[0],
+            start_date: formData.start_date || getTodayString(),
           };
 
           if (formData.hourly_rate_teacher) {

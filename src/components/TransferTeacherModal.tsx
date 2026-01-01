@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, Search, User, ArrowRight } from 'lucide-react';
-import { 
-  useActiveTeachers, 
+import {
+  useActiveTeachers,
   useTeacherAssignmentMutations,
-  type Teacher 
+  type Teacher
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
+import { getTodayString } from '../lib/dateUtils';
 
 interface TeacherAssignment {
   id: string;
@@ -91,7 +92,7 @@ export function TransferTeacherModal({
 
     setError(null);
 
-    const effectiveDate = new Date().toISOString().split('T')[0];
+    const effectiveDate = getTodayString();
 
     // FIXED: Updated to match new hook signature
     transferTeacher.mutate(

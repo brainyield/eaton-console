@@ -6,6 +6,7 @@ import {
   getServiceShortName,
   type TeacherAssignmentWithDetails,
 } from '../lib/hooks'
+import { getTodayString } from '../lib/dateUtils'
 
 interface EditAssignmentModalProps {
   isOpen: boolean
@@ -74,7 +75,7 @@ export function EditAssignmentModal({
           notes: notes || null,
           start_date: startDate || null,
           is_active: isActive,
-          end_date: !isActive ? new Date().toISOString().split('T')[0] : null,
+          end_date: !isActive ? getTodayString() : null,
         },
       },
       {
@@ -100,7 +101,7 @@ export function EditAssignmentModal({
         id: assignment.id,
         data: {
           is_active: false,
-          end_date: new Date().toISOString().split('T')[0],
+          end_date: getTodayString(),
         },
       },
       {

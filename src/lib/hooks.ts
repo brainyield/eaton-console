@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
+import { getTodayString } from './dateUtils'
 import type { GmailSearchParams } from '../types/gmail'
 
 // =============================================================================
@@ -1223,7 +1224,7 @@ export function useTeacherAssignmentMutations() {
       effectiveDate?: string
       endPrevious?: boolean
     }) => {
-      const today = effectiveDate || new Date().toISOString().split('T')[0]
+      const today = effectiveDate || getTodayString()
       
       // End old assignment if exists and endPrevious is true
       if (oldTeacherId && endPrevious) {
@@ -1264,9 +1265,9 @@ export function useTeacherAssignmentMutations() {
     ) => {
       // Support both string (backward compat) and object (new usage)
       const enrollmentId = typeof params === 'string' ? params : params.enrollmentId
-      const endDate = typeof params === 'string' 
-        ? new Date().toISOString().split('T')[0] 
-        : params.endDate || new Date().toISOString().split('T')[0]
+      const endDate = typeof params === 'string'
+        ? getTodayString()
+        : params.endDate || getTodayString()
 
       const { error } = await (supabase.from('teacher_assignments') as any)
         .update({ is_active: false, end_date: endDate })
@@ -1820,7 +1821,7 @@ export function useInvoiceMutations() {
         const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
           .insert({
             family_id: familyId,
-            invoice_date: new Date().toISOString().split('T')[0],
+            invoice_date: getTodayString(),
             due_date: dueDate,
             period_start: periodStart,
             period_end: periodEnd,
@@ -1995,7 +1996,7 @@ export function useInvoiceMutations() {
       const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
         .insert({
           family_id: familyId,
-          invoice_date: new Date().toISOString().split('T')[0],
+          invoice_date: getTodayString(),
           due_date: dueDate,
           status: 'draft',
           notes: invoiceNote,
@@ -2211,7 +2212,7 @@ export function useInvoiceMutations() {
         .insert({
           invoice_id: invoiceId,
           amount: actualPaymentAmount,
-          payment_date: new Date().toISOString().split('T')[0],
+          payment_date: getTodayString(),
           payment_method: paymentMethod,
           notes: notes,
         })

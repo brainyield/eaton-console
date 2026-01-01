@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { formatDateLocal } from '../lib/dateUtils'
 import {
   BarChart,
   Bar,
@@ -137,7 +138,7 @@ function getStartDate(dateRange: string): string {
     default:
       startDate = new Date(now.getFullYear(), now.getMonth() - 6, 1)
   }
-  return startDate.toISOString().split('T')[0]
+  return formatDateLocal(startDate)
 }
 
 // Service name mapping for legend

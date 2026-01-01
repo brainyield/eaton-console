@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { useFamiliesWithStudents, useInvoiceMutations } from '../lib/hooks'
 import type { Family } from '../lib/hooks'
+import { getTodayString } from '../lib/dateUtils'
 
 // ============================================================================
 // Types
@@ -55,7 +56,7 @@ export default function ImportHistoricalInvoiceModal({ onClose, onSuccess }: Pro
 
   // Payment/status state
   const [markAsSent, setMarkAsSent] = useState(true)
-  const [sentDate, setSentDate] = useState(new Date().toISOString().split('T')[0])
+  const [sentDate, setSentDate] = useState(getTodayString())
   const [amountPaid, setAmountPaid] = useState(0)
   const [paymentDate, setPaymentDate] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('')
