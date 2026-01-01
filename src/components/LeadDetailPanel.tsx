@@ -12,9 +12,11 @@ import {
   CheckCircle,
   Edit,
   Trash2,
-  Link2
+  Link2,
+  Send
 } from 'lucide-react'
 import { useLeadMutations, type LeadWithFamily, type LeadStatus } from '../lib/hooks'
+import { syncLeadToMailchimp } from '../lib/mailchimp'
 
 interface LeadDetailPanelProps {
   lead: LeadWithFamily
@@ -39,6 +41,8 @@ const statusColors: Record<LeadStatus, string> = {
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
   const { updateLead, deleteLead } = useLeadMutations()
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [syncError, setSyncError] = useState<string | null>(null)
 
   const handleStatusChange = async (newStatus: LeadStatus) => {
     await updateLead.mutateAsync({ id: lead.id, status: newStatus })
@@ -52,6 +56,27 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       onClose()
     } finally {
       setIsDeleting(false)
+    }
+  }
+
+  const handleSyncToMailchimp = async () => {
+    setIsSyncing(true)
+    setSyncError(null)
+    try {
+      await syncLeadToMailchimp({
+        leadId: lead.id,
+        email: lead.email,
+        name: lead.name,
+        lead_type: lead.lead_type,
+        status: lead.status,
+        phone: lead.phone,
+      })
+      // Refetch lead data to show updated mailchimp_id
+      updateLead.mutate({ id: lead.id })
+    } catch (err) {
+      setSyncError(err instanceof Error ? err.message : 'Failed to sync')
+    } finally {
+      setIsSyncing(false)
     }
   }
 
@@ -229,9 +254,26 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
 
         {/* Mailchimp Status */}
         <div>
-          <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">
-            Mailchimp
-          </h4>
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              Mailchimp
+            </h4>
+            <button
+              onClick={handleSyncToMailchimp}
+              disabled={isSyncing}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSyncing ? (
+                <RefreshCw className="w-3 h-3 animate-spin" />
+              ) : (
+                <Send className="w-3 h-3" />
+              )}
+              {lead.mailchimp_id ? 'Re-sync' : 'Sync'}
+            </button>
+          </div>
+          {syncError && (
+            <p className="text-xs text-red-400 mb-2">{syncError}</p>
+          )}
           {lead.mailchimp_id ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2">

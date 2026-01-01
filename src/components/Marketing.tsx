@@ -15,12 +15,14 @@ import {
   Users,
   Clock,
   CheckCircle,
-  XCircle
+  XCircle,
+  Send
 } from 'lucide-react'
 import { useLeads, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
+import { bulkSyncLeadsToMailchimp } from '../lib/mailchimp'
 
 const leadTypeLabels: Record<LeadType, string> = {
   exit_intent: 'Exit Intent',
@@ -57,6 +59,9 @@ export default function Marketing() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingLead, setEditingLead] = useState<LeadWithFamily | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false)
+  const [bulkSyncResult, setBulkSyncResult] = useState<{ success: number; failed: number } | null>(null)
 
   const { data: leads = [], isLoading, error } = useLeads({
     type: typeFilter || undefined,
@@ -91,6 +96,52 @@ export default function Marketing() {
     const diffTime = Math.abs(now.getTime() - created.getTime())
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
     return diffDays
+  }
+
+  // Selection handlers
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(leads.map(l => l.id)))
+    } else {
+      setSelectedIds(new Set())
+    }
+  }
+
+  const handleSelectOne = (id: string, checked: boolean) => {
+    const newSet = new Set(selectedIds)
+    if (checked) {
+      newSet.add(id)
+    } else {
+      newSet.delete(id)
+    }
+    setSelectedIds(newSet)
+  }
+
+  const isAllSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id))
+
+  // Bulk sync to Mailchimp
+  const handleBulkSync = async () => {
+    const selectedLeads = leads.filter(l => selectedIds.has(l.id))
+    if (selectedLeads.length === 0) return
+
+    setIsBulkSyncing(true)
+    setBulkSyncResult(null)
+
+    try {
+      const result = await bulkSyncLeadsToMailchimp(
+        selectedLeads.map(l => ({
+          email: l.email,
+          name: l.name,
+          lead_type: l.lead_type,
+        }))
+      )
+      setBulkSyncResult({ success: result.success, failed: result.failed })
+      setSelectedIds(new Set())
+    } catch (err) {
+      setBulkSyncResult({ success: 0, failed: selectedLeads.length })
+    } finally {
+      setIsBulkSyncing(false)
+    }
   }
 
   return (
@@ -214,6 +265,39 @@ export default function Marketing() {
           )}
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedIds.size > 0 && (
+          <div className="px-4 py-3 bg-blue-900/30 border-b border-blue-800/50 flex items-center gap-4">
+            <span className="text-sm text-blue-300">
+              {selectedIds.size} selected
+            </span>
+            <button
+              onClick={handleBulkSync}
+              disabled={isBulkSyncing}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors disabled:opacity-50"
+            >
+              {isBulkSyncing ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Send className="w-4 h-4" />
+              )}
+              Sync to Mailchimp
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
+            >
+              <X className="w-4 h-4" />
+              Clear
+            </button>
+            {bulkSyncResult && (
+              <span className={`text-sm ${bulkSyncResult.failed > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                {bulkSyncResult.success} synced{bulkSyncResult.failed > 0 && `, ${bulkSyncResult.failed} failed`}
+              </span>
+            )}
+          </div>
+        )}
+
         {/* Table */}
         <div className="flex-1 overflow-auto">
           {isLoading ? (
@@ -234,6 +318,14 @@ export default function Marketing() {
             <table className="w-full">
               <thead className="bg-zinc-800/50 sticky top-0">
                 <tr>
+                  <th className="w-10 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={isAllSelected}
+                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Name / Email
                   </th>
@@ -262,8 +354,16 @@ export default function Marketing() {
                     onClick={() => setSelectedLeadId(lead.id)}
                     className={`hover:bg-zinc-800/50 cursor-pointer transition-colors ${
                       selectedLeadId === lead.id ? 'bg-zinc-800' : ''
-                    }`}
+                    } ${selectedIds.has(lead.id) ? 'bg-blue-900/20' : ''}`}
                   >
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(lead.id)}
+                        onChange={(e) => handleSelectOne(lead.id, e.target.checked)}
+                        className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-sm font-medium text-white">
