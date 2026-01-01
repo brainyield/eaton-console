@@ -7,6 +7,23 @@ interface Props {
   onSuccess: () => void
 }
 
+// Helper to format a date as YYYY-MM-DD in local time (avoids timezone shift from toISOString)
+function formatDateLocal(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+// Helper to get ISO week number (1-53)
+function getISOWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+}
+
 // Helper to get default bi-weekly period dates
 function getDefaultPeriodDates(): { start: string; end: string } {
   const today = new Date()
@@ -17,19 +34,20 @@ function getDefaultPeriodDates(): { start: string; end: string } {
   const monday = new Date(today)
   monday.setDate(today.getDate() - daysFromMonday)
 
-  // If we're in the second week of a bi-weekly period, go back one more week
-  const weekNumber = Math.floor((monday.getTime() - new Date(2024, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000))
-  if (weekNumber % 2 === 1) {
+  // Use ISO week number to determine bi-weekly periods (odd weeks start a new period)
+  const weekNumber = getISOWeekNumber(monday)
+  if (weekNumber % 2 === 0) {
+    // Even week = second week of bi-weekly period, go back one week
     monday.setDate(monday.getDate() - 7)
   }
 
-  // Period start is the Monday
-  const periodStart = monday.toISOString().split('T')[0]
+  // Period start is the Monday (use local formatting to avoid timezone shift)
+  const periodStart = formatDateLocal(monday)
 
   // Period end is 13 days later (2 weeks - 1 day = Sunday)
   const periodEnd = new Date(monday)
   periodEnd.setDate(monday.getDate() + 13)
-  const periodEndStr = periodEnd.toISOString().split('T')[0]
+  const periodEndStr = formatDateLocal(periodEnd)
 
   return { start: periodStart, end: periodEndStr }
 }
@@ -45,10 +63,12 @@ export default function CreatePayrollRunModal({ onClose, onSuccess }: Props) {
   const { createPayrollRun } = usePayrollMutations()
   const { data: pendingAdjustments = [] } = usePendingPayrollAdjustments()
 
-  // Calculate days in period
+  // Calculate days in period (parse dates as UTC to avoid timezone issues)
   const daysInPeriod = useMemo(() => {
-    const start = new Date(periodStart)
-    const end = new Date(periodEnd)
+    // Date strings like "2024-01-15" are parsed as UTC midnight by new Date()
+    // Add time component to ensure consistent UTC parsing
+    const start = new Date(periodStart + 'T00:00:00Z')
+    const end = new Date(periodEnd + 'T00:00:00Z')
     return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
   }, [periodStart, periodEnd])
 
@@ -58,8 +78,8 @@ export default function CreatePayrollRunModal({ onClose, onSuccess }: Props) {
     setIsSubmitting(true)
 
     try {
-      // Validate dates
-      if (new Date(periodEnd) <= new Date(periodStart)) {
+      // Validate dates (use string comparison for YYYY-MM-DD format - lexicographically correct)
+      if (periodEnd <= periodStart) {
         throw new Error('End date must be after start date')
       }
 

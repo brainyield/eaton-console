@@ -248,16 +248,20 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
   // Fetch invoices for margin calculation
   const { data: periodInvoices = [] } = useInvoicesWithDetails()
 
+  // Helper to parse date strings as UTC to avoid timezone issues
+  const parseAsUTC = (dateStr: string): Date => new Date(dateStr + 'T00:00:00Z')
+
   // Calculate margin snapshot
   const marginSnapshot = useMemo(() => {
     // Filter invoices that overlap with this pay period
+    // Use UTC parsing to ensure consistent date comparisons across timezones
     const relevantInvoices = periodInvoices.filter((inv: InvoiceWithDetails) => {
       if (!inv.period_start || !inv.period_end) return false
-      const invStart = new Date(inv.period_start)
-      const invEnd = new Date(inv.period_end)
-      const runStart = new Date(run.period_start)
-      const runEnd = new Date(run.period_end)
-      // Check for any overlap
+      const invStart = parseAsUTC(inv.period_start)
+      const invEnd = parseAsUTC(inv.period_end)
+      const runStart = parseAsUTC(run.period_start)
+      const runEnd = parseAsUTC(run.period_end)
+      // Check for any overlap (both boundaries inclusive)
       return invStart <= runEnd && invEnd >= runStart
     })
 

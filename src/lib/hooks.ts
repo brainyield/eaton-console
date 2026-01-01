@@ -3024,19 +3024,35 @@ export interface PayrollAdjustmentWithTeacher extends PayrollAdjustment {
 // =============================================================================
 
 /**
- * Count weekdays (Monday-Friday) between two dates, inclusive
+ * Parse a date string as UTC midnight to avoid timezone issues
  */
-function countWeekdays(startDate: Date, endDate: Date): number {
-  let count = 0
-  const current = new Date(startDate)
+function parseAsUTC(dateStr: string): Date {
+  return new Date(dateStr + 'T00:00:00Z')
+}
 
-  while (current <= endDate) {
-    const dayOfWeek = current.getDay()
+/**
+ * Count weekdays (Monday-Friday) between two dates, inclusive
+ * Uses UTC to avoid timezone-related off-by-one errors
+ */
+function countWeekdays(startDate: Date | string, endDate: Date | string): number {
+  // Convert to UTC dates if strings are provided
+  const start = typeof startDate === 'string' ? parseAsUTC(startDate) : new Date(Date.UTC(
+    startDate.getFullYear(), startDate.getMonth(), startDate.getDate()
+  ))
+  const end = typeof endDate === 'string' ? parseAsUTC(endDate) : new Date(Date.UTC(
+    endDate.getFullYear(), endDate.getMonth(), endDate.getDate()
+  ))
+
+  let count = 0
+  const current = new Date(start)
+
+  while (current <= end) {
+    const dayOfWeek = current.getUTCDay()
     // 0 = Sunday, 6 = Saturday, so 1-5 are weekdays
     if (dayOfWeek >= 1 && dayOfWeek <= 5) {
       count++
     }
-    current.setDate(current.getDate() + 1)
+    current.setUTCDate(current.getUTCDate() + 1)
   }
 
   return count
@@ -3044,6 +3060,8 @@ function countWeekdays(startDate: Date, endDate: Date): number {
 
 /**
  * Calculate hours for a pay period with proration for mid-period start/end
+ * All dates are treated as inclusive (both start and end dates count)
+ * Uses UTC parsing to avoid timezone-related boundary issues
  */
 function calculatePeriodHours(
   hoursPerWeek: number | null,
@@ -3056,12 +3074,13 @@ function calculatePeriodHours(
     return { hours: 0, isVariable: true }
   }
 
-  const pStart = new Date(periodStart)
-  const pEnd = new Date(periodEnd)
-  const aStart = assignmentStart ? new Date(assignmentStart) : null
-  const aEnd = assignmentEnd ? new Date(assignmentEnd) : null
+  // Parse all dates as UTC to ensure consistent comparison
+  const pStart = parseAsUTC(periodStart)
+  const pEnd = parseAsUTC(periodEnd)
+  const aStart = assignmentStart ? parseAsUTC(assignmentStart) : null
+  const aEnd = assignmentEnd ? parseAsUTC(assignmentEnd) : null
 
-  // Calculate effective overlap period
+  // Calculate effective overlap period (both boundaries are inclusive)
   const effectiveStart = aStart && aStart > pStart ? aStart : pStart
   const effectiveEnd = aEnd && aEnd < pEnd ? aEnd : pEnd
 
@@ -3070,7 +3089,7 @@ function calculatePeriodHours(
     return { hours: 0, isVariable: false }
   }
 
-  // Calculate weekdays (Mon-Fri) in effective period
+  // Calculate weekdays (Mon-Fri) in effective period (inclusive of both dates)
   const weekdaysInPeriod = countWeekdays(effectiveStart, effectiveEnd)
 
   // Prorate: (hours_per_week / 5) * weekdaysInPeriod

@@ -62,23 +62,32 @@ export function RecordTeacherPaymentModal({
     }))
   }, [assignmentsData])
 
+  // Helper to format date as YYYY-MM-DD in local time (avoids timezone shift from toISOString)
+  const formatDateLocal = (date: Date): string => {
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   // Set default dates (current week)
   useEffect(() => {
     if (isOpen) {
       const today = new Date()
       const dayOfWeek = today.getDay()
-      
+
       // Get Monday of current week
       const monday = new Date(today)
       monday.setDate(today.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
-      
+
       // Get Friday of current week
       const friday = new Date(monday)
       friday.setDate(monday.getDate() + 4)
-      
-      setPayPeriodStart(monday.toISOString().split('T')[0])
-      setPayPeriodEnd(friday.toISOString().split('T')[0])
-      setPayDate(today.toISOString().split('T')[0])
+
+      // Use local date formatting to avoid timezone-related date shifts
+      setPayPeriodStart(formatDateLocal(monday))
+      setPayPeriodEnd(formatDateLocal(friday))
+      setPayDate(formatDateLocal(today))
       setError(null)
     }
   }, [isOpen])
