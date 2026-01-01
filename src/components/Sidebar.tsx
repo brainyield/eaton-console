@@ -10,7 +10,8 @@ import {
   ChevronDown,
   CalendarDays,
   Wallet,
-  Train
+  Train,
+  Megaphone
 } from 'lucide-react'
 import { useRecentlyViewed } from '../lib/useRecentlyViewed'
 
@@ -25,6 +26,7 @@ const navigation: NavItem[] = [
   { name: 'Directory', icon: Users, href: '/directory' },
   { name: 'Active Roster', icon: ClipboardList, href: '/roster' },
   { name: 'Events', icon: CalendarDays, href: '/events' },
+  { name: 'Marketing', icon: Megaphone, href: '/marketing' },
   { name: 'Invoicing', icon: Receipt, href: '/invoicing' },
   { name: 'Payroll', icon: Wallet, href: '/payroll' },
   { name: 'Teachers', icon: GraduationCap, href: '/teachers' },

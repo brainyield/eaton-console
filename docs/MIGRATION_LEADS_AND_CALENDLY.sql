@@ -21,7 +21,7 @@ $$ LANGUAGE plpgsql;
 -- STEP 1: Create lead_type enum
 -- ============================================================================
 
-CREATE TYPE lead_type AS ENUM ('exit_intent', 'waitlist', 'calendly_call', 'event');
+CREATE TYPE lead_type AS ENUM ('exit_intent', 'calendly', 'event');
 
 CREATE TYPE lead_status AS ENUM ('new', 'contacted', 'converted', 'closed');
 
@@ -61,7 +61,13 @@ CREATE TABLE leads (
   service_interest text,
 
   -- General
-  notes text
+  notes text,
+
+  -- Mailchimp integration
+  mailchimp_id text,
+  mailchimp_status text, -- 'synced', 'pending', 'unsubscribed'
+  mailchimp_last_synced_at timestamptz,
+  mailchimp_tags text[] -- array of tag names
 );
 
 -- Indexes for common queries
@@ -71,6 +77,7 @@ CREATE INDEX leads_status_idx ON leads(status);
 CREATE INDEX leads_created_idx ON leads(created_at);
 CREATE INDEX leads_family_idx ON leads(family_id);
 CREATE INDEX leads_scheduled_idx ON leads(scheduled_at) WHERE scheduled_at IS NOT NULL;
+CREATE INDEX leads_mailchimp_idx ON leads(mailchimp_id) WHERE mailchimp_id IS NOT NULL;
 
 -- Trigger for updated_at
 CREATE TRIGGER leads_updated_at
@@ -180,6 +187,7 @@ SELECT
   l.email,
   l.name,
   l.phone,
+  l.source_url,
   l.created_at,
   l.scheduled_at,
   l.family_id,
@@ -187,11 +195,13 @@ SELECT
   l.num_children,
   l.service_interest,
   l.notes,
+  l.mailchimp_id,
+  l.mailchimp_status,
+  l.mailchimp_tags,
   -- Days since created
   EXTRACT(DAY FROM (now() - l.created_at)) as days_in_pipeline
 FROM leads l
 LEFT JOIN families f ON f.id = l.family_id
-WHERE l.status IN ('new', 'contacted')
 ORDER BY l.created_at DESC;
 
 -- ============================================================================

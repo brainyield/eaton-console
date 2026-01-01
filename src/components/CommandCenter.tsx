@@ -41,7 +41,7 @@ interface DashboardStats {
   // Leads by type
   leadsExitIntent: number
   leadsWaitlist: number
-  leadsCalendly: number
+  leadsCalendlyCall: number
   leadsEvent: number
   totalLeads: number
   // Upcoming Calendly
@@ -321,7 +321,7 @@ function useDashboardStats() {
       // Count leads by type
       const leadsExitIntent = leads.filter(l => l.lead_type === 'exit_intent').length
       const leadsWaitlist = leads.filter(l => l.lead_type === 'waitlist').length
-      const leadsCalendly = leads.filter(l => l.lead_type === 'calendly_call').length
+      const leadsCalendlyCall = leads.filter(l => l.lead_type === 'calendly_call').length
       const leadsEvent = leads.filter(l => l.lead_type === 'event').length
       const totalLeads = leads.length
 
@@ -357,7 +357,7 @@ function useDashboardStats() {
         familiesNeedingReengagement: reengagementResult.count || 0,
         leadsExitIntent,
         leadsWaitlist,
-        leadsCalendly,
+        leadsCalendlyCall,
         leadsEvent,
         totalLeads,
         upcomingCalls,
@@ -636,15 +636,15 @@ export default function CommandCenter() {
             </div>
             <div className="flex items-center justify-between p-2 rounded bg-background">
               <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-yellow-400" />
-                <span className="text-sm">Calendly Calls</span>
+                <Phone className="w-4 h-4 text-blue-400" />
+                <span className="text-sm">Calendly</span>
               </div>
-              <span className="font-medium">{stats?.leadsCalendly ?? 0}</span>
+              <span className="font-medium">{stats?.leadsCalendlyCall ?? 0}</span>
             </div>
             <div className="flex items-center justify-between p-2 rounded bg-background">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-orange-400" />
-                <span className="text-sm">Event Attendees</span>
+                <span className="text-sm">Event</span>
               </div>
               <span className="font-medium">{stats?.leadsEvent ?? 0}</span>
             </div>

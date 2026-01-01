@@ -147,4 +147,13 @@ export const queryKeys = {
         ? ['payroll', 'adjustments', 'pending', teacherId] as const
         : ['payroll', 'adjustments', 'pending'] as const,
   },
+
+  // Leads
+  leads: {
+    all: ['leads'] as const,
+    list: (filters?: { type?: string; status?: string; search?: string }) =>
+      ['leads', 'list', filters] as const,
+    detail: (id: string) => ['leads', 'detail', id] as const,
+    pipeline: () => ['leads', 'pipeline'] as const,
+  },
 }

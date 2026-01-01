@@ -3573,3 +3573,205 @@ async function recalculateRunTotals(runId: string) {
     })
     .eq('id', runId)
 }
+
+// =============================================================================
+// LEADS
+// =============================================================================
+
+export type LeadType = 'exit_intent' | 'waitlist' | 'calendly_call' | 'event'
+export type LeadStatus = 'new' | 'contacted' | 'converted' | 'closed'
+
+export interface Lead {
+  id: string
+  email: string
+  name: string | null
+  phone: string | null
+  lead_type: LeadType
+  status: LeadStatus
+  source_url: string | null
+  family_id: string | null
+  converted_at: string | null
+  num_children: number | null
+  service_interest: string | null
+  notes: string | null
+  mailchimp_id: string | null
+  mailchimp_status: string | null
+  mailchimp_last_synced_at: string | null
+  mailchimp_tags: string[] | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadWithFamily extends Lead {
+  family?: {
+    id: string
+    display_name: string
+  } | null
+  days_in_pipeline?: number
+}
+
+/**
+ * Fetch leads with optional filters
+ */
+export function useLeads(filters?: { type?: string; status?: string; search?: string }) {
+  return useQuery({
+    queryKey: queryKeys.leads.list(filters),
+    queryFn: async () => {
+      let query = supabase
+        .from('leads')
+        .select(`
+          *,
+          family:families(id, display_name)
+        `)
+        .order('created_at', { ascending: false })
+
+      if (filters?.type) {
+        query = query.eq('lead_type', filters.type as LeadType)
+      }
+      if (filters?.status) {
+        query = query.eq('status', filters.status as LeadStatus)
+      }
+      if (filters?.search) {
+        query = query.or(`email.ilike.%${filters.search}%,name.ilike.%${filters.search}%`)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      return data as LeadWithFamily[]
+    },
+  })
+}
+
+/**
+ * Fetch a single lead by ID
+ */
+export function useLead(id: string) {
+  return useQuery({
+    queryKey: queryKeys.leads.detail(id),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select(`
+          *,
+          family:families(id, display_name, primary_email, primary_phone, status)
+        `)
+        .eq('id', id)
+        .single()
+      if (error) throw error
+      return data as LeadWithFamily
+    },
+    enabled: !!id,
+  })
+}
+
+/**
+ * Lead mutations for CRUD operations
+ */
+export function useLeadMutations() {
+  const queryClient = useQueryClient()
+
+  const createLead = useMutation({
+    mutationFn: async (lead: Omit<Lead, 'id' | 'created_at' | 'updated_at'>) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(lead)
+        .select()
+        .single()
+      if (error) throw error
+      return data as Lead
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    },
+  })
+
+  const updateLead = useMutation({
+    mutationFn: async ({ id, ...updates }: Partial<Lead> & { id: string }) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return data as Lead
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(variables.id) })
+    },
+  })
+
+  const deleteLead = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    },
+  })
+
+  const bulkCreateLeads = useMutation({
+    mutationFn: async (leads: Omit<Lead, 'id' | 'created_at' | 'updated_at'>[]) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .insert(leads)
+        .select()
+      if (error) throw error
+      return data as Lead[]
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    },
+  })
+
+  const convertToFamily = useMutation({
+    mutationFn: async ({ leadId, familyId }: { leadId: string; familyId: string }) => {
+      const { data, error } = await supabase
+        .from('leads')
+        .update({
+          family_id: familyId,
+          status: 'converted' as LeadStatus,
+          converted_at: new Date().toISOString(),
+        })
+        .eq('id', leadId)
+        .select()
+        .single()
+      if (error) throw error
+      return data as Lead
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(variables.leadId) })
+    },
+  })
+
+  return {
+    createLead,
+    updateLead,
+    deleteLead,
+    bulkCreateLeads,
+    convertToFamily,
+  }
+}
+
+/**
+ * Check for existing customers by email (for deduplication during import)
+ */
+export function useCheckDuplicateEmails() {
+  return useMutation({
+    mutationFn: async (emails: string[]) => {
+      const lowerEmails = emails.map(e => e.toLowerCase())
+      const { data, error } = await supabase
+        .from('families')
+        .select('primary_email')
+        .in('primary_email', lowerEmails)
+      if (error) throw error
+      return new Set((data || []).map(f => f.primary_email?.toLowerCase()))
+    },
+  })
+}

@@ -10,6 +10,7 @@ import Payroll from './components/Payroll'
 import PublicInvoicePage from './components/PublicInvoicePage'
 import ActiveRoster from './components/ActiveRoster'
 import Events from './components/Events'
+import Marketing from './components/Marketing'
 import Reports from './components/Reports'
 import Settings from './components/Settings'
 
@@ -64,6 +65,11 @@ function AppContent() {
         <Route path="/events" element={
           <Layout currentPath="/events" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Events />
+          </Layout>
+        } />
+        <Route path="/marketing" element={
+          <Layout currentPath="/marketing" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
+            <Marketing />
           </Layout>
         } />
         <Route path="/invoicing" element={

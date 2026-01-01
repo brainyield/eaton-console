@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.1"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       _backup_enrollments_consulting: {
@@ -1390,7 +1415,11 @@ export type Database = {
           email: string
           family_id: string | null
           id: string
-          lead_type: Database["public"]["Enums"]["lead_type"]
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_id: string | null
+          mailchimp_last_synced_at: string | null
+          mailchimp_status: string | null
+          mailchimp_tags: string[] | null
           name: string | null
           notes: string | null
           num_children: number | null
@@ -1412,7 +1441,11 @@ export type Database = {
           email: string
           family_id?: string | null
           id?: string
-          lead_type: Database["public"]["Enums"]["lead_type"]
+          lead_type?: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_id?: string | null
+          mailchimp_last_synced_at?: string | null
+          mailchimp_status?: string | null
+          mailchimp_tags?: string[] | null
           name?: string | null
           notes?: string | null
           num_children?: number | null
@@ -1434,7 +1467,11 @@ export type Database = {
           email?: string
           family_id?: string | null
           id?: string
-          lead_type?: Database["public"]["Enums"]["lead_type"]
+          lead_type?: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_id?: string | null
+          mailchimp_last_synced_at?: string | null
+          mailchimp_status?: string | null
+          mailchimp_tags?: string[] | null
           name?: string | null
           notes?: string | null
           num_children?: number | null
@@ -2678,12 +2715,16 @@ export type Database = {
           family_name: string | null
           id: string | null
           lead_type: Database["public"]["Enums"]["lead_type"] | null
+          mailchimp_id: string | null
+          mailchimp_status: string | null
+          mailchimp_tags: string[] | null
           name: string | null
           notes: string | null
           num_children: number | null
           phone: string | null
           scheduled_at: string | null
           service_interest: string | null
+          source_url: string | null
           status: Database["public"]["Enums"]["lead_status"] | null
         }
         Relationships: [
@@ -2958,7 +2999,12 @@ export type Database = {
       enrollment_status: "trial" | "active" | "paused" | "ended"
       invoice_status: "draft" | "sent" | "paid" | "partial" | "overdue" | "void"
       lead_status: "new" | "contacted" | "converted" | "closed"
-      lead_type: "exit_intent" | "waitlist" | "calendly_call" | "event"
+      lead_type:
+        | "exit_intent"
+        | "calendly"
+        | "event"
+        | "waitlist"
+        | "calendly_call"
       workflow_status: "queued" | "running" | "success" | "error"
     }
     CompositeTypes: {
@@ -3085,6 +3131,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {
       billing_frequency: [
@@ -3109,7 +3158,13 @@ export const Constants = {
       enrollment_status: ["trial", "active", "paused", "ended"],
       invoice_status: ["draft", "sent", "paid", "partial", "overdue", "void"],
       lead_status: ["new", "contacted", "converted", "closed"],
-      lead_type: ["exit_intent", "waitlist", "calendly_call", "event"],
+      lead_type: [
+        "exit_intent",
+        "calendly",
+        "event",
+        "waitlist",
+        "calendly_call",
+      ],
       workflow_status: ["queued", "running", "success", "error"],
     },
   },
