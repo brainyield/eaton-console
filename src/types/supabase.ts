@@ -1450,6 +1450,77 @@ export type Database = {
           },
         ]
       }
+      lead_follow_ups: {
+        Row: {
+          completed: boolean | null
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string
+          due_time: string | null
+          id: string
+          lead_id: string
+          priority: Database["public"]["Enums"]["task_priority"] | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          completed?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date: string
+          due_time?: string | null
+          id?: string
+          lead_id: string
+          priority?: Database["public"]["Enums"]["task_priority"] | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          completed?: boolean | null
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          due_date?: string
+          due_time?: string | null
+          id?: string
+          lead_id?: string
+          priority?: Database["public"]["Enums"]["task_priority"] | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       leads: {
         Row: {
           calendly_event_uri: string | null
@@ -3155,6 +3226,57 @@ export type Database = {
           },
         ]
       }
+      upcoming_follow_ups: {
+        Row: {
+          completed: boolean | null
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          due_date: string | null
+          due_time: string | null
+          id: string | null
+          lead_email: string | null
+          lead_id: string | null
+          lead_name: string | null
+          lead_phone: string | null
+          lead_status: Database["public"]["Enums"]["lead_status"] | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          priority: Database["public"]["Enums"]["task_priority"] | null
+          title: string | null
+          updated_at: string | null
+          urgency: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       calculate_lead_score: {
@@ -3201,6 +3323,7 @@ export type Database = {
         | "event"
         | "waitlist"
         | "calendly_call"
+      task_priority: "low" | "medium" | "high"
       workflow_status: "queued" | "running" | "success" | "error"
     }
     CompositeTypes: {
@@ -3359,6 +3482,7 @@ export const Constants = {
         "waitlist",
         "calendly_call",
       ],
+      task_priority: ["low", "medium", "high"],
       workflow_status: ["queued", "running", "success", "error"],
     },
   },
