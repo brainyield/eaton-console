@@ -1,32 +1,57 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
 import { useFamilyMutations } from '../lib/hooks'
 import type { CustomerStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
 
+interface InitialFamilyData {
+  display_name?: string
+  primary_email?: string
+  primary_phone?: string
+  primary_contact_name?: string
+  status?: CustomerStatus
+  notes?: string
+}
+
 interface AddFamilyModalProps {
   isOpen: boolean
   onClose: () => void
-  onSuccess?: () => void
+  onSuccess?: (familyId: string) => void
+  initialData?: InitialFamilyData
 }
 
-export function AddFamilyModal({ isOpen, onClose, onSuccess }: AddFamilyModalProps) {
+export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddFamilyModalProps) {
   const [formData, setFormData] = useState({
-    display_name: '',
-    primary_email: '',
-    primary_phone: '',
-    primary_contact_name: '',
-    status: 'lead' as CustomerStatus,
+    display_name: initialData?.display_name || '',
+    primary_email: initialData?.primary_email || '',
+    primary_phone: initialData?.primary_phone || '',
+    primary_contact_name: initialData?.primary_contact_name || '',
+    status: initialData?.status || 'lead' as CustomerStatus,
     payment_gateway: '',
     address_line1: '',
     city: '',
     state: 'FL',
     zip: '',
-    notes: '',
+    notes: initialData?.notes || '',
   })
   const [error, setError] = useState<string | null>(null)
 
   const { createFamily } = useFamilyMutations()
+
+  // Update form when initialData changes (e.g., opening modal with lead data)
+  useEffect(() => {
+    if (initialData) {
+      setFormData(prev => ({
+        ...prev,
+        display_name: initialData.display_name || '',
+        primary_email: initialData.primary_email || '',
+        primary_phone: initialData.primary_phone || '',
+        primary_contact_name: initialData.primary_contact_name || '',
+        status: initialData.status || 'lead',
+        notes: initialData.notes || '',
+      }))
+    }
+  }, [initialData])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -52,7 +77,7 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess }: AddFamilyModalPro
         notes: formData.notes.trim() || null,
       },
       {
-        onSuccess: () => {
+        onSuccess: (createdFamily) => {
           // Reset form
           setFormData({
             display_name: '',
@@ -67,7 +92,7 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess }: AddFamilyModalPro
             zip: '',
             notes: '',
           })
-          onSuccess?.()
+          onSuccess?.(createdFamily.id)
           onClose()
         },
         onError: (err: Error & { code?: string }) => {

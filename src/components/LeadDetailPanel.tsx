@@ -16,6 +16,7 @@ import {
 import { useLeadMutations, type LeadWithFamily, type LeadStatus } from '../lib/hooks'
 import { syncLeadToMailchimp } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
+import { AddFamilyModal } from './AddFamilyModal'
 
 interface LeadDetailPanelProps {
   lead: LeadWithFamily
@@ -39,10 +40,11 @@ const statusColors: Record<LeadStatus, string> = {
 
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
   const queryClient = useQueryClient()
-  const { updateLead, deleteLead } = useLeadMutations()
+  const { updateLead, deleteLead, convertToFamily } = useLeadMutations()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
+  const [showConvertModal, setShowConvertModal] = useState(false)
 
   const handleStatusChange = async (newStatus: LeadStatus) => {
     await updateLead.mutateAsync({ id: lead.id, status: newStatus })
@@ -77,6 +79,17 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       setSyncError(err instanceof Error ? err.message : 'Failed to sync')
     } finally {
       setIsSyncing(false)
+    }
+  }
+
+  const handleConvertToFamily = async (familyId: string) => {
+    try {
+      await convertToFamily.mutateAsync({ leadId: lead.id, familyId })
+      setShowConvertModal(false)
+      // Refresh lead data
+      await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    } catch (err) {
+      console.error('Failed to convert lead:', err)
     }
   }
 
@@ -312,10 +325,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       {lead.status !== 'converted' && (
         <div className="p-4 border-t border-zinc-800">
           <button
-            onClick={() => {
-              // TODO: Open convert to family modal
-              alert('Convert to family feature coming soon')
-            }}
+            onClick={() => setShowConvertModal(true)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
           >
             <UserPlus className="w-4 h-4" />
@@ -323,6 +333,20 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
           </button>
         </div>
       )}
+
+      {/* Convert to Family Modal */}
+      <AddFamilyModal
+        isOpen={showConvertModal}
+        onClose={() => setShowConvertModal(false)}
+        onSuccess={handleConvertToFamily}
+        initialData={{
+          display_name: lead.name || '',
+          primary_email: lead.email,
+          primary_phone: lead.phone || '',
+          status: 'active',
+          notes: lead.notes || '',
+        }}
+      />
     </div>
   )
 }
