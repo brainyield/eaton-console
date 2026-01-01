@@ -65,6 +65,7 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
   const [parsedLeads, setParsedLeads] = useState<ParsedLead[]>([])
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isParsing, setIsParsing] = useState(false)
 
   const { bulkCreateLeads } = useLeadMutations()
   const checkDuplicates = useCheckDuplicateEmails()
@@ -93,6 +94,8 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
   }
 
   const handleParse = async () => {
+    if (isParsing) return
+    setIsParsing(true)
     setError(null)
     try {
       const rows = parseCSV(csvText)
@@ -266,6 +269,8 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
       setStep('preview')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to parse CSV')
+    } finally {
+      setIsParsing(false)
     }
   }
 
@@ -274,6 +279,7 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
   }, [parsedLeads])
 
   const handleImport = async () => {
+    if (step === 'importing') return // Prevent double submission
     setStep('importing')
     setError(null)
 
@@ -482,10 +488,10 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
               </button>
               <button
                 onClick={handleParse}
-                disabled={!csvText.trim()}
+                disabled={!csvText.trim() || isParsing}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Parse & Preview
+                {isParsing ? 'Parsing...' : 'Parse & Preview'}
               </button>
             </>
           )}

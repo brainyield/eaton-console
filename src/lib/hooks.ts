@@ -2501,21 +2501,37 @@ export function useInvoiceMutations() {
     },
   })
 
-  // Send reminders for multiple invoices at once
+  // Send reminders for multiple invoices at once (throttled to avoid overwhelming webhook)
   const bulkSendReminders = useMutation({
     mutationFn: async ({ invoices }: { invoices: InvoiceWithFamily[] }) => {
-      const results = await Promise.allSettled(
-        invoices.map(async (invoice) => {
-          // Determine reminder type based on days overdue
-          const { type: reminderType } = getReminderType(invoice.due_date || '')
-          
-          // Use the single sendReminder logic
-          return sendReminder.mutateAsync({ invoice, reminderType })
-        })
-      )
+      const BATCH_SIZE = 5
+      const BATCH_DELAY_MS = 500
+      const allResults: PromiseSettledResult<unknown>[] = []
 
-      const succeeded = results.filter((r) => r.status === 'fulfilled').length
-      const failed = results.filter((r) => r.status === 'rejected').length
+      // Process in batches to avoid overwhelming the webhook
+      for (let i = 0; i < invoices.length; i += BATCH_SIZE) {
+        const batch = invoices.slice(i, i + BATCH_SIZE)
+
+        const batchResults = await Promise.allSettled(
+          batch.map(async (invoice) => {
+            // Determine reminder type based on days overdue
+            const { type: reminderType } = getReminderType(invoice.due_date || '')
+
+            // Use the single sendReminder logic
+            return sendReminder.mutateAsync({ invoice, reminderType })
+          })
+        )
+
+        allResults.push(...batchResults)
+
+        // Add delay between batches (except for last batch)
+        if (i + BATCH_SIZE < invoices.length) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS))
+        }
+      }
+
+      const succeeded = allResults.filter((r) => r.status === 'fulfilled').length
+      const failed = allResults.filter((r) => r.status === 'rejected').length
 
       return { succeeded, failed, total: invoices.length }
     },
