@@ -254,24 +254,24 @@ export function EnrollmentDetailPanel({
             </div>
           </div>
 
-          {/* Contact Quick Links */}
-          <div className="flex items-center gap-3 text-sm">
+          {/* Contact Info */}
+          <div className="flex flex-col gap-2 text-sm">
             {enrollment.family.primary_email && (
-              <a 
+              <a
                 href={`mailto:${enrollment.family.primary_email}`}
-                className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
               >
-                <Mail className="w-4 h-4" />
-                <span>Email</span>
+                <Mail className="w-4 h-4 flex-shrink-0" />
+                <span>{enrollment.family.primary_email}</span>
               </a>
             )}
             {enrollment.family.primary_phone && (
-              <a 
+              <a
                 href={`tel:${enrollment.family.primary_phone}`}
-                className="flex items-center gap-1 text-gray-400 hover:text-white transition-colors"
+                className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
               >
-                <Phone className="w-4 h-4" />
-                <span>Call</span>
+                <Phone className="w-4 h-4 flex-shrink-0" />
+                <span>{enrollment.family.primary_phone}</span>
               </a>
             )}
           </div>

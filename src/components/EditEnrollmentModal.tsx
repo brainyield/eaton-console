@@ -1,12 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Save, AlertCircle } from 'lucide-react';
+import { X, Loader2, Save, AlertCircle, User } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useEnrollmentMutations,
+  useActiveTeachers,
+  useTeacherAssignmentsByEnrollment,
+  useTeacherAssignmentMutations,
   type Enrollment,
   type EnrollmentStatus,
   type BillingFrequency,
-  type Service
+  type Service,
+  type Teacher
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
 import { getPeriodOptions, getDefaultPeriod, type ServiceCode } from '../lib/enrollmentPeriod';
@@ -36,6 +40,8 @@ interface FormData {
   class_title: string;
   schedule_notes: string;
   notes: string;
+  teacher_id: string;
+  teacher_hourly_rate: string;
 }
 
 const STATUS_OPTIONS: { value: EnrollmentStatus; label: string }[] = [
@@ -75,8 +81,20 @@ export function EditEnrollmentModal({
     class_title: '',
     schedule_notes: '',
     notes: '',
+    teacher_id: '',
+    teacher_hourly_rate: '',
   });
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch active teachers for the dropdown
+  const { data: teachers = [] } = useActiveTeachers();
+
+  // Fetch current teacher assignment for this enrollment
+  const { data: currentAssignments = [] } = useTeacherAssignmentsByEnrollment(enrollment?.id || '');
+  const currentActiveAssignment = currentAssignments.find(a => a.is_active);
+
+  // Teacher assignment mutations
+  const { createAssignment, updateAssignment } = useTeacherAssignmentMutations();
 
   // Get service code for period options
   const serviceCode = enrollment?.service?.code as ServiceCode | undefined;
@@ -89,7 +107,7 @@ export function EditEnrollmentModal({
 
   // Mutations
   const { updateEnrollment } = useEnrollmentMutations();
-  const isSubmitting = updateEnrollment.isPending;
+  const isSubmitting = updateEnrollment.isPending || createAssignment.isPending || updateAssignment.isPending;
 
   // Populate form when enrollment changes
   useEffect(() => {
@@ -114,9 +132,11 @@ export function EditEnrollmentModal({
         class_title: enrollment.class_title || '',
         schedule_notes: enrollment.schedule_notes || '',
         notes: enrollment.notes || '',
+        teacher_id: currentActiveAssignment?.teacher_id || '',
+        teacher_hourly_rate: currentActiveAssignment?.hourly_rate_teacher?.toString() || '',
       });
     }
-  }, [enrollment, serviceCode]);
+  }, [enrollment, serviceCode, currentActiveAssignment]);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
@@ -126,7 +146,7 @@ export function EditEnrollmentModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     if (!enrollment) return;
 
     setError(null);
@@ -150,25 +170,111 @@ export function EditEnrollmentModal({
     updateData.schedule_notes = formData.schedule_notes.trim() || null;
     updateData.notes = formData.notes.trim() || null;
 
-    updateEnrollment.mutate(
-      { id: enrollment.id, data: updateData },
-      {
-        onSuccess: () => {
-          // Invalidate related queries
-          queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all });
-          queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(enrollment.family_id) });
-          queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.detail(enrollment.id) });
-          queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() });
-          
-          onSuccess?.();
-          handleClose();
-        },
-        onError: (err) => {
-          console.error('Error updating enrollment:', err);
-          setError(err instanceof Error ? err.message : 'Failed to update enrollment. Please try again.');
+    // Handle teacher assignment changes
+    const teacherChanged = formData.teacher_id !== (currentActiveAssignment?.teacher_id || '');
+    const teacherHourlyRate = formData.teacher_hourly_rate ? parseFloat(formData.teacher_hourly_rate) : null;
+
+    try {
+      // Update enrollment first
+      await new Promise<void>((resolve, reject) => {
+        updateEnrollment.mutate(
+          { id: enrollment.id, data: updateData },
+          {
+            onSuccess: () => resolve(),
+            onError: (err) => reject(err)
+          }
+        );
+      });
+
+      // Handle teacher assignment if changed
+      if (teacherChanged) {
+        if (formData.teacher_id) {
+          // End current assignment if exists
+          if (currentActiveAssignment) {
+            await new Promise<void>((resolve, reject) => {
+              updateAssignment.mutate(
+                {
+                  id: currentActiveAssignment.id,
+                  data: {
+                    is_active: false,
+                    end_date: new Date().toISOString().split('T')[0]
+                  }
+                },
+                {
+                  onSuccess: () => resolve(),
+                  onError: (err) => reject(err)
+                }
+              );
+            });
+          }
+
+          // Create new assignment
+          await new Promise<void>((resolve, reject) => {
+            createAssignment.mutate(
+              {
+                enrollment_id: enrollment.id,
+                teacher_id: formData.teacher_id,
+                hourly_rate_teacher: teacherHourlyRate,
+                hours_per_week: formData.hours_per_week ? parseFloat(formData.hours_per_week) : null,
+                is_active: true,
+                start_date: new Date().toISOString().split('T')[0],
+              },
+              {
+                onSuccess: () => resolve(),
+                onError: (err) => reject(err)
+              }
+            );
+          });
+        } else if (currentActiveAssignment) {
+          // Just end the current assignment (removing teacher)
+          await new Promise<void>((resolve, reject) => {
+            updateAssignment.mutate(
+              {
+                id: currentActiveAssignment.id,
+                data: {
+                  is_active: false,
+                  end_date: new Date().toISOString().split('T')[0]
+                }
+              },
+              {
+                onSuccess: () => resolve(),
+                onError: (err) => reject(err)
+              }
+            );
+          });
+        }
+      } else if (currentActiveAssignment && formData.teacher_id) {
+        // Teacher didn't change, but hourly rate might have
+        const rateChanged = teacherHourlyRate !== currentActiveAssignment.hourly_rate_teacher;
+        if (rateChanged) {
+          await new Promise<void>((resolve, reject) => {
+            updateAssignment.mutate(
+              {
+                id: currentActiveAssignment.id,
+                data: { hourly_rate_teacher: teacherHourlyRate }
+              },
+              {
+                onSuccess: () => resolve(),
+                onError: (err) => reject(err)
+              }
+            );
+          });
         }
       }
-    );
+
+      // Invalidate related queries
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(enrollment.family_id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.detail(enrollment.id) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.byEnrollment(enrollment.id) });
+
+      onSuccess?.();
+      handleClose();
+    } catch (err) {
+      console.error('Error updating enrollment:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update enrollment. Please try again.');
+    }
   }
 
   function handleClose() {
@@ -375,12 +481,65 @@ export function EditEnrollmentModal({
               </div>
             </div>
 
+            {/* Teacher Assignment */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+                Teacher Assignment
+              </h3>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-300 mb-2">
+                  Assigned Teacher
+                </label>
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                  <select
+                    name="teacher_id"
+                    value={formData.teacher_id}
+                    onChange={handleChange}
+                    className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="">No teacher assigned</option>
+                    {(teachers as Teacher[]).map(teacher => (
+                      <option key={teacher.id} value={teacher.id}>
+                        {teacher.display_name}
+                        {teacher.default_hourly_rate && ` ($${teacher.default_hourly_rate}/hr)`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {formData.teacher_id && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">
+                    Teacher Hourly Rate ($)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    name="teacher_hourly_rate"
+                    value={formData.teacher_hourly_rate}
+                    onChange={handleChange}
+                    placeholder={
+                      (teachers as Teacher[]).find(t => t.id === formData.teacher_id)?.default_hourly_rate?.toString() || '25.00'
+                    }
+                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <p className="mt-1 text-xs text-gray-500">
+                    Leave blank to use teacher's default rate
+                  </p>
+                </div>
+              )}
+            </div>
+
             {/* Additional Info */}
             <div className="space-y-4">
               <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
                 Additional Info
               </h3>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-300 mb-2">
                   Class Title

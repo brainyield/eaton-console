@@ -727,10 +727,10 @@ export function AddEnrollmentModal({
             )}
 
             {/* Teacher Assignment Section */}
-            {selectedService?.requires_teacher && (
+            {selectedService && (
               <div className="space-y-4">
                 <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
-                  Teacher Assignment (Optional)
+                  Teacher Assignment
                 </h3>
                 
                 <div>
