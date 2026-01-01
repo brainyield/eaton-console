@@ -1,13 +1,9 @@
 import { useState, useMemo } from 'react'
 import {
   X,
-  Upload,
-  FileText,
   AlertCircle,
   CheckCircle,
-  Users,
-  RefreshCw,
-  ChevronDown
+  RefreshCw
 } from 'lucide-react'
 import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type Lead } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
@@ -67,7 +63,6 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
   const [source, setSource] = useState<ImportSource>('pdf_leads')
   const [csvText, setCsvText] = useState('')
   const [parsedLeads, setParsedLeads] = useState<ParsedLead[]>([])
-  const [existingEmails, setExistingEmails] = useState<Set<string>>(new Set())
   const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -248,7 +243,6 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
       // Check against existing customers
       const emails = leads.map(l => l.email)
       const existingSet = await checkDuplicates.mutateAsync(emails)
-      setExistingEmails(existingSet)
 
       // Mark duplicates
       leads = leads.map(l => ({

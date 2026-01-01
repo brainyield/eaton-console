@@ -3,20 +3,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   Search,
   Upload,
-  Filter,
   Mail,
-  Phone,
-  Calendar,
-  ChevronDown,
-  ExternalLink,
   MoreHorizontal,
-  UserPlus,
   RefreshCw,
   X,
   Users,
   Clock,
   CheckCircle,
-  XCircle,
   Send
 } from 'lucide-react'
 import { useLeads, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'

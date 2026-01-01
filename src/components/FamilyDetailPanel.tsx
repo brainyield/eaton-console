@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, ExternalLink } from 'lucide-react'
-import { useEnrollmentsByFamily, useInvoicesByFamily } from '../lib/hooks'
-import type { Family, Student, CustomerStatus, EnrollmentStatus, InvoiceStatus } from '../types/database'
+import { useEnrollmentsByFamily, useInvoicesByFamily, type Family, type Student, type CustomerStatus, type EnrollmentStatus, type InvoiceStatus } from '../lib/hooks'
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
