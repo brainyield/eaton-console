@@ -1,4 +1,3 @@
-import { useState } from 'react'
 import {
   LayoutDashboard,
   Users,
@@ -13,6 +12,7 @@ import {
   Wallet,
   Train
 } from 'lucide-react'
+import { useRecentlyViewed } from '../lib/useRecentlyViewed'
 
 interface NavItem {
   name: string
@@ -35,14 +35,20 @@ const navigation: NavItem[] = [
 interface SidebarProps {
   currentPath: string
   onNavigate: (path: string) => void
+  onSelectFamily?: (id: string) => void
 }
 
-export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
-  const [recentFamilies] = useState([
-    { name: 'Paz, LaDonna', href: '/directory/1' },
-    { name: 'Smith, Johnson', href: '/directory/2' },
-    { name: 'Garcia, Maria', href: '/directory/3' },
-  ])
+export function Sidebar({ currentPath, onNavigate, onSelectFamily }: SidebarProps) {
+  const { items: recentItems } = useRecentlyViewed()
+
+  const handleRecentClick = (item: typeof recentItems[0]) => {
+    if (item.type === 'family' && onSelectFamily) {
+      onNavigate('/directory')
+      onSelectFamily(item.id)
+    } else {
+      onNavigate(item.href)
+    }
+  }
 
   const openCommandPalette = () => {
     // Dispatch the keyboard event that CommandPalette listens for
@@ -106,16 +112,20 @@ export function Sidebar({ currentPath, onNavigate }: SidebarProps) {
           <ChevronDown className="h-3 w-3 text-zinc-500" />
         </div>
         <div className="space-y-1">
-          {recentFamilies.map((family) => (
-            <button
-              key={family.name}
-              onClick={() => onNavigate(family.href)}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-white"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-zinc-600" />
-              {family.name}
-            </button>
-          ))}
+          {recentItems.length === 0 ? (
+            <p className="px-3 py-1.5 text-xs text-zinc-600">No recent items</p>
+          ) : (
+            recentItems.map((item) => (
+              <button
+                key={`${item.type}-${item.id}`}
+                onClick={() => handleRecentClick(item)}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                {item.name}
+              </button>
+            ))
+          )}
         </div>
       </div>
     </div>

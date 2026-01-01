@@ -2,10 +2,11 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
+import { addRecentlyViewed } from '../lib/useRecentlyViewed'
 import type { CustomerStatus } from '../lib/hooks'
-import { 
-  Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, 
-  Download, Trash2, RefreshCw, X 
+import {
+  Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
+  Download, Trash2, RefreshCw, X
 } from 'lucide-react'
 import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
@@ -495,6 +496,16 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const handleSelectFamily = (family: FamilyWithStudents | null) => {
     setSelectedFamily(family)
     onSelectFamily?.(family?.id || null)
+
+    // Track recently viewed families
+    if (family) {
+      addRecentlyViewed({
+        id: family.id,
+        name: family.display_name,
+        type: 'family',
+        href: `/directory?family=${family.id}`
+      })
+    }
   }
 
   const handleClosePanel = () => {

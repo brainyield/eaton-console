@@ -44,40 +44,40 @@ function AppContent() {
       <Routes>
         {/* Admin routes - wrapped in Layout */}
         <Route path="/" element={
-          <Layout currentPath="/" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <CommandCenter />
           </Layout>
         } />
         <Route path="/directory" element={
-          <Layout currentPath="/directory" onNavigate={(path) => navigate(path)}>
-            <Directory 
+          <Layout currentPath="/directory" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
+            <Directory
               selectedFamilyId={selectedFamilyId}
               onSelectFamily={setSelectedFamilyId}
             />
           </Layout>
         } />
         <Route path="/roster" element={
-          <Layout currentPath="/roster" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/roster" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <ActiveRoster />
           </Layout>
         } />
         <Route path="/events" element={
-          <Layout currentPath="/events" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/events" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Events />
           </Layout>
         } />
         <Route path="/invoicing" element={
-          <Layout currentPath="/invoicing" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/invoicing" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Invoicing />
           </Layout>
         } />
         <Route path="/payroll" element={
-          <Layout currentPath="/payroll" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/payroll" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Payroll />
           </Layout>
         } />
         <Route path="/teachers" element={
-          <Layout currentPath="/teachers" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/teachers" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Teachers
               selectedTeacherId={selectedTeacherId}
               onSelectTeacher={setSelectedTeacherId}
@@ -85,12 +85,12 @@ function AppContent() {
           </Layout>
         } />
         <Route path="/reports" element={
-          <Layout currentPath="/reports" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/reports" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Reports />
           </Layout>
         } />
         <Route path="/settings" element={
-          <Layout currentPath="/settings" onNavigate={(path) => navigate(path)}>
+          <Layout currentPath="/settings" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Settings />
           </Layout>
         } />
@@ -100,8 +100,8 @@ function AppContent() {
 
         {/* Catch-all redirect to directory */}
         <Route path="*" element={
-          <Layout currentPath="/directory" onNavigate={(path) => navigate(path)}>
-            <Directory 
+          <Layout currentPath="/directory" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
+            <Directory
               selectedFamilyId={selectedFamilyId}
               onSelectFamily={setSelectedFamilyId}
             />
