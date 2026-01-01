@@ -6,6 +6,7 @@ import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
 import { EmailHistory } from './email'
 import { calculateAge } from '../lib/utils'
+import { parseLocalDate } from '../lib/dateUtils'
 
 interface FamilyWithStudents extends Family {
   students: Student[]
@@ -413,10 +414,10 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                     </div>
                     <div className="flex items-center justify-between">
                       <div className="text-xs text-zinc-400">
-                        {invoice.invoice_date && new Date(invoice.invoice_date).toLocaleDateString()}
+                        {invoice.invoice_date && parseLocalDate(invoice.invoice_date).toLocaleDateString()}
                         {invoice.period_start && invoice.period_end && (
                           <span className="ml-2">
-                            ({new Date(invoice.period_start).toLocaleDateString()} - {new Date(invoice.period_end).toLocaleDateString()})
+                            ({parseLocalDate(invoice.period_start).toLocaleDateString()} - {parseLocalDate(invoice.period_end).toLocaleDateString()})
                           </span>
                         )}
                       </div>

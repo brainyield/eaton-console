@@ -1,18 +1,11 @@
 import { useState, useMemo } from 'react'
 import { X, Calendar, Users, AlertCircle } from 'lucide-react'
 import { usePayrollMutations, usePendingPayrollAdjustments } from '../lib/hooks'
+import { formatDateLocal } from '../lib/dateUtils'
 
 interface Props {
   onClose: () => void
   onSuccess: () => void
-}
-
-// Helper to format a date as YYYY-MM-DD in local time (avoids timezone shift from toISOString)
-function formatDateLocal(date: Date): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
 }
 
 // Helper to get ISO week number (1-53)
@@ -69,7 +62,7 @@ export default function CreatePayrollRunModal({ onClose, onSuccess }: Props) {
     // Add time component to ensure consistent UTC parsing
     const start = new Date(periodStart + 'T00:00:00Z')
     const end = new Date(periodEnd + 'T00:00:00Z')
-    return Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    return Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1
   }, [periodStart, periodEnd])
 
   const handleSubmit = async (e: React.FormEvent) => {

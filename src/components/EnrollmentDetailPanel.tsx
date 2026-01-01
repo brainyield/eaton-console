@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useTeacherAssignmentsByEnrollment } from '../lib/hooks';
 import { EmailHistory } from './email';
+import { parseLocalDate } from '../lib/dateUtils';
 
 // Types
 type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended';
@@ -365,7 +366,7 @@ export function EnrollmentDetailPanel({
                           </span>
                           {assignment.start_date && assignment.end_date && (
                             <span className="text-xs text-gray-500 ml-auto">
-                              {new Date(assignment.start_date).toLocaleDateString()} - {new Date(assignment.end_date).toLocaleDateString()}
+                              {parseLocalDate(assignment.start_date).toLocaleDateString()} - {parseLocalDate(assignment.end_date).toLocaleDateString()}
                             </span>
                           )}
                         </div>
@@ -407,8 +408,8 @@ export function EnrollmentDetailPanel({
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Start Date</span>
                     <span className="text-white">
-                      {enrollment.start_date 
-                        ? new Date(enrollment.start_date).toLocaleDateString() 
+                      {enrollment.start_date
+                        ? parseLocalDate(enrollment.start_date).toLocaleDateString()
                         : 'Not set'}
                     </span>
                   </div>
@@ -416,7 +417,7 @@ export function EnrollmentDetailPanel({
                     <div className="flex items-center justify-between">
                       <span className="text-gray-400">End Date</span>
                       <span className="text-white">
-                        {new Date(enrollment.end_date).toLocaleDateString()}
+                        {parseLocalDate(enrollment.end_date).toLocaleDateString()}
                       </span>
                     </div>
                   )}

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
-import { formatDateLocal } from '../lib/dateUtils'
+import { formatDateLocal, parseLocalDate, dateAtMidnight, daysBetween } from '../lib/dateUtils'
 import {
   BarChart,
   Bar,
@@ -328,7 +328,7 @@ export default function Reports() {
 
       const invoices = (data || []) as BalanceRow[]
 
-      const today = new Date()
+      const today = dateAtMidnight(new Date())
       const buckets: Record<string, { amount: number; count: number }> = {
         'Current': { amount: 0, count: 0 },
         '1-30 Days': { amount: 0, count: 0 },
@@ -338,8 +338,8 @@ export default function Reports() {
       }
 
       invoices.forEach((inv) => {
-        const dueDate = new Date(inv.due_date)
-        const daysOverdue = Math.floor((today.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24))
+        const dueDate = parseLocalDate(inv.due_date)
+        const daysOverdue = daysBetween(dueDate, today)
         const amount = Number(inv.balance_due) || 0
 
         if (daysOverdue <= 0) {

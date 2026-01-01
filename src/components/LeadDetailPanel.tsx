@@ -21,6 +21,7 @@ import {
   Circle
 } from 'lucide-react'
 import { useLeadMutations, useLeadActivities, useLeadActivityMutations, useLeadFollowUps, useFollowUpMutations, getPriorityColor, type LeadWithFamily, type LeadStatus, type ContactType, type TaskPriority } from '../lib/hooks'
+import { parseLocalDate, daysBetween, dateAtMidnight } from '../lib/dateUtils'
 import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { AddFamilyModal } from './AddFamilyModal'
@@ -207,11 +208,9 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   }
 
   const getFollowUpUrgency = (dueDate: string): string => {
-    const due = new Date(dueDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    due.setHours(0, 0, 0, 0)
-    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    const due = parseLocalDate(dueDate)
+    const today = dateAtMidnight(new Date())
+    const diffDays = daysBetween(today, due)
 
     if (diffDays < 0) return 'text-red-400'
     if (diffDays === 0) return 'text-orange-400'
@@ -220,11 +219,9 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   }
 
   const formatFollowUpDate = (dueDate: string): string => {
-    const due = new Date(dueDate)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    due.setHours(0, 0, 0, 0)
-    const diffDays = Math.floor((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+    const due = parseLocalDate(dueDate)
+    const today = dateAtMidnight(new Date())
+    const diffDays = daysBetween(today, due)
 
     if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`
     if (diffDays === 0) return 'Today'
@@ -243,11 +240,10 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   }
 
   const getDaysInPipeline = (createdAt: string) => {
-    const created = new Date(createdAt)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - created.getTime())
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays
+    // createdAt is a full ISO timestamp, so we parse it and normalize to midnight
+    const created = dateAtMidnight(new Date(createdAt))
+    const today = dateAtMidnight(new Date())
+    return daysBetween(created, today)
   }
 
   return (

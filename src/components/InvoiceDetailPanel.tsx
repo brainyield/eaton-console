@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations } from '../lib/hooks'
+import { parseLocalDate } from '../lib/dateUtils'
 
 // ============================================================================
 // Types
@@ -139,7 +140,8 @@ export default function InvoiceDetailPanel({
 
   const formatDate = (date: string | null) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('en-US', {
+    // Use parseLocalDate for YYYY-MM-DD strings to avoid timezone issues
+    return parseLocalDate(date).toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -148,8 +150,9 @@ export default function InvoiceDetailPanel({
 
   const formatPeriod = (start: string | null, end: string | null) => {
     if (!start || !end) return '-'
-    const s = new Date(start)
-    const e = new Date(end)
+    // Use parseLocalDate for YYYY-MM-DD strings to avoid timezone issues
+    const s = parseLocalDate(start)
+    const e = parseLocalDate(end)
     return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
   }
 
@@ -468,7 +471,7 @@ export default function InvoiceDetailPanel({
                             {formatCurrency(payment.amount)}
                           </div>
                           <div className="text-xs text-zinc-500 mt-0.5">
-                            {new Date(payment.payment_date).toLocaleDateString('en-US', {
+                            {parseLocalDate(payment.payment_date).toLocaleDateString('en-US', {
                               month: 'short',
                               day: 'numeric',
                               year: 'numeric'

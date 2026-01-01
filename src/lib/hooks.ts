@@ -4065,7 +4065,8 @@ export function useConversionAnalytics() {
         .map(l => {
           const created = new Date(l.created_at)
           const converted = new Date(l.converted_at!)
-          return Math.floor((converted.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
+          // Use Math.round for consistent day calculations
+          return Math.round((converted.getTime() - created.getTime()) / (1000 * 60 * 60 * 24))
         })
       const avgDaysToConvert = daysToConvert.length > 0
         ? Math.round(daysToConvert.reduce((a, b) => a + b, 0) / daysToConvert.length)

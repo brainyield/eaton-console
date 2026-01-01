@@ -19,6 +19,7 @@ import {
   Circle
 } from 'lucide-react'
 import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { dateAtMidnight, daysBetween, parseLocalDate } from '../lib/dateUtils'
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
@@ -141,11 +142,10 @@ export default function Marketing() {
   }
 
   const getDaysInPipeline = (createdAt: string) => {
-    const created = new Date(createdAt)
-    const now = new Date()
-    const diffTime = Math.abs(now.getTime() - created.getTime())
-    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays
+    // createdAt is a full ISO timestamp, so we parse it and normalize to midnight
+    const created = dateAtMidnight(new Date(createdAt))
+    const today = dateAtMidnight(new Date())
+    return daysBetween(created, today)
   }
 
   // Selection handlers
@@ -385,7 +385,7 @@ export default function Marketing() {
                         <span>{followUp.lead_name || followUp.lead_email}</span>
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          {new Date(followUp.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          {parseLocalDate(followUp.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </span>
                       </div>
                     </div>

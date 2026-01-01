@@ -23,6 +23,7 @@ import {
   type TeacherAssignmentWithDetails,
 } from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
+import { parseLocalDate } from '../lib/dateUtils'
 import { RecordTeacherPaymentModal } from './RecordTeacherPaymentModal'
 import { EditAssignmentModal } from './EditAssignmentModal'
 import { AddAssignmentModal } from './AddAssignmentModal'
@@ -478,7 +479,7 @@ function ServiceAssignmentCard({
       )}
       {isInactive && assignment.end_date && (
         <p className="text-xs text-gray-500 mt-2">
-          Ended: {new Date(assignment.end_date).toLocaleDateString()}
+          Ended: {parseLocalDate(assignment.end_date).toLocaleDateString()}
         </p>
       )}
     </button>
@@ -536,7 +537,7 @@ function EnrollmentAssignmentCard({
       </div>
       {isInactive && assignment.end_date && (
         <p className="text-xs text-gray-500 mt-2">
-          Ended: {new Date(assignment.end_date).toLocaleDateString()}
+          Ended: {parseLocalDate(assignment.end_date).toLocaleDateString()}
         </p>
       )}
     </button>
