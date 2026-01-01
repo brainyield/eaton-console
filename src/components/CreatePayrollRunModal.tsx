@@ -173,7 +173,7 @@ export default function CreatePayrollRunModal({ onClose, onSuccess }: Props) {
                     <ul className="text-xs text-zinc-400 mt-2 space-y-1">
                       {pendingAdjustments.slice(0, 3).map(adj => (
                         <li key={adj.id}>
-                          {adj.teacher?.display_name}: {adj.amount >= 0 ? '+' : ''}{adj.amount.toFixed(2)}
+                          {adj.teacher?.display_name}: {(adj.amount ?? 0) >= 0 ? '+' : ''}{(adj.amount ?? 0).toFixed(2)}
                         </li>
                       ))}
                       {pendingAdjustments.length > 3 && (

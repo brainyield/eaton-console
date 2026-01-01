@@ -34,7 +34,7 @@ export function ConversionAnalytics() {
     )
   }
 
-  const maxBarValue = Math.max(...stats.monthlyTrend.map(m => m.leads), 1)
+  const maxBarValue = Math.max(...(stats.monthlyTrend || []).map(m => m.leads), 1)
 
   return (
     <div className="p-6 space-y-6 overflow-auto">
@@ -122,7 +122,7 @@ export function ConversionAnalytics() {
         {/* Conversion by Lead Type */}
         <div className="bg-zinc-800/50 rounded-lg p-4">
           <h3 className="text-sm font-medium text-zinc-400 mb-4">Conversion by Source</h3>
-          {stats.byLeadType.length === 0 ? (
+          {!stats.byLeadType || stats.byLeadType.length === 0 ? (
             <p className="text-zinc-500 text-sm">No data available</p>
           ) : (
             <div className="space-y-3">
@@ -155,7 +155,7 @@ export function ConversionAnalytics() {
         <div className="bg-zinc-800/50 rounded-lg p-4">
           <h3 className="text-sm font-medium text-zinc-400 mb-4">Monthly Trend (Last 6 Months)</h3>
           <div className="flex items-end gap-2 h-32">
-            {stats.monthlyTrend.map((month) => (
+            {(stats.monthlyTrend || []).map((month) => (
               <div key={month.month} className="flex-1 flex flex-col items-center gap-1">
                 <div className="w-full flex flex-col items-center gap-0.5" style={{ height: '100px' }}>
                   {/* Conversions bar */}
@@ -194,7 +194,7 @@ export function ConversionAnalytics() {
         {/* Top Sources */}
         <div className="bg-zinc-800/50 rounded-lg p-4">
           <h3 className="text-sm font-medium text-zinc-400 mb-4">Top Converting Sources</h3>
-          {stats.topSources.length === 0 ? (
+          {!stats.topSources || stats.topSources.length === 0 ? (
             <p className="text-zinc-500 text-sm">No conversions yet</p>
           ) : (
             <div className="space-y-2">

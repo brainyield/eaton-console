@@ -154,13 +154,16 @@ export function RecordTeacherPaymentModal({
           start: payPeriodStart,
           end: payPeriodEnd,
         },
-        line_items: lineItems.filter(li => li.amount > 0).map((li, idx) => ({
-          student: assignments[idx]?.student_name || 'Unknown',
-          service: assignments[idx]?.service_name || 'Unknown',
-          hours: li.hours,
-          rate: li.hourly_rate,
-          amount: li.amount,
-        })),
+        line_items: lineItems.filter(li => li.amount > 0).map((li) => {
+          const assignment = assignments.find(a => a.enrollment_id === li.enrollment_id)
+          return {
+            student: assignment?.student_name || 'Unknown',
+            service: assignment?.service_name || 'Unknown',
+            hours: li.hours,
+            rate: li.hourly_rate,
+            amount: li.amount,
+          }
+        }),
         payment_method: paymentMethod,
         timestamp: new Date().toISOString(),
       }

@@ -418,10 +418,10 @@ export default function ActiveRoster() {
     const rows = enrollments.map(enrollment => {
       const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
       const row: string[] = [
-        enrollment.student?.full_name || enrollment.family.display_name,
+        enrollment.student?.full_name || enrollment.family?.display_name || '',
         enrollment.student?.grade_level || '',
-        enrollment.family.display_name,
-        enrollment.family.primary_email || '',
+        enrollment.family?.display_name || '',
+        enrollment.family?.primary_email || '',
       ]
       if (columns.showAgeGroup) row.push(enrollment.student?.age_group || '')
       if (columns.showClass) row.push(enrollment.class_title || '')
@@ -875,7 +875,7 @@ export default function ActiveRoster() {
         isOpen={showTransferModal}
         currentAssignment={currentAssignment}
         enrollmentId={selectedEnrollment?.id || ''}
-        studentName={selectedEnrollment?.student?.full_name || selectedEnrollment?.family.display_name || ''}
+        studentName={selectedEnrollment?.student?.full_name || selectedEnrollment?.family?.display_name || ''}
         serviceName={selectedEnrollment?.service?.name || ''}
         onClose={() => {
           setShowTransferModal(false)

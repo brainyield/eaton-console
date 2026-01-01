@@ -350,7 +350,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                             {/* Show student name for all enrollments */}
                             {enrollment.student && (
                               <div className="text-xs text-zinc-500 mt-1">
-                                {enrollment.student.full_name}
+                                {enrollment.student?.full_name}
                               </div>
                             )}
                           </div>

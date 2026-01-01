@@ -185,7 +185,7 @@ function usePaginatedFamilies(
         if (statusFilter === 'lead' && familiesWithBalance.length > 0) {
           const emails = familiesWithBalance
             .filter(f => f.primary_email)
-            .map(f => f.primary_email!.toLowerCase())
+            .map(f => f.primary_email?.toLowerCase() ?? '')
 
           if (emails.length > 0) {
             const { data: leads } = await (supabase
@@ -307,7 +307,7 @@ function usePaginatedFamilies(
         if (statusFilter === 'lead' && familiesWithBalance.length > 0) {
           const emails = familiesWithBalance
             .filter(f => f.primary_email)
-            .map(f => f.primary_email!.toLowerCase())
+            .map(f => f.primary_email?.toLowerCase() ?? '')
 
           if (emails.length > 0) {
             const { data: leads } = await (supabase
@@ -395,7 +395,7 @@ function usePaginatedFamilies(
       if (statusFilter === 'lead' && familiesWithBalance.length > 0) {
         const emails = familiesWithBalance
           .filter(f => f.primary_email)
-          .map(f => f.primary_email!.toLowerCase())
+          .map(f => f.primary_email?.toLowerCase() ?? '')
 
         if (emails.length > 0) {
           const { data: leads } = await (supabase
@@ -661,7 +661,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
       f.status,
       f.primary_email || '',
       f.primary_phone || '',
-      f.students.map(s => s.full_name).join('; '),
+      (f.students || []).map(s => s.full_name).join('; '),
       f.total_balance.toFixed(2)
     ])
     

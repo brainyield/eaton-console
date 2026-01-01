@@ -228,7 +228,7 @@ export function EnrollmentDetailPanel({
             </div>
             <div>
               <h2 className="text-lg font-semibold text-white">
-                {enrollment.service.name}
+                {enrollment.service?.name || 'Unknown Service'}
               </h2>
               {enrollment.class_title && (
                 <p className="text-sm text-gray-400">{enrollment.class_title}</p>
@@ -244,9 +244,9 @@ export function EnrollmentDetailPanel({
             {enrollment.student && (
               <div className="flex items-center gap-1">
                 <GraduationCap className="w-4 h-4" />
-                <span>{enrollment.student.full_name}</span>
-                {enrollment.student.grade_level && (
-                  <span className="text-gray-500">({enrollment.student.grade_level})</span>
+                <span>{enrollment.student?.full_name}</span>
+                {enrollment.student?.grade_level && (
+                  <span className="text-gray-500">({enrollment.student?.grade_level})</span>
                 )}
               </div>
             )}
@@ -395,7 +395,7 @@ export function EnrollmentDetailPanel({
                   )}
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Billing Frequency</span>
-                    <span className="text-white">{enrollment.billing_frequency || enrollment.service.billing_frequency}</span>
+                    <span className="text-white">{enrollment.billing_frequency || enrollment.service?.billing_frequency}</span>
                   </div>
                 </div>
               </div>

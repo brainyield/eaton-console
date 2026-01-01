@@ -154,8 +154,8 @@ export function AddEnrollmentModal({
   const filteredFamilies = useMemo(() => {
     if (!familySearch) return families;
     const query = familySearch.toLowerCase();
-    return families.filter(f => 
-      f.display_name.toLowerCase().includes(query) ||
+    return families.filter(f =>
+      f.display_name?.toLowerCase().includes(query) ||
       f.primary_email?.toLowerCase().includes(query)
     );
   }, [families, familySearch]);
