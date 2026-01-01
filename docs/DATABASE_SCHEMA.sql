@@ -707,10 +707,12 @@ CREATE TRIGGER payment_updates_invoice
 CREATE OR REPLACE FUNCTION mark_overdue_invoices()
 RETURNS void AS $$
 BEGIN
-  UPDATE invoices 
+  -- Use CURRENT_DATE AT TIME ZONE 'UTC' to ensure consistent timezone handling
+  -- This matches the frontend's behavior of comparing dates at midnight UTC
+  UPDATE invoices
   SET status = 'overdue'
   WHERE status = 'sent'
-    AND due_date < CURRENT_DATE
+    AND due_date < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::date
     AND balance_due > 0;
 END;
 $$ LANGUAGE plpgsql;

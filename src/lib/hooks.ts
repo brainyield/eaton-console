@@ -1756,15 +1756,22 @@ export function useInvoiceEmailsByFamily(familyId: string) {
 }
 
 // Helper function to determine reminder type based on days overdue
-export function getReminderType(dueDate: string): { 
+export function getReminderType(dueDate: string): {
   type: 'reminder_7' | 'reminder_14' | 'reminder_30'
   label: string
-  daysOverdue: number 
+  daysOverdue: number
 } {
-  const due = new Date(dueDate)
+  // Parse due date and normalize to local midnight to avoid timezone issues
+  // When dueDate is "YYYY-MM-DD", we want to compare it as local date
+  const [year, month, day] = dueDate.split('-').map(Number)
+  const due = new Date(year, month - 1, day) // Local midnight
+  due.setHours(0, 0, 0, 0)
+
   const today = new Date()
+  today.setHours(0, 0, 0, 0) // Local midnight
+
   const diffTime = today.getTime() - due.getTime()
-  const daysOverdue = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+  const daysOverdue = Math.round(diffTime / (1000 * 60 * 60 * 24))
 
   if (daysOverdue >= 30) {
     return { type: 'reminder_30', label: 'Urgent Reminder', daysOverdue }
@@ -2830,24 +2837,29 @@ export function useInvalidateQueries() {
 export function getWeekBounds(date: Date = new Date()): { start: Date; end: Date } {
   const d = new Date(date)
   const day = d.getDay()
-  
+
   // Find Monday of this week
   const monday = new Date(d)
   monday.setDate(d.getDate() - (day === 0 ? 6 : day - 1))
   monday.setHours(0, 0, 0, 0)
-  
-  // Friday of this week
+
+  // Friday of this week - set to end of day to include all Friday work
   const friday = new Date(monday)
   friday.setDate(monday.getDate() + 4)
-  
+  friday.setHours(23, 59, 59, 999)
+
   return { start: monday, end: friday }
 }
 
 export function getNextMonday(date: Date = new Date()): Date {
   const d = new Date(date)
+  // Set to noon to avoid DST boundary issues when adding days
+  d.setHours(12, 0, 0, 0)
   const day = d.getDay()
   const diff = day === 0 ? 1 : 8 - day
   d.setDate(d.getDate() + diff)
+  // Reset to start of day after calculation
+  d.setHours(0, 0, 0, 0)
   return d
 }
 

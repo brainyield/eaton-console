@@ -88,10 +88,13 @@ export default function ImportHistoricalInvoiceModal({ onClose, onSuccess }: Pro
     if (!markAsSent) return 'draft'
     if (amountPaid >= subtotal && subtotal > 0) return 'paid'
     if (amountPaid > 0) return 'partial'
-    // Check if overdue
+    // Check if overdue - compare dates at local midnight to avoid timezone issues
     if (dueDate) {
-      const due = new Date(dueDate)
+      const [year, month, day] = dueDate.split('-').map(Number)
+      const due = new Date(year, month - 1, day)
+      due.setHours(0, 0, 0, 0)
       const today = new Date()
+      today.setHours(0, 0, 0, 0)
       if (due < today) return 'overdue'
     }
     return 'sent'
@@ -170,7 +173,7 @@ export default function ImportHistoricalInvoiceModal({ onClose, onSuccess }: Pro
         totalAmount: subtotal,
         amountPaid,
         status: computedStatus as 'draft' | 'sent' | 'paid' | 'partial' | 'overdue',
-        sentAt: markAsSent ? `${sentDate}T12:00:00Z` : null,
+        sentAt: markAsSent ? new Date(`${sentDate}T12:00:00`).toISOString() : null,
         sentTo: markAsSent ? selectedFamily.primary_email : null,
         // Payment info (if amount paid > 0)
         payment: amountPaid > 0 ? {

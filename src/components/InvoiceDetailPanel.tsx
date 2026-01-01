@@ -88,9 +88,12 @@ function getEmailTypeIcon(emailType: string) {
 function formatEmailDate(dateStr: string): string {
   const date = new Date(dateStr)
   const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  
+
+  // Compare dates at local midnight to get accurate day difference
+  const dateAtMidnight = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const nowAtMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const diffDays = Math.round((nowAtMidnight.getTime() - dateAtMidnight.getTime()) / (1000 * 60 * 60 * 24))
+
   if (diffDays === 0) {
     return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
   } else if (diffDays === 1) {
@@ -339,7 +342,7 @@ export default function InvoiceDetailPanel({
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-400">Sent</span>
                 <span className="text-white">
-                  {new Date(invoice.sent_at).toLocaleDateString('en-US', {
+                  {new Date(invoice.sent_at).toLocaleString('en-US', {
                     month: 'short',
                     day: 'numeric',
                     hour: 'numeric',

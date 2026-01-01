@@ -384,14 +384,17 @@ export default function Invoicing() {
 
   const formatPeriod = (start: string | null, end: string | null) => {
     if (!start || !end) return '-'
-    const s = new Date(start)
-    const e = new Date(end)
-    const sMonth = s.toLocaleDateString('en-US', { month: 'short' })
-    const eMonth = e.toLocaleDateString('en-US', { month: 'short' })
-    if (sMonth === eMonth) {
-      return `${sMonth} ${s.getDate()}-${e.getDate()}`
+    // Parse dates as local dates to avoid timezone shift issues
+    const [sYear, sMonth, sDay] = start.split('-').map(Number)
+    const [eYear, eMonth, eDay] = end.split('-').map(Number)
+    const s = new Date(sYear, sMonth - 1, sDay)
+    const e = new Date(eYear, eMonth - 1, eDay)
+    const sMonthStr = s.toLocaleDateString('en-US', { month: 'short' })
+    const eMonthStr = e.toLocaleDateString('en-US', { month: 'short' })
+    if (sMonthStr === eMonthStr) {
+      return `${sMonthStr} ${s.getDate()}-${e.getDate()}`
     }
-    return `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}`
+    return `${sMonthStr} ${s.getDate()} - ${eMonthStr} ${e.getDate()}`
   }
 
   // Outstanding balance total (exclude voided) - with explicit type
