@@ -156,4 +156,10 @@ export const queryKeys = {
     detail: (id: string) => ['leads', 'detail', id] as const,
     pipeline: () => ['leads', 'pipeline'] as const,
   },
+
+  // Lead Activities
+  leadActivities: {
+    all: ['leadActivities'] as const,
+    byLead: (leadId: string) => ['leadActivities', 'byLead', leadId] as const,
+  },
 }

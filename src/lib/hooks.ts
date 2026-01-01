@@ -3608,6 +3608,8 @@ export interface LeadWithFamily extends Lead {
     display_name: string
   } | null
   days_in_pipeline?: number
+  contact_count?: number
+  last_contacted_at?: string | null
 }
 
 /**
@@ -3617,6 +3619,7 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
   return useQuery({
     queryKey: queryKeys.leads.list(filters),
     queryFn: async () => {
+      // Fetch leads with family relationship
       let query = supabase
         .from('leads')
         .select(`
@@ -3635,9 +3638,42 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
         query = query.or(`email.ilike.%${filters.search}%,name.ilike.%${filters.search}%`)
       }
 
-      const { data, error } = await query
-      if (error) throw error
-      return data as LeadWithFamily[]
+      const { data: leads, error: leadsError } = await query
+      if (leadsError) throw leadsError
+
+      // Fetch activity stats for all leads
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data: activityStats, error: statsError } = await (supabase as any)
+        .from('lead_activities')
+        .select('lead_id, contacted_at')
+        .order('contacted_at', { ascending: false })
+
+      if (statsError) {
+        // If activities table doesn't exist yet, return leads without stats
+        console.warn('Could not fetch activity stats:', statsError)
+        return leads as LeadWithFamily[]
+      }
+
+      // Group stats by lead_id
+      const statsMap = new Map<string, { count: number; lastContacted: string | null }>()
+      for (const activity of (activityStats || []) as { lead_id: string; contacted_at: string }[]) {
+        const existing = statsMap.get(activity.lead_id)
+        if (existing) {
+          existing.count++
+        } else {
+          statsMap.set(activity.lead_id, {
+            count: 1,
+            lastContacted: activity.contacted_at,
+          })
+        }
+      }
+
+      // Merge stats into leads
+      return (leads || []).map(lead => ({
+        ...lead,
+        contact_count: statsMap.get(lead.id)?.count || 0,
+        last_contacted_at: statsMap.get(lead.id)?.lastContacted || null,
+      })) as LeadWithFamily[]
     },
   })
 }
@@ -3774,4 +3810,83 @@ export function useCheckDuplicateEmails() {
       return new Set((data || []).map(f => f.primary_email?.toLowerCase()))
     },
   })
+}
+
+// =============================================================================
+// LEAD ACTIVITY TYPES & HOOKS
+// =============================================================================
+
+export type ContactType = 'call' | 'email' | 'text' | 'other'
+
+export interface LeadActivity {
+  id: string
+  lead_id: string
+  contact_type: ContactType
+  notes: string | null
+  contacted_at: string
+  created_at: string
+}
+
+/**
+ * Fetch activities for a specific lead
+ */
+export function useLeadActivities(leadId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.leadActivities.byLead(leadId || ''),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_activities')
+        .select('*')
+        .eq('lead_id', leadId)
+        .order('contacted_at', { ascending: false })
+      if (error) throw error
+      return data as LeadActivity[]
+    },
+    enabled: !!leadId,
+  })
+}
+
+/**
+ * Lead activity mutations
+ */
+export function useLeadActivityMutations() {
+  const queryClient = useQueryClient()
+
+  const createActivity = useMutation({
+    mutationFn: async (activity: Omit<LeadActivity, 'id' | 'created_at'>) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_activities')
+        .insert(activity)
+        .select()
+        .single()
+      if (error) throw error
+      return data as LeadActivity
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadActivities.byLead(variables.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    },
+  })
+
+  const deleteActivity = useMutation({
+    mutationFn: async ({ id }: { id: string; leadId: string }) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { error } = await (supabase as any)
+        .from('lead_activities')
+        .delete()
+        .eq('id', id)
+      if (error) throw error
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadActivities.byLead(variables.leadId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    },
+  })
+
+  return {
+    createActivity,
+    deleteActivity,
+  }
 }

@@ -441,6 +441,12 @@ export default function Marketing() {
                     Created
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    Last Contact
+                  </th>
+                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
+                    #
+                  </th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Days
                   </th>
                   <th className="w-12"></th>
@@ -486,6 +492,12 @@ export default function Marketing() {
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
                       {formatDate(lead.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-zinc-400">
+                      {lead.last_contacted_at ? formatDate(lead.last_contacted_at) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-zinc-400 text-center">
+                      {lead.contact_count || 0}
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
                       {getDaysInPipeline(lead.created_at)}d

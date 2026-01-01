@@ -11,12 +11,30 @@ import {
   CheckCircle,
   Edit,
   Trash2,
-  Send
+  Send,
+  MessageSquare,
+  PhoneCall,
+  Plus,
+  Clock
 } from 'lucide-react'
-import { useLeadMutations, type LeadWithFamily, type LeadStatus } from '../lib/hooks'
+import { useLeadMutations, useLeadActivities, useLeadActivityMutations, type LeadWithFamily, type LeadStatus, type ContactType } from '../lib/hooks'
 import { syncLeadToMailchimp } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { AddFamilyModal } from './AddFamilyModal'
+
+const contactTypeIcons: Record<ContactType, typeof Phone> = {
+  call: PhoneCall,
+  email: Mail,
+  text: MessageSquare,
+  other: MessageSquare,
+}
+
+const contactTypeLabels: Record<ContactType, string> = {
+  call: 'Call',
+  email: 'Email',
+  text: 'Text',
+  other: 'Other',
+}
 
 interface LeadDetailPanelProps {
   lead: LeadWithFamily
@@ -41,10 +59,17 @@ const statusColors: Record<LeadStatus, string> = {
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
   const queryClient = useQueryClient()
   const { updateLead, deleteLead, convertToFamily } = useLeadMutations()
+  const { data: activities, isLoading: activitiesLoading } = useLeadActivities(lead.id)
+  const { createActivity } = useLeadActivityMutations()
+
   const [isDeleting, setIsDeleting] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
   const [showConvertModal, setShowConvertModal] = useState(false)
+  const [showActivityForm, setShowActivityForm] = useState(false)
+  const [activityType, setActivityType] = useState<ContactType>('call')
+  const [activityNotes, setActivityNotes] = useState('')
+  const [isLoggingActivity, setIsLoggingActivity] = useState(false)
 
   const handleStatusChange = async (newStatus: LeadStatus) => {
     await updateLead.mutateAsync({ id: lead.id, status: newStatus })
@@ -90,6 +115,29 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
       console.error('Failed to convert lead:', err)
+    }
+  }
+
+  const handleLogActivity = async () => {
+    if (!activityType) return
+    setIsLoggingActivity(true)
+    try {
+      await createActivity.mutateAsync({
+        lead_id: lead.id,
+        contact_type: activityType,
+        notes: activityNotes.trim() || null,
+        contacted_at: new Date().toISOString(),
+      })
+      // Auto-update status to contacted if still new
+      if (lead.status === 'new') {
+        await updateLead.mutateAsync({ id: lead.id, status: 'contacted' })
+      }
+      setActivityNotes('')
+      setShowActivityForm(false)
+    } catch (err) {
+      console.error('Failed to log activity:', err)
+    } finally {
+      setIsLoggingActivity(false)
     }
   }
 
@@ -264,6 +312,106 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
             <p className="text-sm text-zinc-300 whitespace-pre-wrap">{lead.notes}</p>
           </div>
         )}
+
+        {/* Contact Activity */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">
+              Contact Activity
+            </h4>
+            <button
+              onClick={() => setShowActivityForm(!showActivityForm)}
+              className="flex items-center gap-1 px-2 py-1 text-xs bg-zinc-800 text-zinc-300 rounded hover:bg-zinc-700"
+            >
+              <Plus className="w-3 h-3" />
+              Log Contact
+            </button>
+          </div>
+
+          {/* Activity Form */}
+          {showActivityForm && (
+            <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg p-3 mb-3 space-y-3">
+              <div className="flex gap-2">
+                {(['call', 'email', 'text', 'other'] as ContactType[]).map((type) => {
+                  const Icon = contactTypeIcons[type]
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setActivityType(type)}
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-xs rounded border transition-colors ${
+                        activityType === type
+                          ? 'bg-blue-600/20 text-blue-400 border-blue-500/30'
+                          : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-600'
+                      }`}
+                    >
+                      <Icon className="w-3 h-3" />
+                      {contactTypeLabels[type]}
+                    </button>
+                  )
+                })}
+              </div>
+              <textarea
+                value={activityNotes}
+                onChange={(e) => setActivityNotes(e.target.value)}
+                placeholder="Add notes about this contact..."
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-zinc-600"
+                rows={2}
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowActivityForm(false)}
+                  className="px-3 py-1 text-xs text-zinc-400 hover:text-zinc-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleLogActivity}
+                  disabled={isLoggingActivity}
+                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {isLoggingActivity ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Activity Timeline */}
+          {activitiesLoading ? (
+            <p className="text-xs text-zinc-500">Loading activities...</p>
+          ) : activities && activities.length > 0 ? (
+            <div className="space-y-2">
+              {activities.map((activity) => {
+                const Icon = contactTypeIcons[activity.contact_type]
+                return (
+                  <div
+                    key={activity.id}
+                    className="flex gap-3 p-2 bg-zinc-800/30 rounded-lg"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 flex items-center justify-center bg-zinc-700/50 rounded-full">
+                      <Icon className="w-4 h-4 text-zinc-400" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="text-zinc-300 font-medium">
+                          {contactTypeLabels[activity.contact_type]}
+                        </span>
+                        <span className="text-zinc-500 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDate(activity.contacted_at)}
+                        </span>
+                      </div>
+                      {activity.notes && (
+                        <p className="text-xs text-zinc-400 mt-1">{activity.notes}</p>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <p className="text-xs text-zinc-500">No contact activity logged yet</p>
+          )}
+        </div>
 
         {/* Mailchimp Status */}
         <div>
