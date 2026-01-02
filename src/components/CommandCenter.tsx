@@ -112,6 +112,7 @@ function useDashboardStats() {
         lastMonthInvoicesResult,
         thisMonthInvoicesResult,
         overdue30PlusResult,
+        eventLeadsViewResult,
       ] = await Promise.all([
         // Students with active/trial enrollments
         supabase
@@ -222,6 +223,11 @@ function useDashboardStats() {
           .select('id', { count: 'exact', head: true })
           .eq('status', 'overdue')
           .lte('due_date', thirtyDaysAgo),
+
+        // Event purchasers without enrollments (from event_leads view)
+        supabase
+          .from('event_leads')
+          .select('family_id', { count: 'exact', head: true }),
       ])
 
       // Type definitions
@@ -319,12 +325,15 @@ function useDashboardStats() {
       // Average revenue per student
       const avgRevenuePerStudent = uniqueActiveStudents > 0 ? totalMRR / uniqueActiveStudents : 0
 
-      // Count leads by type
+      // Count leads by type (from leads table)
       const leadsExitIntent = leads.filter(l => l.lead_type === 'exit_intent').length
       const leadsWaitlist = leads.filter(l => l.lead_type === 'waitlist').length
       const leadsCalendlyCall = leads.filter(l => l.lead_type === 'calendly_call').length
-      const leadsEvent = leads.filter(l => l.lead_type === 'event').length
-      const totalLeads = leads.length
+      // Event leads = leads table + event_leads view (families with event orders but no enrollments)
+      const eventTypeLeadsCount = leads.filter(l => l.lead_type === 'event').length
+      const eventPurchasersCount = eventLeadsViewResult.count || 0
+      const leadsEvent = eventTypeLeadsCount + eventPurchasersCount
+      const totalLeads = leads.length + eventPurchasersCount
 
       // Count upcoming Calendly bookings by type
       const upcomingCalls = calendlyBookings.filter(b => b.event_type === '15min_call').length

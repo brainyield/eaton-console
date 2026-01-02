@@ -228,15 +228,23 @@ function extractFormAnswers(invitee: CalendlyInvitee): Record<string, string> {
   return answers
 }
 
-// Determine event type from slug
-function determineEventType(slug: string): 'hub_dropoff' | '15min_call' | 'unknown' {
-  if (slug.includes(EVENT_TYPE_SLUGS.HUB_DROPOFF) || slug === 'eaton-hub-drop-off') {
+// Determine event type from Calendly event type slug
+// Default to 15min_call if not explicitly a hub_dropoff - this ensures leads are created
+function determineEventType(slug: string): 'hub_dropoff' | '15min_call' {
+  const slugLower = slug.toLowerCase()
+
+  // Check for hub drop-off patterns
+  if (slugLower.includes(EVENT_TYPE_SLUGS.HUB_DROPOFF) ||
+      slugLower.includes('hub-drop-off') ||
+      slugLower.includes('hub_drop') ||
+      slugLower.includes('hubdrop') ||
+      slugLower.includes('drop-off') ||
+      slugLower.includes('dropoff')) {
     return 'hub_dropoff'
   }
-  if (slug.includes(EVENT_TYPE_SLUGS.CALL_15MIN) || slug === '15min') {
-    return '15min_call'
-  }
-  return 'unknown'
+
+  // Everything else is treated as a call/consultation - creates a lead
+  return '15min_call'
 }
 
 // Format name as "LastName Family"
@@ -258,11 +266,6 @@ async function importEvent(event: CalendlyEvent, invitee: CalendlyInvitee) {
   console.log(`    Event: ${event.name} (slug: ${eventTypeDetails.slug})`)
   console.log(`    Type: ${eventType}`)
   console.log(`    Scheduled: ${new Date(scheduledAt).toLocaleString()}`)
-
-  if (eventType === 'unknown') {
-    console.log(`    SKIPPED: Unknown event type`)
-    return { skipped: true, reason: 'unknown_event_type' }
-  }
 
   // Check if already imported
   const { data: existingBooking } = await supabase

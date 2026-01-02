@@ -116,14 +116,23 @@ function extractFormAnswers(invitee: CalendlyInvitee): Record<string, string> {
 }
 
 // Determine event type from Calendly event type slug
-function getEventType(slug: string): 'hub_dropoff' | '15min_call' | 'unknown' {
-  if (slug === EVENT_TYPE_SLUGS.HUB_DROPOFF || slug.includes('hub-drop-off')) {
+// Default to 15min_call if not explicitly a hub_dropoff - this ensures leads are created
+function getEventType(slug: string): 'hub_dropoff' | '15min_call' {
+  const slugLower = slug.toLowerCase()
+
+  // Check for hub drop-off patterns
+  if (slugLower === EVENT_TYPE_SLUGS.HUB_DROPOFF ||
+      slugLower.includes('hub-drop-off') ||
+      slugLower.includes('hub_drop') ||
+      slugLower.includes('hubdrop') ||
+      slugLower.includes('drop-off') ||
+      slugLower.includes('dropoff')) {
     return 'hub_dropoff'
   }
-  if (slug === EVENT_TYPE_SLUGS.CALL_15MIN || slug.includes('15min')) {
-    return '15min_call'
-  }
-  return 'unknown'
+
+  // Everything else is treated as a call/consultation - creates a lead
+  // This includes: 15min, 15-min, call, consultation, discovery, intro, etc.
+  return '15min_call'
 }
 
 // Format name as "LastName Family"

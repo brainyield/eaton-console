@@ -19,7 +19,7 @@ import {
   Calendar,
   Circle
 } from 'lucide-react'
-import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, useEventLeads, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { dateAtMidnight, daysBetween, parseLocalDate } from '../lib/dateUtils'
 import { useToast } from '../lib/toast'
 import { LeadDetailPanel } from './LeadDetailPanel'
@@ -32,7 +32,7 @@ import { formatNameLastFirst } from '../lib/utils'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
 type SortOption = 'created_desc' | 'created_asc' | 'score_desc' | 'score_asc'
-type TabType = 'leads' | 'analytics'
+type TabType = 'leads' | 'event_leads' | 'analytics'
 
 const LEADS_PAGE_SIZE = 50 // Number of leads per page
 
@@ -99,10 +99,15 @@ export default function Marketing() {
 
   const { data: upcomingFollowUps = [] } = useUpcomingFollowUps()
   const { completeFollowUp } = useFollowUpMutations()
+  const { data: eventLeads = [], isLoading: eventLeadsLoading } = useEventLeads()
+
+  // Also fetch leads with lead_type='event' from the leads table
+  const { data: eventTypeLeads = [] } = useLeads({ type: 'event' })
 
   // Filter and sort leads (client-side)
   const { leads, totalCount, totalPages } = useMemo(() => {
-    let filtered = allLeads
+    // Exclude 'event' type leads - they are shown in the Event Leads tab
+    let filtered = allLeads.filter(lead => lead.lead_type !== 'event')
 
     // Filter by engagement
     if (engagementFilter) {
@@ -328,6 +333,16 @@ export default function Marketing() {
                   Leads
                 </button>
                 <button
+                  onClick={() => setActiveTab('event_leads')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'event_leads'
+                      ? 'bg-zinc-700 text-white'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Event Leads {(eventLeads.length + eventTypeLeads.length) > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs bg-orange-500/20 text-orange-400 rounded">{eventLeads.length + eventTypeLeads.length}</span>}
+                </button>
+                <button
                   onClick={() => setActiveTab('analytics')}
                   className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     activeTab === 'analytics'
@@ -498,7 +513,6 @@ export default function Marketing() {
             <option value="exit_intent">Exit Intent</option>
             <option value="waitlist">Waitlist</option>
             <option value="calendly_call">Calendly</option>
-            <option value="event">Event</option>
           </select>
 
           <select
@@ -831,6 +845,142 @@ export default function Marketing() {
         {/* Analytics Tab Content */}
         {activeTab === 'analytics' && (
           <ConversionAnalytics />
+        )}
+
+        {/* Event Leads Tab Content */}
+        {activeTab === 'event_leads' && (
+          <div className="space-y-6">
+            {/* Event Type Leads from leads table */}
+            {eventTypeLeads.length > 0 && (
+              <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+                <div className="p-4 border-b border-zinc-700/50">
+                  <h3 className="text-lg font-semibold text-white">Event Leads</h3>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    Leads captured from events that need follow-up.
+                  </p>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-zinc-700/50">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Name</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Email</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Score</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Created</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-700/50">
+                      {eventTypeLeads.map((lead) => {
+                        const scoreLabel = getScoreLabel(lead.computed_score ?? 0)
+                        return (
+                          <tr
+                            key={lead.id}
+                            className="hover:bg-zinc-700/30 transition-colors cursor-pointer"
+                            onClick={() => setSelectedLeadId(lead.id)}
+                          >
+                            <td className="px-4 py-3">
+                              <span className="font-medium text-white">{lead.name || 'Unknown'}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <a href={`mailto:${lead.email}`} className="text-blue-400 hover:text-blue-300" onClick={(e) => e.stopPropagation()}>
+                                {lead.email}
+                              </a>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 text-xs font-medium rounded ${statusColors[lead.status]}`}>
+                                {statusLabels[lead.status]}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-1 text-xs font-medium rounded ${scoreLabelColors[scoreLabel]}`}>
+                                {scoreLabel.charAt(0).toUpperCase() + scoreLabel.slice(1)}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-zinc-400">
+                              {new Date(lead.created_at).toLocaleDateString()}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Event Purchasers from event_leads view */}
+            <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+              <div className="p-4 border-b border-zinc-700/50">
+                <h3 className="text-lg font-semibold text-white">Event Purchasers Without Enrollments</h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Families who have purchased event tickets but have no active enrollments - potential conversion opportunities.
+                </p>
+              </div>
+              {eventLeadsLoading ? (
+                <div className="p-8 text-center text-zinc-400">Loading...</div>
+              ) : eventLeads.length === 0 ? (
+                <div className="p-8 text-center text-zinc-400">
+                  No event purchasers found without active enrollments.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-zinc-700/50">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Family</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Email</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Phone</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Event Orders</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Total Spend</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Last Event Order</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-700/50">
+                      {eventLeads.map((eventLead) => (
+                        <tr key={eventLead.family_id} className="hover:bg-zinc-700/30 transition-colors">
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-white">{eventLead.family_name || 'Unknown'}</span>
+                          </td>
+                          <td className="px-4 py-3">
+                            {eventLead.primary_email ? (
+                              <a href={`mailto:${eventLead.primary_email}`} className="text-blue-400 hover:text-blue-300">
+                                {eventLead.primary_email}
+                              </a>
+                            ) : (
+                              <span className="text-zinc-500">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            {eventLead.primary_phone ? (
+                              <a href={`tel:${eventLead.primary_phone}`} className="text-blue-400 hover:text-blue-300">
+                                {eventLead.primary_phone}
+                              </a>
+                            ) : (
+                              <span className="text-zinc-500">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-1 text-xs font-medium bg-orange-500/20 text-orange-400 rounded">
+                              {eventLead.event_order_count || 0} orders
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-white">
+                            ${(eventLead.total_event_spend || 0).toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3 text-zinc-400">
+                            {eventLead.last_event_order_at
+                              ? new Date(eventLead.last_event_order_at).toLocaleDateString()
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

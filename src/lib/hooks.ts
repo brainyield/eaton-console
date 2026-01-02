@@ -4061,6 +4061,39 @@ export function useCheckDuplicateEmails() {
 }
 
 // =============================================================================
+// EVENT LEADS (from event_leads view)
+// =============================================================================
+
+export interface EventLead {
+  family_id: string
+  family_name: string | null
+  primary_email: string | null
+  primary_phone: string | null
+  created_at: string | null
+  event_order_count: number | null
+  total_event_spend: number | null
+  last_event_order_at: string | null
+}
+
+/**
+ * Fetch event leads - families who have event orders but no active enrollments
+ * These are potential leads for conversion to regular services
+ */
+export function useEventLeads() {
+  return useQuery({
+    queryKey: ['eventLeads'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('event_leads')
+        .select('*')
+        .order('last_event_order_at', { ascending: false })
+      if (error) throw error
+      return (data || []) as EventLead[]
+    },
+  })
+}
+
+// =============================================================================
 // LEAD ACTIVITY TYPES & HOOKS
 // =============================================================================
 

@@ -84,7 +84,7 @@ export function AccessibleModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50" onClick={(e) => e.stopPropagation()}>
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/50"
@@ -194,7 +194,7 @@ export function ConfirmationModal({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0 z-50" onClick={(e) => e.stopPropagation()}>
       <div className="fixed inset-0 bg-black/50" aria-hidden="true" />
       <div className="fixed inset-0 flex items-center justify-center p-4">
         <FocusTrap
