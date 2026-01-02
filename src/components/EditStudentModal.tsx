@@ -179,9 +179,9 @@ export function EditStudentModal({
   let canDelete = true
   if (activeEnrollments.length > 0) {
     canDelete = false
-    deleteDescription = `Cannot delete - has ${activeEnrollments.length} active enrollment(s). End these enrollments first before deleting the student.`
+    deleteDescription = `Cannot delete - has ${activeEnrollments.length} active enrollment${activeEnrollments.length !== 1 ? 's' : ''}. End these enrollments first before deleting the student.`
   } else if (historicalEnrollments.length > 0) {
-    deleteDescription = `Warning: This student has ${historicalEnrollments.length} historical enrollment(s). Deleting will also remove their enrollment history. This cannot be undone.`
+    deleteDescription = `Warning: This student has ${historicalEnrollments.length} historical enrollment${historicalEnrollments.length !== 1 ? 's' : ''}. Deleting will also remove their enrollment history. This cannot be undone.`
   } else {
     deleteDescription = `This will permanently delete ${student.full_name}. This cannot be undone.`
   }
@@ -375,7 +375,7 @@ export function EditStudentModal({
         onClose={() => setShowForceDeleteConfirm(false)}
         onConfirm={handleForceDelete}
         title="Confirm Delete with History?"
-        description={`This will permanently delete ${student?.full_name} and ${historicalEnrollments.length} historical enrollment(s). This action cannot be undone and historical enrollment data will be lost.`}
+        description={`This will permanently delete ${student?.full_name} and ${historicalEnrollments.length} historical enrollment${historicalEnrollments.length !== 1 ? 's' : ''}. This action cannot be undone and historical enrollment data will be lost.`}
         confirmLabel="Delete Permanently"
         variant="danger"
         isLoading={forceDeleteStudent.isPending}

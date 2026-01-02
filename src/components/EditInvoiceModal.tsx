@@ -238,10 +238,10 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
             id: invoice.id,
             data: originalInvoiceData,
           })
-          showError(`Failed to update ${errors.length} line item(s). Invoice has been restored to its original state.`)
+          showError(`Failed to update ${errors.length} line item${errors.length !== 1 ? 's' : ''}. Invoice has been restored to its original state.`)
         } catch (rollbackErr) {
           console.error('Invoice rollback failed:', rollbackErr)
-          showWarning(`Invoice saved but ${errors.length} line item(s) failed. Invoice totals may be inconsistent.`)
+          showWarning(`Invoice saved but ${errors.length} line item${errors.length !== 1 ? 's' : ''} failed. Invoice totals may be inconsistent.`)
         }
       } else {
         onSuccess()

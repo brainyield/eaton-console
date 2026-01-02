@@ -783,7 +783,7 @@ export default function Reports() {
           <div>
             <p className="text-gray-400">Revenue Records</p>
             <p className="text-xl font-bold text-white">
-              {revenueData.length > 0 ? `${revenueData.length} months` : '—'}
+              {revenueData.length > 0 ? `${revenueData.length} month${revenueData.length !== 1 ? 's' : ''}` : '—'}
             </p>
           </div>
           <div>

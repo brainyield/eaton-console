@@ -562,12 +562,12 @@ export function useStudentMutations() {
         const endedCount = enrollments.filter((e: any) => e.status === 'ended' || e.status === 'paused').length
         
         if (activeCount > 0) {
-          throw new Error(`Cannot delete student with ${activeCount} active enrollment(s). End the enrollments first.`)
+          throw new Error(`Cannot delete student with ${activeCount} active enrollment${activeCount !== 1 ? 's' : ''}. End the enrollments first.`)
         }
         
         // Even ended enrollments are historical data - warn but allow
         if (endedCount > 0) {
-          throw new Error(`This student has ${endedCount} historical enrollment(s). Deleting will remove enrollment history. Use the 'Confirm Delete with History' option if you're sure.`)
+          throw new Error(`This student has ${endedCount} historical enrollment${endedCount !== 1 ? 's' : ''}. Deleting will remove enrollment history. Use the 'Confirm Delete with History' option if you're sure.`)
         }
       }
       
@@ -594,7 +594,7 @@ export function useStudentMutations() {
       if (checkError) throw checkError
       
       if (activeEnrollments && activeEnrollments.length > 0) {
-        throw new Error(`Cannot delete student with ${activeEnrollments.length} active enrollment(s). End the enrollments first.`)
+        throw new Error(`Cannot delete student with ${activeEnrollments.length} active enrollment${activeEnrollments.length !== 1 ? 's' : ''}. End the enrollments first.`)
       }
       
       // Proceed with delete - cascade will remove historical enrollments

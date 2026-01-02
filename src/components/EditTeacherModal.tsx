@@ -181,20 +181,20 @@ export function EditTeacherModal({
   if (validationCounts.total > 0) {
     const parts = []
     if (validationCounts.activeEnrollment > 0) {
-      parts.push(`${validationCounts.activeEnrollment} active student assignment(s)`)
+      parts.push(`${validationCounts.activeEnrollment} active student assignment${validationCounts.activeEnrollment !== 1 ? 's' : ''}`)
     }
     if (validationCounts.activeService > 0) {
-      parts.push(`${validationCounts.activeService} active service assignment(s)`)
+      parts.push(`${validationCounts.activeService} active service assignment${validationCounts.activeService !== 1 ? 's' : ''}`)
     }
     deleteDescription = `Cannot delete - has ${parts.join(' and ')}. End or transfer all active assignments before deleting this teacher.`
   } else if (validationCounts.payments > 0) {
-    deleteDescription = `This will permanently delete ${teacher.display_name} and ${validationCounts.payments} payment record(s). This action cannot be undone.`
+    deleteDescription = `This will permanently delete ${teacher.display_name} and ${validationCounts.payments} payment record${validationCounts.payments !== 1 ? 's' : ''}. This action cannot be undone.`
   } else {
     deleteDescription = `This will permanently delete ${teacher.display_name}. This action cannot be undone.`
   }
 
   // Build status warning description
-  const statusWarningDescription = `${teacher.display_name} has ${validationCounts.activeEnrollment} student assignment(s) and ${validationCounts.activeService} service assignment(s). These assignments will remain linked but won't appear in new assignment dropdowns. Continue?`
+  const statusWarningDescription = `${teacher.display_name} has ${validationCounts.activeEnrollment} student assignment${validationCounts.activeEnrollment !== 1 ? 's' : ''} and ${validationCounts.activeService} service assignment${validationCounts.activeService !== 1 ? 's' : ''}. These assignments will remain linked but won't appear in new assignment dropdowns. Continue?`
 
   return (
     <>
