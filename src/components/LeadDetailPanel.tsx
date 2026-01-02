@@ -24,6 +24,7 @@ import { useLeadMutations, useLeadActivities, useLeadActivityMutations, useLeadF
 import { parseLocalDate, daysBetween, dateAtMidnight } from '../lib/dateUtils'
 import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
+import { useToast } from '../lib/toast'
 import { AddFamilyModal } from './AddFamilyModal'
 
 const engagementColors = {
@@ -68,6 +69,7 @@ const statusColors: Record<LeadStatus, string> = {
 
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
   const queryClient = useQueryClient()
+  const { showError, showSuccess } = useToast()
   const { updateLead, deleteLead, convertToFamily } = useLeadMutations()
   const { data: activities, isLoading: activitiesLoading } = useLeadActivities(lead.id)
   const { createActivity } = useLeadActivityMutations()
@@ -145,10 +147,12 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     try {
       await convertToFamily.mutateAsync({ leadId: lead.id, familyId })
       setShowConvertModal(false)
+      showSuccess('Lead converted to family successfully')
       // Refresh lead data
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
       console.error('Failed to convert lead:', err)
+      showError(err instanceof Error ? err.message : 'Failed to convert lead')
     }
   }
 
@@ -171,8 +175,10 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       }
       setActivityNotes('')
       setShowActivityForm(false)
+      showSuccess('Activity logged')
     } catch (err) {
       console.error('Failed to log activity:', err)
+      showError(err instanceof Error ? err.message : 'Failed to log activity')
     } finally {
       setIsLoggingActivity(false)
     }
@@ -194,20 +200,34 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       setFollowUpDueDate('')
       setFollowUpPriority('medium')
       setShowFollowUpForm(false)
+      showSuccess('Follow-up created')
     } catch (err) {
       console.error('Failed to create follow-up:', err)
+      showError(err instanceof Error ? err.message : 'Failed to create follow-up')
     } finally {
       setIsCreatingFollowUp(false)
     }
   }
 
   const handleCompleteFollowUp = async (id: string) => {
-    await completeFollowUp.mutateAsync(id)
+    try {
+      await completeFollowUp.mutateAsync(id)
+      showSuccess('Follow-up completed')
+    } catch (err) {
+      console.error('Failed to complete follow-up:', err)
+      showError(err instanceof Error ? err.message : 'Failed to complete follow-up')
+    }
   }
 
   const handleDeleteFollowUp = async (id: string) => {
     if (!confirm('Delete this follow-up?')) return
-    await deleteFollowUp.mutateAsync({ id, leadId: lead.id })
+    try {
+      await deleteFollowUp.mutateAsync({ id, leadId: lead.id })
+      showSuccess('Follow-up deleted')
+    } catch (err) {
+      console.error('Failed to delete follow-up:', err)
+      showError(err instanceof Error ? err.message : 'Failed to delete follow-up')
+    }
   }
 
   const getFollowUpUrgency = (dueDate: string): string => {

@@ -21,6 +21,7 @@ import {
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations } from '../lib/hooks'
 import { parseLocalDate } from '../lib/dateUtils'
+import { useToast } from '../lib/toast'
 
 // ============================================================================
 // Types
@@ -120,6 +121,7 @@ export default function InvoiceDetailPanel({
   isSending = false,
   isVoiding = false,
 }: Props) {
+  const { showError, showSuccess } = useToast()
   const statusConfig = STATUS_CONFIG[invoice.status] || STATUS_CONFIG.draft
   const [sendingReminder, setSendingReminder] = useState(false)
   const [recordingPayment, setRecordingPayment] = useState(false)
@@ -186,10 +188,10 @@ export default function InvoiceDetailPanel({
         invoice: invoice,
         reminderType: type
       })
-      alert('Reminder sent successfully!')
+      showSuccess('Reminder sent successfully!')
     } catch (error) {
       console.error('Failed to send reminder:', error)
-      alert('Failed to send reminder')
+      showError(error instanceof Error ? error.message : 'Failed to send reminder')
     } finally {
       setSendingReminder(false)
     }
@@ -213,10 +215,10 @@ export default function InvoiceDetailPanel({
     setFixingBalance(true)
     try {
       await recalculateInvoiceBalance.mutateAsync(invoice.id)
-      alert('Invoice balance has been corrected!')
+      showSuccess('Invoice balance has been corrected!')
     } catch (error: any) {
       console.error('Failed to fix balance:', error)
-      alert(error?.message || 'Failed to fix balance')
+      showError(error?.message || 'Failed to fix balance')
     } finally {
       setFixingBalance(false)
     }
@@ -228,18 +230,18 @@ export default function InvoiceDetailPanel({
 
     const amount = parseFloat(paymentAmount)
     if (isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid payment amount')
+      showError('Please enter a valid payment amount')
       return
     }
 
     if (balanceDue <= 0) {
-      alert('This invoice has no balance due')
+      showError('This invoice has no balance due')
       setShowPaymentModal(false)
       return
     }
 
     if (amount > balanceDue) {
-      alert(`Payment amount cannot exceed the balance due (${formatCurrency(balanceDue)})`)
+      showError(`Payment amount cannot exceed the balance due (${formatCurrency(balanceDue)})`)
       return
     }
 
@@ -254,10 +256,10 @@ export default function InvoiceDetailPanel({
       setPaymentAmount('')
       setPaymentNotes('')
       const newStatus = amount >= balanceDue ? 'paid' : 'partial'
-      alert(`Payment of ${formatCurrency(amount)} recorded! Invoice is now ${newStatus}.`)
+      showSuccess(`Payment of ${formatCurrency(amount)} recorded! Invoice is now ${newStatus}.`)
     } catch (error: any) {
       console.error('Failed to record payment:', error)
-      alert(error?.message || 'Failed to record payment')
+      showError(error?.message || 'Failed to record payment')
     } finally {
       setRecordingPayment(false)
     }

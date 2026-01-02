@@ -20,6 +20,7 @@ import {
 } from 'lucide-react'
 import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { dateAtMidnight, daysBetween, parseLocalDate } from '../lib/dateUtils'
+import { useToast } from '../lib/toast'
 import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
@@ -67,6 +68,7 @@ const statusColors: Record<LeadStatus, string> = {
 
 export default function Marketing() {
   const queryClient = useQueryClient()
+  const { showError, showSuccess, showWarning } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>('leads')
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState<LeadType | ''>('')
@@ -188,12 +190,15 @@ export default function Marketing() {
       const failed = results.filter(r => r.status === 'rejected').length
 
       if (failed > 0) {
-        alert(`Updated ${succeeded} leads. ${failed} failed to update.`)
+        showWarning(`Updated ${succeeded} leads. ${failed} failed to update.`)
+      } else {
+        showSuccess(`${succeeded} leads updated to ${newStatus}`)
       }
 
       setSelectedIds(new Set())
     } catch (err) {
       console.error('Failed to update leads:', err)
+      showError(err instanceof Error ? err.message : 'Failed to update leads')
     } finally {
       setIsBulkUpdating(false)
     }
@@ -219,12 +224,15 @@ export default function Marketing() {
       const failed = results.filter(r => r.status === 'rejected').length
 
       if (failed > 0) {
-        alert(`Deleted ${succeeded} leads. ${failed} failed to delete.`)
+        showWarning(`Deleted ${succeeded} leads. ${failed} failed to delete.`)
+      } else {
+        showSuccess(`${succeeded} leads deleted`)
       }
 
       setSelectedIds(new Set())
     } catch (err) {
       console.error('Failed to delete leads:', err)
+      showError(err instanceof Error ? err.message : 'Failed to delete leads')
     } finally {
       setIsBulkDeleting(false)
     }
@@ -248,10 +256,17 @@ export default function Marketing() {
         }))
       )
       setBulkSyncResult({ success: result.success, failed: result.failed })
+      if (result.failed > 0) {
+        showWarning(`Synced ${result.success} leads. ${result.failed} failed.`)
+      } else {
+        showSuccess(`${result.success} leads synced to Mailchimp`)
+      }
       setSelectedIds(new Set())
       // Refresh leads to show updated mailchimp status
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
+      console.error('Failed to sync leads:', err)
+      showError(err instanceof Error ? err.message : 'Failed to sync leads to Mailchimp')
       setBulkSyncResult({ success: 0, failed: selectedLeads.length })
     } finally {
       setIsBulkSyncing(false)

@@ -4170,6 +4170,7 @@ function extractDomain(url: string): string {
     const parsed = new URL(url)
     return parsed.hostname.replace('www.', '')
   } catch {
+    // URL parsing failed - likely a relative or malformed URL, extract first segment
     return url.split('/')[0] || 'Unknown'
   }
 }

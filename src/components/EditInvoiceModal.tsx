@@ -11,6 +11,7 @@ import { useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { multiplyMoney, sumMoney } from '../lib/moneyUtils'
 import { parsePositiveFloat, isValidDateRange } from '../lib/validation'
+import { useToast } from '../lib/toast'
 
 // ============================================================================
 // Types
@@ -37,6 +38,8 @@ interface LineItemEdit {
 // ============================================================================
 
 export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props) {
+  const { showError, showWarning } = useToast()
+
   // State
   const [invoiceDate, setInvoiceDate] = useState(invoice.invoice_date || '')
   const [dueDate, setDueDate] = useState(invoice.due_date || '')
@@ -219,16 +222,16 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
 
       // Report results
       if (errors.length > 0) {
-        alert(`Invoice saved with ${errors.length} error(s):\n${errors.join('\n')}\n\nPlease review and retry failed items.`)
+        showWarning(`Invoice saved with ${errors.length} error(s). Please review and retry failed items.`)
       } else {
         onSuccess()
       }
     } catch (error) {
       console.error('Failed to save invoice:', error)
       if (invoiceUpdated) {
-        alert('Invoice header was saved but line items could not be updated. Please try again.')
+        showError('Invoice header was saved but line items could not be updated. Please try again.')
       } else {
-        alert('Failed to save changes. Check console for details.')
+        showError(error instanceof Error ? error.message : 'Failed to save changes')
       }
     } finally {
       setIsSaving(false)

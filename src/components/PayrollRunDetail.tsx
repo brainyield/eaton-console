@@ -21,6 +21,7 @@ import type {
   PayrollRunStatus,
   InvoiceWithDetails,
 } from '../lib/hooks'
+import { useToast } from '../lib/toast'
 
 interface Props {
   run: PayrollRunWithDetails
@@ -223,6 +224,7 @@ function TeacherSection({
 // ============================================================================
 
 export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
+  const { showError, showSuccess } = useToast()
   const { updateRunStatus, updateLineItem } = usePayrollMutations()
   const [isUpdating, setIsUpdating] = useState(false)
 
@@ -287,9 +289,10 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
         id: itemId,
         actualHours: hours,
       })
+      showSuccess('Hours updated')
     } catch (error) {
       console.error('Failed to update hours:', error)
-      alert('Failed to update hours')
+      showError(error instanceof Error ? error.message : 'Failed to update hours')
     }
   }
 
@@ -301,9 +304,10 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
         status: newStatus,
         approvedBy: newStatus === 'approved' ? 'Admin' : undefined,
       })
+      showSuccess(`Payroll run status updated to ${newStatus}`)
     } catch (error) {
       console.error('Failed to update status:', error)
-      alert('Failed to update status')
+      showError(error instanceof Error ? error.message : 'Failed to update status')
     } finally {
       setIsUpdating(false)
     }

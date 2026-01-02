@@ -1,4 +1,20 @@
-import { QueryClient } from '@tanstack/react-query'
+import { QueryClient, MutationCache } from '@tanstack/react-query'
+import { getGlobalToast } from './toast'
+
+// Extract user-friendly error message from various error types
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    // Handle Supabase/PostgreSQL errors
+    const msg = error.message
+    if (msg.includes('duplicate key')) return 'This record already exists'
+    if (msg.includes('violates foreign key')) return 'Cannot delete: this record is referenced by other data'
+    if (msg.includes('violates not-null')) return 'Required field is missing'
+    if (msg.includes('JWT')) return 'Session expired. Please refresh the page.'
+    return msg
+  }
+  if (typeof error === 'string') return error
+  return 'An unexpected error occurred'
+}
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -12,7 +28,30 @@ export const queryClient = new QueryClient({
       // Retry failed requests once
       retry: 1,
     },
+    mutations: {
+      // Global mutation error handler - shows toast for unhandled errors
+      onError: (error) => {
+        console.error('Mutation error:', error)
+        const showToast = getGlobalToast()
+        if (showToast) {
+          showToast(getErrorMessage(error), 'error')
+        }
+      },
+    },
   },
+  // MutationCache for more granular control
+  mutationCache: new MutationCache({
+    onError: (error, _variables, _context, mutation) => {
+      // Only show global error if mutation doesn't have its own onError handler
+      if (!mutation.options.onError) {
+        console.error('Unhandled mutation error:', error)
+        const showToast = getGlobalToast()
+        if (showToast) {
+          showToast(getErrorMessage(error), 'error')
+        }
+      }
+    },
+  }),
 })
 
 // Query key factory for consistent keys across the app

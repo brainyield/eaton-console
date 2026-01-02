@@ -21,6 +21,7 @@ import {
   downloadPayrollCSV,
 } from '../lib/hooks'
 import type { PayrollRunStatus, PayrollRunWithDetails } from '../lib/hooks'
+import { useToast } from '../lib/toast'
 import CreatePayrollRunModal from './CreatePayrollRunModal'
 import PayrollRunDetail from './PayrollRunDetail'
 import PayrollAdjustmentModal from './PayrollAdjustmentModal'
@@ -120,6 +121,8 @@ function formatCurrency(amount: number): string {
 // ============================================================================
 
 export default function Payroll() {
+  const { showError, showSuccess } = useToast()
+
   // State
   const [activeTab, setActiveTab] = useState<TabKey>('current')
   const [sort, setSort] = useState<SortConfig>({ field: 'period', direction: 'desc' })
@@ -190,9 +193,10 @@ export default function Payroll() {
     if (!confirm('Are you sure you want to delete this draft payroll run?')) return
     try {
       await deletePayrollRun.mutateAsync(runId)
+      showSuccess('Payroll run deleted')
     } catch (error) {
       console.error('Failed to delete payroll run:', error)
-      alert('Failed to delete payroll run')
+      showError(error instanceof Error ? error.message : 'Failed to delete payroll run')
     }
   }
 

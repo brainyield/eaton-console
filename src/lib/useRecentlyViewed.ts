@@ -16,7 +16,9 @@ function getStoredItems(): RecentItem[] {
     const stored = localStorage.getItem(STORAGE_KEY)
     if (!stored) return []
     return JSON.parse(stored)
-  } catch {
+  } catch (err) {
+    // localStorage may be corrupted or unavailable - return empty list
+    console.warn('Failed to read recently viewed items:', err)
     return []
   }
 }
@@ -24,8 +26,9 @@ function getStoredItems(): RecentItem[] {
 function saveItems(items: RecentItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(items))
-  } catch {
-    // localStorage might be full or unavailable
+  } catch (err) {
+    // localStorage might be full or unavailable - fail silently
+    console.warn('Failed to save recently viewed items:', err)
   }
 }
 

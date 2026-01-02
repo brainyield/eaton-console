@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
+import { useToast } from '../lib/toast'
 import GenerateDraftsModal from './GenerateDraftsModal'
 import InvoiceDetailPanel from './InvoiceDetailPanel'
 import EditInvoiceModal from './EditInvoiceModal'
@@ -121,6 +122,7 @@ function SortableHeader({ field, label, sort, onSort, className = '' }: Sortable
 
 export default function Invoicing() {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { showError, showSuccess } = useToast()
 
   // State
   const [activeTab, setActiveTab] = useState<TabKey>('drafts')
@@ -299,51 +301,87 @@ export default function Invoicing() {
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Delete this invoice?')) return
-    await deleteInvoice.mutateAsync(id)
-    setSelectedInvoice(null)
-  }, [deleteInvoice])
+    try {
+      await deleteInvoice.mutateAsync(id)
+      setSelectedInvoice(null)
+      showSuccess('Invoice deleted')
+    } catch (err) {
+      console.error('Failed to delete invoice:', err)
+      showError(err instanceof Error ? err.message : 'Failed to delete invoice')
+    }
+  }, [deleteInvoice, showSuccess, showError])
 
   const handleBulkDelete = useCallback(async () => {
     if (!confirm(`Delete ${selectedIds.size} invoices?`)) return
-    await bulkDeleteInvoices.mutateAsync(Array.from(selectedIds))
-    setSelectedIds(new Set())
-  }, [bulkDeleteInvoices, selectedIds])
+    try {
+      await bulkDeleteInvoices.mutateAsync(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      showSuccess(`${selectedIds.size} invoices deleted`)
+    } catch (err) {
+      console.error('Failed to delete invoices:', err)
+      showError(err instanceof Error ? err.message : 'Failed to delete invoices')
+    }
+  }, [bulkDeleteInvoices, selectedIds, showSuccess, showError])
 
   const handleVoid = useCallback(async (id: string) => {
     if (!confirm('Void this invoice? This will mark it as void but preserve the record.')) return
-    await voidInvoice.mutateAsync(id)
-    setSelectedInvoice(null)
-  }, [voidInvoice])
+    try {
+      await voidInvoice.mutateAsync(id)
+      setSelectedInvoice(null)
+      showSuccess('Invoice voided')
+    } catch (err) {
+      console.error('Failed to void invoice:', err)
+      showError(err instanceof Error ? err.message : 'Failed to void invoice')
+    }
+  }, [voidInvoice, showSuccess, showError])
 
   const handleBulkVoid = useCallback(async () => {
     if (!confirm(`Void ${selectedIds.size} invoices? This will mark them as void but preserve the records.`)) return
-    await bulkVoidInvoices.mutateAsync(Array.from(selectedIds))
-    setSelectedIds(new Set())
-  }, [bulkVoidInvoices, selectedIds])
+    try {
+      await bulkVoidInvoices.mutateAsync(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      showSuccess(`${selectedIds.size} invoices voided`)
+    } catch (err) {
+      console.error('Failed to void invoices:', err)
+      showError(err instanceof Error ? err.message : 'Failed to void invoices')
+    }
+  }, [bulkVoidInvoices, selectedIds, showSuccess, showError])
 
   const handleSend = useCallback(async (id: string) => {
-    await sendInvoice.mutateAsync(id)
-    setSelectedInvoice(null)
-  }, [sendInvoice])
+    try {
+      await sendInvoice.mutateAsync(id)
+      setSelectedInvoice(null)
+      showSuccess('Invoice sent')
+    } catch (err) {
+      console.error('Failed to send invoice:', err)
+      showError(err instanceof Error ? err.message : 'Failed to send invoice')
+    }
+  }, [sendInvoice, showSuccess, showError])
 
   const handleBulkSend = useCallback(async () => {
     if (!confirm(`Send ${selectedIds.size} invoices?`)) return
-    await bulkSendInvoices.mutateAsync(Array.from(selectedIds))
-    setSelectedIds(new Set())
-  }, [bulkSendInvoices, selectedIds])
+    try {
+      await bulkSendInvoices.mutateAsync(Array.from(selectedIds))
+      setSelectedIds(new Set())
+      showSuccess(`${selectedIds.size} invoices sent`)
+    } catch (err) {
+      console.error('Failed to send invoices:', err)
+      showError(err instanceof Error ? err.message : 'Failed to send invoices')
+    }
+  }, [bulkSendInvoices, selectedIds, showSuccess, showError])
 
   // NEW: Handle bulk send reminders - with explicit type
   const handleBulkSendReminders = useCallback(async () => {
     if (selectedIds.size === 0) return
-    
+
     // Get the full invoice objects for selected IDs
-    const invoicesToRemind = allInvoices.filter((inv: InvoiceWithDetails) => 
-      selectedIds.has(inv.id) && 
+    const invoicesToRemind = allInvoices.filter((inv: InvoiceWithDetails) =>
+      selectedIds.has(inv.id) &&
       ['sent', 'partial', 'overdue'].includes(inv.status)
     )
 
     if (invoicesToRemind.length === 0) {
-      alert('No outstanding invoices selected')
+      showError('No outstanding invoices selected')
       return
     }
 
@@ -353,15 +391,19 @@ export default function Invoicing() {
     setSendingReminders(true)
     try {
       const result = await bulkSendReminders.mutateAsync({ invoices: invoicesToRemind })
-      alert(`Reminders sent!\n✓ ${result.succeeded} succeeded\n✗ ${result.failed} failed`)
+      if (result.failed > 0) {
+        showError(`Reminders: ${result.succeeded} sent, ${result.failed} failed`)
+      } else {
+        showSuccess(`${result.succeeded} reminders sent`)
+      }
       setSelectedIds(new Set())
     } catch (error) {
       console.error('Failed to send reminders:', error)
-      alert('Failed to send some reminders. Check console for details.')
+      showError(error instanceof Error ? error.message : 'Failed to send reminders')
     } finally {
       setSendingReminders(false)
     }
-  }, [selectedIds, allInvoices, bulkSendReminders])
+  }, [selectedIds, allInvoices, bulkSendReminders, showSuccess, showError])
 
   // Clear selection and filters when changing tabs
   const handleTabChange = useCallback((tab: TabKey) => {

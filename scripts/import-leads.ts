@@ -186,7 +186,10 @@ function processCalendlyRouting(rows: Record<string, string>[]): LeadToInsert[] 
           notes = [notes, age ? `Child age: ${age}` : null, timing ? `Timing: ${timing}` : null]
             .filter(Boolean).join(' | ')
         }
-      } catch {}
+      } catch (err) {
+        // JSON parse failed - answers field may be malformed, continue without enrichment
+        console.warn(`Failed to parse answers JSON for ${row.emailAddress}:`, err)
+      }
 
       return {
         email: row.emailAddress.toLowerCase().trim(),

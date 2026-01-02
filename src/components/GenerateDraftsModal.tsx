@@ -19,6 +19,7 @@ import {
 } from '../lib/hooks'
 import type { BillableEnrollment, PendingEventOrder, PendingClassRegistrationFee } from '../lib/hooks'
 import { multiplyMoney, sumMoney, centsToDollars } from '../lib/moneyUtils'
+import { useToast } from '../lib/toast'
 
 // ============================================================================
 // Types
@@ -140,6 +141,8 @@ interface Props {
 }
 
 export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
+  const { showError, showSuccess, showWarning } = useToast()
+
   // State
   const [invoiceType, setInvoiceType] = useState<InvoiceType>('weekly')
   const [periodStart, setPeriodStart] = useState<string>('')
@@ -643,9 +646,9 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       onSuccess()
     } catch (error) {
       console.error('Failed to generate drafts:', error)
-      alert('Failed to generate drafts. Check console for details.')
+      showError(error instanceof Error ? error.message : 'Failed to generate drafts')
     }
-  }, [selectedCount, generateDrafts, periodStart, periodEnd, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess])
+  }, [selectedCount, generateDrafts, periodStart, periodEnd, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess, showError])
 
   // Generate event invoices - one invoice per family
   const handleGenerateEvents = useCallback(async () => {
@@ -699,17 +702,19 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     // Report results
     if (failed.length > 0) {
       if (succeeded.length > 0) {
-        alert(`Generated ${succeeded.length} invoice(s) successfully.\n\nFailed (${failed.length}):\n${failed.join('\n')}`)
+        showWarning(`Generated ${succeeded.length} invoice(s). ${failed.length} failed.`)
       } else {
-        alert(`Failed to generate invoices:\n${failed.join('\n')}`)
+        showError(`Failed to generate ${failed.length} invoice(s)`)
       }
+    } else if (succeeded.length > 0) {
+      showSuccess(`Generated ${succeeded.length} invoice(s)`)
     }
 
     // Only call onSuccess if at least one succeeded
     if (succeeded.length > 0) {
       onSuccess()
     }
-  }, [selectedEventCount, pendingEventOrders, selectedEventOrders, generateEventInvoice, dueDate, onSuccess])
+  }, [selectedEventCount, pendingEventOrders, selectedEventOrders, generateEventInvoice, dueDate, onSuccess, showError, showSuccess, showWarning])
 
   // Service filter options based on invoice type
   const serviceOptions = invoiceType === 'weekly'
