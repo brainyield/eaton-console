@@ -172,6 +172,17 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
     const errors: string[] = []
     let invoiceUpdated = false
 
+    // Capture original invoice state for potential rollback
+    const originalInvoiceData = {
+      invoice_date: invoice.invoice_date,
+      due_date: invoice.due_date,
+      period_start: invoice.period_start,
+      period_end: invoice.period_end,
+      notes: invoice.notes,
+      subtotal: invoice.subtotal,
+      total_amount: invoice.total_amount,
+    }
+
     try {
       // Update invoice details first
       await updateInvoice.mutateAsync({
@@ -220,16 +231,35 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
         console.log('Items to delete:', deletedItems)
       }
 
-      // Report results
+      // If any line items failed, rollback invoice header to original state
       if (errors.length > 0) {
-        showWarning(`Invoice saved with ${errors.length} error(s). Please review and retry failed items.`)
+        try {
+          await updateInvoice.mutateAsync({
+            id: invoice.id,
+            data: originalInvoiceData,
+          })
+          showError(`Failed to update ${errors.length} line item(s). Invoice has been restored to its original state.`)
+        } catch (rollbackErr) {
+          console.error('Invoice rollback failed:', rollbackErr)
+          showWarning(`Invoice saved but ${errors.length} line item(s) failed. Invoice totals may be inconsistent.`)
+        }
       } else {
         onSuccess()
       }
     } catch (error) {
       console.error('Failed to save invoice:', error)
       if (invoiceUpdated) {
-        showError('Invoice header was saved but line items could not be updated. Please try again.')
+        // Try to rollback the invoice header
+        try {
+          await updateInvoice.mutateAsync({
+            id: invoice.id,
+            data: originalInvoiceData,
+          })
+          showError('Failed to update line items. Invoice has been restored to its original state.')
+        } catch (rollbackErr) {
+          console.error('Invoice rollback failed:', rollbackErr)
+          showError('Invoice header was saved but line items failed. Invoice may be in an inconsistent state.')
+        }
       } else {
         showError(error instanceof Error ? error.message : 'Failed to save changes')
       }

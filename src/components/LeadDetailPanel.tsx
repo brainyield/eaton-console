@@ -162,6 +162,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     // Capture current status to avoid stale closure
     const currentStatus = lead.status
     const leadId = lead.id
+    let activityCreated = false
     try {
       await createActivity.mutateAsync({
         lead_id: leadId,
@@ -169,6 +170,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
         notes: activityNotes.trim() || null,
         contacted_at: new Date().toISOString(),
       })
+      activityCreated = true
       // Auto-update status to contacted if still new (using captured value)
       if (currentStatus === 'new') {
         await updateLead.mutateAsync({ id: leadId, status: 'contacted' })
@@ -178,7 +180,14 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       showSuccess('Activity logged')
     } catch (err) {
       console.error('Failed to log activity:', err)
-      showError(err instanceof Error ? err.message : 'Failed to log activity')
+      if (activityCreated) {
+        // Activity was logged but status update failed - still close form since activity is saved
+        setActivityNotes('')
+        setShowActivityForm(false)
+        showError('Activity logged, but failed to update status to contacted')
+      } else {
+        showError(err instanceof Error ? err.message : 'Failed to log activity')
+      }
     } finally {
       setIsLoggingActivity(false)
     }

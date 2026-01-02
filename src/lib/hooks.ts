@@ -1812,8 +1812,10 @@ export function useInvoiceMutations() {
       }, {} as Record<string, { family: Family | null; enrollments: BillableEnrollment[] }>)
 
       const createdInvoices: Invoice[] = []
+      const failedFamilies: { familyName: string; error: string }[] = []
 
       for (const [familyId, group] of Object.entries(byFamily)) {
+        try {
         // Create invoice
         const invoiceNote = invoiceType === 'weekly'
           ? `For the week of ${new Date(periodStart).toLocaleDateString()} - ${new Date(periodEnd).toLocaleDateString()}`
@@ -1832,7 +1834,13 @@ export function useInvoiceMutations() {
           .select()
           .single()
 
-        if (invError) throw invError
+        if (invError) {
+          failedFamilies.push({
+            familyName: group.family?.display_name || 'Unknown family',
+            error: invError.message || 'Failed to create invoice'
+          })
+          continue
+        }
 
         // Create line items
         let subtotal = 0
@@ -1946,7 +1954,15 @@ export function useInvoiceMutations() {
         const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
           .insert(lineItems)
 
-        if (itemsError) throw itemsError
+        if (itemsError) {
+          // Clean up the created invoice since line items failed
+          await supabase.from('invoices').delete().eq('id', invoice.id)
+          failedFamilies.push({
+            familyName: group.family?.display_name || 'Unknown family',
+            error: itemsError.message || 'Failed to create line items'
+          })
+          continue
+        }
 
         // Update invoice totals
         const { error: updateError } = await (supabase.from('invoices') as any)
@@ -1956,7 +1972,16 @@ export function useInvoiceMutations() {
           })
           .eq('id', invoice.id)
 
-        if (updateError) throw updateError
+        if (updateError) {
+          // Clean up - delete line items and invoice
+          await supabase.from('invoice_line_items').delete().eq('invoice_id', invoice.id)
+          await supabase.from('invoices').delete().eq('id', invoice.id)
+          failedFamilies.push({
+            familyName: group.family?.display_name || 'Unknown family',
+            error: updateError.message || 'Failed to update invoice totals'
+          })
+          continue
+        }
 
         // Link registration fee event_orders to this invoice
         if (pendingRegistrationFees.length > 0) {
@@ -1967,6 +1992,26 @@ export function useInvoiceMutations() {
         }
 
         createdInvoices.push(invoice)
+        } catch (err) {
+          // Catch any unexpected errors in the family processing
+          failedFamilies.push({
+            familyName: group.family?.display_name || 'Unknown family',
+            error: err instanceof Error ? err.message : 'Unknown error'
+          })
+        }
+      }
+
+      // If all families failed, throw an error
+      if (createdInvoices.length === 0 && failedFamilies.length > 0) {
+        throw new Error(`Failed to generate any invoices. Errors: ${failedFamilies.map(f => `${f.familyName}: ${f.error}`).join('; ')}`)
+      }
+
+      // If some families failed, throw an error with partial success info
+      if (failedFamilies.length > 0) {
+        const error = new Error(`Generated ${createdInvoices.length} invoices, but ${failedFamilies.length} failed: ${failedFamilies.map(f => f.familyName).join(', ')}`)
+        // Attach the created invoices to the error so they can still be used
+        ;(error as any).createdInvoices = createdInvoices
+        throw error
       }
 
       return createdInvoices

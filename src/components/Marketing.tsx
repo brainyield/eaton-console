@@ -190,12 +190,14 @@ export default function Marketing() {
       const failed = results.filter(r => r.status === 'rejected').length
 
       if (failed > 0) {
+        // Keep failed items selected for retry
+        const failedIds = selectedLeadIds.filter((_, i) => results[i].status === 'rejected')
+        setSelectedIds(new Set(failedIds))
         showWarning(`Updated ${succeeded} leads. ${failed} failed to update.`)
       } else {
+        setSelectedIds(new Set())
         showSuccess(`${succeeded} leads updated to ${newStatus}`)
       }
-
-      setSelectedIds(new Set())
     } catch (err) {
       console.error('Failed to update leads:', err)
       showError(err instanceof Error ? err.message : 'Failed to update leads')
@@ -224,12 +226,14 @@ export default function Marketing() {
       const failed = results.filter(r => r.status === 'rejected').length
 
       if (failed > 0) {
+        // Keep failed items selected for retry
+        const failedIds = selectedLeadIds.filter((_, i) => results[i].status === 'rejected')
+        setSelectedIds(new Set(failedIds))
         showWarning(`Deleted ${succeeded} leads. ${failed} failed to delete.`)
       } else {
+        setSelectedIds(new Set())
         showSuccess(`${succeeded} leads deleted`)
       }
-
-      setSelectedIds(new Set())
     } catch (err) {
       console.error('Failed to delete leads:', err)
       showError(err instanceof Error ? err.message : 'Failed to delete leads')
@@ -257,11 +261,23 @@ export default function Marketing() {
       )
       setBulkSyncResult({ success: result.success, failed: result.failed })
       if (result.failed > 0) {
+        // Keep failed items selected for retry by matching emails to lead IDs
+        const failedEmails = new Set(
+          result.details
+            .filter(d => d.status === 'rejected')
+            .map(d => d.email.toLowerCase())
+        )
+        const failedLeadIds = selectedLeads
+          .filter(l => failedEmails.has(l.email.toLowerCase()))
+          .map(l => l.id)
+        if (failedLeadIds.length > 0) {
+          setSelectedIds(new Set(failedLeadIds))
+        }
         showWarning(`Synced ${result.success} leads. ${result.failed} failed.`)
       } else {
+        setSelectedIds(new Set())
         showSuccess(`${result.success} leads synced to Mailchimp`)
       }
-      setSelectedIds(new Set())
       // Refresh leads to show updated mailchimp status
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
@@ -549,7 +565,8 @@ export default function Marketing() {
                     <button
                       key={status}
                       onClick={() => handleBulkStatusChange(status)}
-                      className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white capitalize"
+                      disabled={isBulkUpdating}
+                      className="w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white capitalize disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {status}
                     </button>

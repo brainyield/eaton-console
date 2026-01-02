@@ -15,6 +15,7 @@ import {
   Ban,
   Bell,
   History,
+  Loader2,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
@@ -586,18 +587,26 @@ export default function Invoicing() {
                 <button
                   onClick={handleBulkSend}
                   disabled={bulkSendInvoices.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Send className="w-4 h-4" />
-                  Send Selected
+                  {bulkSendInvoices.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                  {bulkSendInvoices.isPending ? 'Sending...' : 'Send Selected'}
                 </button>
                 <button
                   onClick={handleBulkDelete}
                   disabled={bulkDeleteInvoices.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Trash2 className="w-4 h-4" />
-                  Delete
+                  {bulkDeleteInvoices.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="w-4 h-4" />
+                  )}
+                  {bulkDeleteInvoices.isPending ? 'Deleting...' : 'Delete'}
                 </button>
               </>
             )}
@@ -608,18 +617,26 @@ export default function Invoicing() {
                 <button
                   onClick={handleBulkSendReminders}
                   disabled={sendingReminders}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Bell className="w-4 h-4" />
+                  {sendingReminders ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Bell className="w-4 h-4" />
+                  )}
                   {sendingReminders ? 'Sending...' : 'Send Reminder'}
                 </button>
                 <button
                   onClick={handleBulkVoid}
                   disabled={bulkVoidInvoices.isPending}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Ban className="w-4 h-4" />
-                  Void Selected
+                  {bulkVoidInvoices.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Ban className="w-4 h-4" />
+                  )}
+                  {bulkVoidInvoices.isPending ? 'Voiding...' : 'Void Selected'}
                 </button>
               </>
             )}

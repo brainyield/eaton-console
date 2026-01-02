@@ -4,7 +4,8 @@ import {
   AlertCircle,
   CheckCircle,
   RefreshCw,
-  AlertTriangle
+  AlertTriangle,
+  Loader2
 } from 'lucide-react'
 import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type Lead } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
@@ -519,9 +520,16 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
               <button
                 onClick={handleParse}
                 disabled={!csvText.trim() || isParsing}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isParsing ? 'Parsing...' : 'Parse & Preview'}
+                {isParsing ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Parsing...
+                  </>
+                ) : (
+                  'Parse & Preview'
+                )}
               </button>
             </>
           )}
@@ -537,7 +545,7 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
               <button
                 onClick={handleImport}
                 disabled={leadsToImport.length === 0}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Import {leadsToImport.length} Leads
               </button>

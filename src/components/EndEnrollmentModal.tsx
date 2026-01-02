@@ -38,10 +38,15 @@ export function EndEnrollmentModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     if (!enrollment) return;
 
     setError(null);
+
+    // Capture original state for potential rollback
+    const originalStatus = enrollment.status;
+    const originalEndDate = enrollment.end_date;
+    let enrollmentUpdated = false;
 
     try {
       // End the enrollment
@@ -52,6 +57,7 @@ export function EndEnrollmentModal({
           end_date: endDate,
         }
       });
+      enrollmentUpdated = true;
 
       // End all active teacher assignments for this enrollment
       await endAssignmentsByEnrollment.mutateAsync({
@@ -65,12 +71,30 @@ export function EndEnrollmentModal({
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() });
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.roster() });
-      
+
       onSuccess?.();
       handleClose();
     } catch (err) {
       console.error('Error ending enrollment:', err);
-      setError(err instanceof Error ? err.message : 'Failed to end enrollment. Please try again.');
+
+      // If enrollment was updated but assignments failed, attempt rollback
+      if (enrollmentUpdated) {
+        try {
+          await updateEnrollment.mutateAsync({
+            id: enrollment.id,
+            data: {
+              status: originalStatus,
+              end_date: originalEndDate,
+            }
+          });
+          setError('Failed to end teacher assignments. Enrollment has been restored to its original state.');
+        } catch (rollbackErr) {
+          console.error('Rollback failed:', rollbackErr);
+          setError('Failed to end teacher assignments. Enrollment status may be inconsistent - please check and try again.');
+        }
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to end enrollment. Please try again.');
+      }
     }
   }
 

@@ -7,7 +7,7 @@ import { getTodayString } from '../lib/dateUtils'
 import type { CustomerStatus, LeadType } from '../lib/hooks'
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
-  Download, Trash2, RefreshCw, X
+  Download, Trash2, RefreshCw, X, Loader2
 } from 'lucide-react'
 import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
@@ -482,6 +482,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   
   // Bulk action states
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // Modal state
   const [showAddFamily, setShowAddFamily] = useState(false)
@@ -653,26 +654,32 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const isSomeSelected = selectedIds.size > 0
 
   // Export selected to CSV
-  const handleExportCSV = () => {
-    const selected = families.filter(f => selectedIds.has(f.id))
-    const headers = ['Family Name', 'Status', 'Email', 'Phone', 'Students', 'Balance']
-    const rows = selected.map(f => [
-      f.display_name,
-      f.status,
-      f.primary_email || '',
-      f.primary_phone || '',
-      (f.students || []).map(s => s.full_name).join('; '),
-      f.total_balance.toFixed(2)
-    ])
-    
-    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `families-export-${getTodayString()}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+  const handleExportCSV = async () => {
+    if (isExporting) return
+    setIsExporting(true)
+    try {
+      const selected = families.filter(f => selectedIds.has(f.id))
+      const headers = ['Family Name', 'Status', 'Email', 'Phone', 'Students', 'Balance']
+      const rows = selected.map(f => [
+        f.display_name,
+        f.status,
+        f.primary_email || '',
+        f.primary_phone || '',
+        (f.students || []).map(s => s.full_name).join('; '),
+        f.total_balance.toFixed(2)
+      ])
+
+      const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n')
+      const blob = new Blob([csv], { type: 'text/csv' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `families-export-${getTodayString()}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setIsExporting(false)
+    }
   }
 
   // Handle bulk status change
@@ -753,9 +760,14 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <div className="relative">
                 <button
                   onClick={() => setShowStatusDropdown(!showStatusDropdown)}
-                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors"
+                  disabled={bulkUpdateStatus.isPending}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <RefreshCw className="h-4 w-4" />
+                  {bulkUpdateStatus.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
                   Change Status
                 </button>
                 {showStatusDropdown && (
@@ -764,7 +776,8 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                       <button
                         key={status}
                         onClick={() => handleBulkStatusChange(status)}
-                        className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 capitalize"
+                        disabled={bulkUpdateStatus.isPending}
+                        className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-zinc-700 capitalize disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {status}
                       </button>
@@ -776,9 +789,14 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               {/* Export CSV */}
               <button
                 onClick={handleExportCSV}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors"
+                disabled={isExporting}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Download className="h-4 w-4" />
+                {isExporting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4" />
+                )}
                 Export CSV
               </button>
 
@@ -786,9 +804,13 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <button
                 onClick={handleBulkDelete}
                 disabled={bulkDelete.isPending}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600/80 hover:bg-red-600 rounded-md text-white transition-colors disabled:opacity-50"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600/80 hover:bg-red-600 rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Trash2 className="h-4 w-4" />
+                {bulkDelete.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
                 Delete
               </button>
 
