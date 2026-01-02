@@ -566,7 +566,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     if (!editingId) return
     
     const newAmount = parseFloat(editValue)
-    if (isNaN(newAmount) || newAmount < 0) {
+    if (Number.isNaN(newAmount) || newAmount < 0) {
       setEditingId(null)
       return
     }
@@ -867,7 +867,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                       </label>
                       <select
                         value={globalWeeks}
-                        onChange={e => setGlobalWeeks(parseInt(e.target.value))}
+                        onChange={e => setGlobalWeeks(parseInt(e.target.value, 10) || 1)}
                         className="px-2 py-1 bg-zinc-800 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-cyan-500"
                       >
                         {[1, 2, 3, 4, 5].map(n => (
@@ -884,7 +884,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                       </label>
                       <select
                         value={globalSessions}
-                        onChange={e => setGlobalSessions(parseInt(e.target.value))}
+                        onChange={e => setGlobalSessions(parseInt(e.target.value, 10) || 4)}
                         className="px-2 py-1 bg-zinc-800 border border-zinc-600 rounded text-white text-sm focus:outline-none focus:border-green-500"
                       >
                         {[2, 3, 4, 5].map(n => (

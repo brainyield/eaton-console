@@ -229,7 +229,7 @@ export default function InvoiceDetailPanel({
     if (!invoice || isProcessing) return
 
     const amount = parseFloat(paymentAmount)
-    if (isNaN(amount) || amount <= 0) {
+    if (Number.isNaN(amount) || amount <= 0) {
       showError('Please enter a valid payment amount')
       return
     }

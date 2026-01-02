@@ -89,7 +89,7 @@ function TeacherSection({
 
   const handleEditSave = (itemId: string) => {
     const hours = parseFloat(editValue)
-    if (!isNaN(hours) && hours >= 0) {
+    if (!Number.isNaN(hours) && hours >= 0) {
       onUpdateHours(itemId, hours)
     }
     setEditingItemId(null)

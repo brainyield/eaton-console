@@ -27,7 +27,8 @@ export default function PayrollAdjustmentModal({ onClose, onSuccess }: Props) {
       setError('Please select a teacher')
       return
     }
-    if (!amount || parseFloat(amount) <= 0) {
+    const parsedAmount = parseFloat(amount)
+    if (!amount || Number.isNaN(parsedAmount) || parsedAmount <= 0) {
       setError('Please enter a valid amount')
       return
     }
@@ -39,7 +40,7 @@ export default function PayrollAdjustmentModal({ onClose, onSuccess }: Props) {
     setIsSubmitting(true)
 
     try {
-      const adjustmentAmount = parseFloat(amount) * (isPositive ? 1 : -1)
+      const adjustmentAmount = parsedAmount * (isPositive ? 1 : -1)
 
       await createAdjustment.mutateAsync({
         teacherId,

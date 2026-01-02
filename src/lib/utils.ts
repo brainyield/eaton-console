@@ -57,7 +57,7 @@ export function calculateAge(dob: string | null | undefined): number | null {
 
   // Parse as local date to avoid timezone issues
   const birthDate = parseLocalDate(dob);
-  if (isNaN(birthDate.getTime())) return null;
+  if (Number.isNaN(birthDate.getTime())) return null;
 
   const today = new Date();
   let age = today.getFullYear() - birthDate.getFullYear();

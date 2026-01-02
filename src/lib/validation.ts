@@ -28,7 +28,7 @@ export function validateEmail(email: string): string | null {
 export function parsePositiveFloat(value: string): number | null {
   if (!value || value.trim() === '') return null
   const num = parseFloat(value)
-  if (isNaN(num) || num < 0) return null
+  if (Number.isNaN(num) || num < 0) return null
   return num
 }
 
@@ -39,7 +39,7 @@ export function parsePositiveFloat(value: string): number | null {
 export function parsePositiveInt(value: string): number | null {
   if (!value || value.trim() === '') return null
   const num = parseInt(value, 10)
-  if (isNaN(num) || num < 0) return null
+  if (Number.isNaN(num) || num < 0) return null
   return num
 }
 
@@ -54,7 +54,7 @@ export function parseFloatInRange(
 ): number | null {
   if (!value || value.trim() === '') return null
   const num = parseFloat(value)
-  if (isNaN(num) || num < min || num > max) return null
+  if (Number.isNaN(num) || num < min || num > max) return null
   return num
 }
 
@@ -69,7 +69,7 @@ export function parseIntInRange(
 ): number | null {
   if (!value || value.trim() === '') return null
   const num = parseInt(value, 10)
-  if (isNaN(num) || num < min || num > max) return null
+  if (Number.isNaN(num) || num < min || num > max) return null
   return num
 }
 
@@ -79,7 +79,7 @@ export function parseIntInRange(
 export function isValidDateString(dateStr: string): boolean {
   if (!dateStr) return false
   const date = new Date(dateStr)
-  return !isNaN(date.getTime())
+  return !Number.isNaN(date.getTime())
 }
 
 /**
@@ -89,7 +89,7 @@ export function isValidDateRange(startDate: string, endDate: string): boolean {
   if (!startDate || !endDate) return true // If either is empty, skip range check
   const start = new Date(startDate)
   const end = new Date(endDate)
-  if (isNaN(start.getTime()) || isNaN(end.getTime())) return false
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
   return start <= end
 }
 

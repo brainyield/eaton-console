@@ -576,7 +576,7 @@ function PayrollTab({
       }
 
       // Handle numbers
-      if (typeof aVal === 'string' && !isNaN(parseFloat(aVal))) {
+      if (typeof aVal === 'string' && !Number.isNaN(parseFloat(aVal))) {
         aVal = parseFloat(aVal)
         bVal = parseFloat(bVal)
       }
@@ -608,7 +608,10 @@ function PayrollTab({
   }
 
   // Calculate total paid
-  const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.total_amount || 0), 0)
+  const totalPaid = payments.reduce((sum, p) => {
+    const amount = parseFloat(p.total_amount || '0')
+    return sum + (Number.isNaN(amount) ? 0 : amount)
+  }, 0)
 
   if (isLoading) {
     return (
@@ -683,10 +686,13 @@ function PayrollTab({
                     {formatDateRange(payment.pay_period_start, payment.pay_period_end)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-green-400">
-                    ${parseFloat(payment.total_amount).toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}
+                    ${(() => {
+                      const amount = parseFloat(payment.total_amount)
+                      return (Number.isNaN(amount) ? 0 : amount).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-400">
                     {payment.payment_method || '—'}

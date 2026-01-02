@@ -356,7 +356,7 @@ export default function Settings() {
                   max="90"
                   value={invoiceDefaults.due_days}
                   onChange={(e) =>
-                    setInvoiceDefaults({ ...invoiceDefaults, due_days: parseInt(e.target.value) || 15 })
+                    setInvoiceDefaults({ ...invoiceDefaults, due_days: parseInt(e.target.value, 10) || 15 })
                   }
                   className="w-32 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -390,7 +390,7 @@ export default function Settings() {
                   min="1"
                   value={invoiceDefaults.next_number}
                   onChange={(e) =>
-                    setInvoiceDefaults({ ...invoiceDefaults, next_number: parseInt(e.target.value) || 1 })
+                    setInvoiceDefaults({ ...invoiceDefaults, next_number: parseInt(e.target.value, 10) || 1 })
                   }
                   className="w-32 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -525,7 +525,7 @@ export default function Settings() {
                   min="0"
                   value={monthlyRates.elective_classes?.default || 250}
                   onChange={(e) =>
-                    updateMonthlyRate('elective_classes', 'default', parseInt(e.target.value) || 0)
+                    updateMonthlyRate('elective_classes', 'default', parseInt(e.target.value, 10) || 0)
                   }
                   className="w-32 px-3 py-2 bg-gray-900 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
@@ -550,7 +550,7 @@ export default function Settings() {
                       min="0"
                       value={monthlyRates.learning_pod?.[key] || 0}
                       onChange={(e) =>
-                        updateMonthlyRate('learning_pod', key, parseInt(e.target.value) || 0)
+                        updateMonthlyRate('learning_pod', key, parseInt(e.target.value, 10) || 0)
                       }
                       className="w-24 px-2 py-1 bg-gray-900 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />

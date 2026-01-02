@@ -192,7 +192,7 @@ export function AddEnrollmentModal({
     if (code === 'eaton_online' && formData.weekly_tuition) {
       const weekly = parseFloat(formData.weekly_tuition);
       if (formData.number_of_weeks) {
-        const total = multiplyMoney(weekly, parseInt(formData.number_of_weeks));
+        const total = multiplyMoney(weekly, parseInt(formData.number_of_weeks, 10) || 0);
         return `$${weekly.toFixed(2)}/week × ${formData.number_of_weeks} weeks = $${total.toFixed(2)} total`;
       }
       return `$${weekly.toFixed(2)}/week`;

@@ -74,7 +74,7 @@ export function dollarsToCents(dollars: number): number {
  * formatCurrency(1234.56) // "$1,234.56"
  */
 export function formatCurrency(amount: number | null | undefined): string {
-  if (amount == null || isNaN(amount)) return '$0.00'
+  if (amount == null || Number.isNaN(amount)) return '$0.00'
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
@@ -92,7 +92,7 @@ export function formatCurrency(amount: number | null | undefined): string {
  * formatMoneyValue(null)  // "0.00"
  */
 export function formatMoneyValue(amount: number | null | undefined): string {
-  if (amount == null || isNaN(amount)) return '0.00'
+  if (amount == null || Number.isNaN(amount)) return '0.00'
   return amount.toFixed(2)
 }
 
@@ -105,7 +105,7 @@ export function formatMoneyValue(amount: number | null | undefined): string {
  * formatRate(100, 'mo')  // "$100.00/mo"
  */
 export function formatRate(amount: number | null | undefined, unit: string = 'hr'): string {
-  if (amount == null || isNaN(amount)) return '-'
+  if (amount == null || Number.isNaN(amount)) return '-'
   return `$${amount.toFixed(2)}/${unit}`
 }
 
@@ -126,7 +126,7 @@ export function parseMoneyInput(value: string, allowNegative: boolean = false): 
   const cleaned = value.replace(/[$,]/g, '').trim()
   const parsed = parseFloat(cleaned)
 
-  if (isNaN(parsed)) return null
+  if (Number.isNaN(parsed)) return null
   if (!allowNegative && parsed < 0) return null
 
   return Math.round(parsed * 100) / 100
@@ -167,6 +167,6 @@ export function calculatePercentage(part: number, total: number, decimals: numbe
  * formatPercentage(33.333)  // "33.3%"
  */
 export function formatPercentage(value: number | null | undefined, decimals: number = 1): string {
-  if (value == null || isNaN(value)) return '0%'
+  if (value == null || Number.isNaN(value)) return '0%'
   return `${value.toFixed(decimals)}%`
 }
