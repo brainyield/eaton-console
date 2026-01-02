@@ -535,9 +535,14 @@ export function useStudentMutations() {
       if (error) throw error
       return student
     },
-    onSuccess: () => {
+    onSuccess: (student) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.students.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate family detail to update student list in family view
+      if (student.family_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.families.detail(student.family_id) })
+        queryClient.invalidateQueries({ queryKey: queryKeys.students.byFamily(student.family_id) })
+      }
     },
   })
 
@@ -1083,10 +1088,18 @@ export function useEnrollmentMutations() {
 
       return enrollment
     },
-    onSuccess: () => {
+    onSuccess: (enrollment) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherAssignments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate family/student-scoped enrollment queries
+      if (enrollment.family_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(enrollment.family_id) })
+      }
+      if (enrollment.student_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byStudent(enrollment.student_id) })
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.billable() })
     },
   })
 
@@ -1100,20 +1113,45 @@ export function useEnrollmentMutations() {
       if (error) throw error
       return enrollment
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (enrollment, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.detail(variables.id) })
+      // Invalidate family/student-scoped enrollment queries
+      if (enrollment.family_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(enrollment.family_id) })
+      }
+      if (enrollment.student_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byStudent(enrollment.student_id) })
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.billable() })
     },
   })
 
   const deleteEnrollment = useMutation({
     mutationFn: async (id: string) => {
+      // Fetch the enrollment first to get family_id and student_id for invalidation
+      const { data: enrollment, error: fetchError } = await (supabase.from('enrollments') as any)
+        .select('family_id, student_id')
+        .eq('id', id)
+        .single()
+      if (fetchError) throw fetchError
+
       const { error } = await supabase.from('enrollments').delete().eq('id', id)
       if (error) throw error
+
+      return enrollment
     },
-    onSuccess: () => {
+    onSuccess: (enrollment) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate family/student-scoped enrollment queries
+      if (enrollment?.family_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byFamily(enrollment.family_id) })
+      }
+      if (enrollment?.student_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byStudent(enrollment.student_id) })
+      }
+      queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.billable() })
     },
   })
 
@@ -1577,7 +1615,7 @@ export interface PendingEventOrder {
 // Classes are billed via Monthly invoices with registration fees
 export function usePendingEventOrders(familyId?: string) {
   return useQuery({
-    queryKey: ['event_orders', 'pending', 'events', familyId || 'all'],
+    queryKey: queryKeys.eventOrders.pendingEvents(familyId),
     queryFn: async () => {
       let query = supabase
         .from('event_orders')
@@ -1649,7 +1687,7 @@ export interface PendingClassRegistrationFee {
 // These are event_orders for classes (not single events) that haven't been invoiced yet
 export function usePendingClassRegistrationFees() {
   return useQuery({
-    queryKey: ['event_orders', 'pending', 'classes'],
+    queryKey: queryKeys.eventOrders.pendingClasses(),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('event_orders')
@@ -1711,7 +1749,7 @@ export interface InvoicePayment {
 // Hook to fetch payment history for an invoice
 export function useInvoicePayments(invoiceId: string) {
   return useQuery({
-    queryKey: ['invoice_payments', invoiceId],
+    queryKey: queryKeys.invoicePayments.byInvoice(invoiceId),
     queryFn: async () => {
       const { data, error } = await (supabase.from('payments') as any)
         .select('*')
@@ -2107,7 +2145,7 @@ export function useInvoiceMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
-      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
     },
   })
 
@@ -2141,7 +2179,7 @@ export function useInvoiceMutations() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.id) })
-      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
     },
   })
 
@@ -2155,8 +2193,12 @@ export function useInvoiceMutations() {
       if (error) throw error
       return lineItem
     },
-    onSuccess: () => {
+    onSuccess: (lineItem) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      // Invalidate the specific invoice detail to refresh line items
+      if (lineItem.invoice_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(lineItem.invoice_id) })
+      }
     },
   })
 
@@ -2172,7 +2214,7 @@ export function useInvoiceMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
-      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
     },
   })
 
@@ -2188,7 +2230,7 @@ export function useInvoiceMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
-      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
     },
   })
 
@@ -2202,8 +2244,9 @@ export function useInvoiceMutations() {
       if (error) throw error
       return invoice
     },
-    onSuccess: () => {
+    onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(id) })
     },
   })
 
@@ -2213,9 +2256,14 @@ export function useInvoiceMutations() {
         .update({ status: 'void' })
         .in('id', ids)
       if (error) throw error
+      return ids
     },
-    onSuccess: () => {
+    onSuccess: (ids) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      // Invalidate detail for each voided invoice
+      ids.forEach((id) => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(id) })
+      })
     },
   })
 
@@ -2308,8 +2356,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.invoiceId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
-      queryClient.invalidateQueries({ queryKey: ['event_orders', 'pending'] })
-      queryClient.invalidateQueries({ queryKey: ['invoice_payments', variables.invoiceId] })
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoicePayments.byInvoice(variables.invoiceId) })
     },
   })
 
@@ -2468,6 +2516,7 @@ export function useInvoiceMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoiceEmails.all })
     },
   })
 
@@ -3640,9 +3689,13 @@ export function usePayrollMutations() {
         .eq('id', id)
 
       if (error) throw error
+      return id
     },
-    onSuccess: () => {
+    onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      // Clear cached detail data for the deleted run
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runDetail(id) })
     },
   })
 
@@ -3937,9 +3990,12 @@ export function useLeadMutations() {
         .delete()
         .eq('id', id)
       if (error) throw error
+      return id
     },
-    onSuccess: () => {
+    onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      // Clear cached detail data for the deleted lead
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(id) })
     },
   })
 
@@ -4345,8 +4401,10 @@ export function useFollowUpMutations() {
       if (error) throw error
       return data as LeadFollowUp
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.all })
+    onSuccess: (followUp) => {
+      // Use targeted invalidations instead of broad all
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(followUp.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
     },
   })
 
@@ -4362,8 +4420,10 @@ export function useFollowUpMutations() {
       if (error) throw error
       return data as LeadFollowUp
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.all })
+    onSuccess: (followUp) => {
+      // Use targeted invalidations instead of broad all
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(followUp.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
     },
   })
 

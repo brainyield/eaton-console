@@ -208,4 +208,18 @@ export const queryKeys = {
     byLead: (leadId: string) => ['leadFollowUps', 'byLead', leadId] as const,
     upcoming: () => ['leadFollowUps', 'upcoming'] as const,
   },
+
+  // Event Orders
+  eventOrders: {
+    all: ['event_orders'] as const,
+    pending: () => ['event_orders', 'pending'] as const,
+    pendingEvents: (familyId?: string) => ['event_orders', 'pending', 'events', familyId || 'all'] as const,
+    pendingClasses: () => ['event_orders', 'pending', 'classes'] as const,
+  },
+
+  // Invoice Payments
+  invoicePayments: {
+    all: ['invoice_payments'] as const,
+    byInvoice: (invoiceId: string) => ['invoice_payments', invoiceId] as const,
+  },
 }
