@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Search,
@@ -18,7 +19,8 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Download
+  Download,
+  X
 } from 'lucide-react'
 import { useEnrollments, useActiveServices } from '../lib/hooks'
 import type { Service, Enrollment } from '../lib/hooks'
@@ -127,19 +129,30 @@ const serviceIcons: Record<string, typeof BookOpen> = {
 
 export default function ActiveRoster() {
   const queryClient = useQueryClient()
-  
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // URL-based filters
+  const newThisMonth = searchParams.get('newThisMonth') === 'true'
+
+  // Calculate month start for "new this month" filter
+  const monthStart = useMemo(() => {
+    if (!newThisMonth) return undefined
+    const now = new Date()
+    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  }, [newThisMonth])
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedStatus, setSelectedStatus] = useState<'all' | EnrollmentStatus>('active')
+  const [selectedStatus, setSelectedStatus] = useState<'all' | EnrollmentStatus>(newThisMonth ? 'all' : 'active')
   const [selectedServiceCode, setSelectedServiceCode] = useState('all')
   const [groupBy, setGroupBy] = useState<'service' | 'teacher' | 'none'>('service')
-  
+
   // UI State - FIX #1: Initialize as EMPTY set (all groups collapsed)
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-  
+
   // FIX #2: Sorting state per group
   const [sortConfigs, setSortConfigs] = useState<Record<string, SortConfig>>({})
-  
+
   // Modal/Panel State
   const [selectedEnrollment, setSelectedEnrollment] = useState<EnrollmentWithRelations | null>(null)
   const [showDetailPanel, setShowDetailPanel] = useState(false)
@@ -151,23 +164,31 @@ export default function ActiveRoster() {
 
   // Fetch services for the filter dropdown
   const { data: services = [] } = useActiveServices()
-  
+
   // FIX #3 & #4: Get service ID from service code for the query
   const selectedServiceId = useMemo(() => {
     if (selectedServiceCode === 'all') return undefined
     const service = services.find(s => s.code === selectedServiceCode)
     return service?.id
   }, [selectedServiceCode, services])
-  
+
   // Fetch enrollments - now passing actual service ID
-  const { 
-    data: enrollmentsData, 
-    isLoading, 
-    error 
-  } = useEnrollments({ 
+  const {
+    data: enrollmentsData,
+    isLoading,
+    error
+  } = useEnrollments({
     status: selectedStatus !== 'all' ? selectedStatus : undefined,
-    serviceId: selectedServiceId
+    serviceId: selectedServiceId,
+    createdFrom: monthStart
   })
+
+  // Clear the newThisMonth filter
+  function clearNewThisMonthFilter() {
+    searchParams.delete('newThisMonth')
+    setSearchParams(searchParams)
+    setSelectedStatus('active')
+  }
   
   const enrollments = (enrollmentsData || []) as EnrollmentWithRelations[]
 
@@ -485,7 +506,7 @@ export default function ActiveRoster() {
         <div>
           <h1 className="text-xl font-semibold text-white">Active Roster</h1>
           <p className="text-sm text-gray-400 mt-1">
-            {stats.enrollments} enrollments • {stats.families} families
+            {stats.enrollments} enrollment{stats.enrollments !== 1 ? 's' : ''} • {stats.families} famil{stats.families !== 1 ? 'ies' : 'y'}
             {stats.hoursPerWeek > 0 && (
               <span className="ml-2 px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs">
                 {stats.hoursPerWeek.toFixed(2)} hrs/week
@@ -501,6 +522,22 @@ export default function ActiveRoster() {
           Add Enrollment
         </button>
       </div>
+
+      {/* Active Filter Badge */}
+      {newThisMonth && (
+        <div className="mb-4">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-full text-sm">
+            <span>New Enrollments This Month</span>
+            <button
+              onClick={clearNewThisMonthFilter}
+              className="hover:bg-green-500/30 rounded-full p-0.5 transition-colors"
+              title="Clear filter"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-4 mb-6">

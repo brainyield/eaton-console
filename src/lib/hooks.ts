@@ -976,7 +976,7 @@ export interface EnrollmentWithDetails extends Enrollment {
 // ENROLLMENTS HOOKS
 // =============================================================================
 
-export function useEnrollments(filters?: { status?: string; serviceId?: string; limit?: number }) {
+export function useEnrollments(filters?: { status?: string; serviceId?: string; createdFrom?: string; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.enrollments.list(filters),
     queryFn: async () => {
@@ -1000,6 +1000,10 @@ export function useEnrollments(filters?: { status?: string; serviceId?: string; 
 
       if (filters?.serviceId) {
         query = query.eq('service_id', filters.serviceId)
+      }
+
+      if (filters?.createdFrom) {
+        query = query.gte('created_at', filters.createdFrom)
       }
 
       const { data, error } = await query

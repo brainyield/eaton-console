@@ -82,10 +82,6 @@ function useDashboardStats() {
       const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
       const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString()
 
-      // For same-period enrollment comparison (first N days of each month)
-      const dayOfMonth = now.getDate()
-      const samePeriodLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, dayOfMonth).toISOString()
-
       // For 90-day profit margin
       const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -162,18 +158,18 @@ function useDashboardStats() {
           .eq('invoice.status', 'paid')
           .gte('invoice.paid_at', ninetyDaysAgo),
 
-        // New enrollments this month
+        // New enrollments this month (based on when enrollment was created, not start_date)
         supabase
           .from('enrollments')
           .select('id', { count: 'exact', head: true })
-          .gte('start_date', monthStart),
+          .gte('created_at', monthStart),
 
-        // Enrollments same period last month (first N days, for fair comparison)
+        // Total enrollments created last month (full month)
         supabase
           .from('enrollments')
           .select('id', { count: 'exact', head: true })
-          .gte('start_date', lastMonthStart)
-          .lte('start_date', samePeriodLastMonth),
+          .gte('created_at', lastMonthStart)
+          .lte('created_at', lastMonthEnd),
 
         // Unopened invoices (sent but never viewed)
         supabase
@@ -347,9 +343,13 @@ function useDashboardStats() {
       // Enrollments change
       const enrollmentsLastMonth = lastMonthEnrollmentsResult.count || 0
       const newEnrollmentsThisMonth = newEnrollmentsResult.count || 0
-      const enrollmentsChange = enrollmentsLastMonth > 0
-        ? ((newEnrollmentsThisMonth - enrollmentsLastMonth) / enrollmentsLastMonth) * 100
-        : 0
+      let enrollmentsChange = 0
+      if (enrollmentsLastMonth > 0) {
+        enrollmentsChange = ((newEnrollmentsThisMonth - enrollmentsLastMonth) / enrollmentsLastMonth) * 100
+      } else if (newEnrollmentsThisMonth > 0) {
+        // If last month was 0 and this month has enrollments, show 100% growth
+        enrollmentsChange = 100
+      }
 
       return {
         activeStudents: uniqueActiveStudents,
@@ -541,10 +541,11 @@ export default function CommandCenter() {
     {
       label: 'New Enrollments',
       value: stats?.newEnrollmentsThisMonth ?? 0,
-      sub: 'This month',
+      sub: `This month (${stats?.enrollmentsLastMonth ?? 0} last month)`,
       icon: UserPlus,
       color: 'text-green-400',
       change: stats?.enrollmentsChange,
+      link: '/roster?newThisMonth=true',
     },
   ]
 
@@ -607,16 +608,37 @@ export default function CommandCenter() {
 
       {/* Secondary Stats Row */}
       <div className="grid grid-cols-3 gap-4">
-        {secondaryStats.map((stat) => (
-          <div key={stat.label} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
-            <stat.icon className={`w-5 h-5 ${stat.color}`} />
-            <div className="flex-1">
-              <div className={`text-lg font-semibold ${stat.color}`}>{stat.value}</div>
-              <div className="text-xs text-muted-foreground">{stat.label}</div>
+        {secondaryStats.map((stat) => {
+          const content = (
+            <>
+              <stat.icon className={`w-5 h-5 ${stat.color}`} />
+              <div className="flex-1">
+                <div className={`text-lg font-semibold ${stat.color}`}>{stat.value}</div>
+                <div className="text-xs text-muted-foreground">{stat.label}</div>
+                {stat.sub && <div className="text-xs text-muted-foreground/70">{stat.sub}</div>}
+              </div>
+              {stat.change !== undefined && <ChangeIndicator value={stat.change} />}
+            </>
+          )
+
+          if (stat.link) {
+            return (
+              <button
+                key={stat.label}
+                onClick={() => navigate(stat.link!)}
+                className="bg-card border border-border rounded-lg p-3 flex items-center gap-3 hover:bg-accent hover:border-accent transition-colors text-left"
+              >
+                {content}
+              </button>
+            )
+          }
+
+          return (
+            <div key={stat.label} className="bg-card border border-border rounded-lg p-3 flex items-center gap-3">
+              {content}
             </div>
-            {stat.change !== undefined && <ChangeIndicator value={stat.change} />}
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* Three Column Layout */}
