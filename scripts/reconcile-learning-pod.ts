@@ -528,7 +528,7 @@ async function main() {
       const { data: existingFamily } = await supabase
         .from('families')
         .select('id, display_name')
-        .eq('primary_email', email)
+        .ilike('primary_email', email)
         .single()
 
       let familyId: string
