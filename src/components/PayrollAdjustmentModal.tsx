@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { X, DollarSign, AlertCircle } from 'lucide-react'
+import { DollarSign, AlertCircle } from 'lucide-react'
+import { AccessibleModal } from './ui/AccessibleModal'
 import { useActiveTeachers, usePayrollMutations } from '../lib/hooks'
 
 interface Props {
@@ -49,157 +50,154 @@ export default function PayrollAdjustmentModal({ onClose, onSuccess }: Props) {
       })
 
       onSuccess()
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to create adjustment:', err)
-      setError(err.message || 'Failed to create adjustment')
+      setError(err instanceof Error ? err.message : 'Failed to create adjustment')
     } finally {
       setIsSubmitting(false)
     }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-md mx-4 shadow-xl">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
-          <h2 className="text-lg font-semibold text-white">Add Payroll Adjustment</h2>
-          <button
-            onClick={onClose}
-            className="p-1 text-zinc-400 hover:text-white transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <AccessibleModal
+      isOpen={true}
+      onClose={onClose}
+      title="Add Payroll Adjustment"
+      size="md"
+    >
+      {/* Content */}
+      <form onSubmit={handleSubmit}>
+        <div className="p-6 space-y-5">
+          {/* Teacher Select */}
+          <div>
+            <label htmlFor="teacher-select" className="block text-sm font-medium text-zinc-300 mb-2">
+              Teacher
+            </label>
+            <select
+              id="teacher-select"
+              value={teacherId}
+              onChange={(e) => setTeacherId(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="">Select a teacher...</option>
+              {teachers.map(teacher => (
+                <option key={teacher.id} value={teacher.id}>
+                  {teacher.display_name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Amount */}
+          <div>
+            <label htmlFor="adjustment-amount" className="block text-sm font-medium text-zinc-300 mb-2">
+              Amount
+            </label>
+            <div className="flex gap-2">
+              {/* Sign Toggle */}
+              <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+                <button
+                  type="button"
+                  onClick={() => setIsPositive(true)}
+                  className={`px-3 py-2 text-sm font-medium transition-colors ${
+                    isPositive
+                      ? 'bg-green-600 text-white'
+                      : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                  aria-pressed={isPositive}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPositive(false)}
+                  className={`px-3 py-2 text-sm font-medium transition-colors ${
+                    !isPositive
+                      ? 'bg-red-600 text-white'
+                      : 'bg-zinc-800 text-zinc-400 hover:text-white'
+                  }`}
+                  aria-pressed={!isPositive}
+                >
+                  -
+                </button>
+              </div>
+
+              {/* Amount Input */}
+              <div className="relative flex-1">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" aria-hidden="true" />
+                <input
+                  type="number"
+                  id="adjustment-amount"
+                  step="0.01"
+                  min="0"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  required
+                />
+              </div>
+            </div>
+            <p className="text-xs text-zinc-500 mt-1">
+              {isPositive ? 'Amount owed to teacher' : 'Deduction from teacher pay'}
+            </p>
+          </div>
+
+          {/* Reason */}
+          <div>
+            <label htmlFor="adjustment-reason" className="block text-sm font-medium text-zinc-300 mb-2">
+              Reason <span className="text-red-400">*</span>
+            </label>
+            <textarea
+              id="adjustment-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g., Missed 2 hours from previous pay period"
+              rows={3}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              required
+            />
+          </div>
+
+          {/* Info Box */}
+          <div className="bg-zinc-800/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" aria-hidden="true" />
+              <div className="text-sm text-zinc-400">
+                <p>
+                  This adjustment will be automatically applied to the next payroll run.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Error */}
+          {error && (
+            <div role="alert" className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400">
+              {error}
+            </div>
+          )}
         </div>
 
-        {/* Content */}
-        <form onSubmit={handleSubmit}>
-          <div className="p-6 space-y-5">
-            {/* Teacher Select */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Teacher
-              </label>
-              <select
-                value={teacherId}
-                onChange={(e) => setTeacherId(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                required
-              >
-                <option value="">Select a teacher...</option>
-                {teachers.map(teacher => (
-                  <option key={teacher.id} value={teacher.id}>
-                    {teacher.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Amount */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Amount
-              </label>
-              <div className="flex gap-2">
-                {/* Sign Toggle */}
-                <div className="flex rounded-lg overflow-hidden border border-zinc-700">
-                  <button
-                    type="button"
-                    onClick={() => setIsPositive(true)}
-                    className={`px-3 py-2 text-sm font-medium transition-colors ${
-                      isPositive
-                        ? 'bg-green-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    +
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsPositive(false)}
-                    className={`px-3 py-2 text-sm font-medium transition-colors ${
-                      !isPositive
-                        ? 'bg-red-600 text-white'
-                        : 'bg-zinc-800 text-zinc-400 hover:text-white'
-                    }`}
-                  >
-                    -
-                  </button>
-                </div>
-
-                {/* Amount Input */}
-                <div className="relative flex-1">
-                  <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full pl-9 pr-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    required
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-zinc-500 mt-1">
-                {isPositive ? 'Amount owed to teacher' : 'Deduction from teacher pay'}
-              </p>
-            </div>
-
-            {/* Reason */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">
-                Reason <span className="text-red-400">*</span>
-              </label>
-              <textarea
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="e.g., Missed 2 hours from previous pay period"
-                rows={3}
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-                required
-              />
-            </div>
-
-            {/* Info Box */}
-            <div className="bg-zinc-800/50 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" />
-                <div className="text-sm text-zinc-400">
-                  <p>
-                    This adjustment will be automatically applied to the next payroll run.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3 text-sm text-red-400">
-                {error}
-              </div>
-            )}
-          </div>
-
-          {/* Footer */}
-          <div className="flex justify-end gap-3 px-6 py-4 border-t border-zinc-700">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? 'Adding...' : 'Add Adjustment'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-zinc-700">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSubmitting ? 'Adding...' : 'Add Adjustment'}
+          </button>
+        </div>
+      </form>
+    </AccessibleModal>
   )
 }

@@ -336,20 +336,20 @@ export default function Events({ onSelectFamily }: EventsProps) {
 
   const EventSortIcon = ({ field }: { field: EventSortField }) => {
     if (eventSortConfig.field !== field) {
-      return <ChevronUp className="h-3 w-3 text-zinc-600" />
+      return <ChevronUp className="h-3 w-3 text-zinc-600" aria-hidden="true" />
     }
     return eventSortConfig.direction === 'asc'
-      ? <ChevronUp className="h-3 w-3 text-blue-400" />
-      : <ChevronDown className="h-3 w-3 text-blue-400" />
+      ? <ChevronUp className="h-3 w-3 text-blue-400" aria-hidden="true" />
+      : <ChevronDown className="h-3 w-3 text-blue-400" aria-hidden="true" />
   }
 
   const AttendeeSortIcon = ({ field }: { field: AttendeeSortField }) => {
     if (attendeeSortConfig.field !== field) {
-      return <ChevronUp className="h-3 w-3 text-zinc-600" />
+      return <ChevronUp className="h-3 w-3 text-zinc-600" aria-hidden="true" />
     }
     return attendeeSortConfig.direction === 'asc'
-      ? <ChevronUp className="h-3 w-3 text-blue-400" />
-      : <ChevronDown className="h-3 w-3 text-blue-400" />
+      ? <ChevronUp className="h-3 w-3 text-blue-400" aria-hidden="true" />
+      : <ChevronDown className="h-3 w-3 text-blue-400" aria-hidden="true" />
   }
 
   const formatDate = (dateStr: string | null) => {
@@ -421,7 +421,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
                 onClick={handleExportAttendees}
                 className="flex items-center gap-2 px-3 py-2 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors"
               >
-                <Download className="h-4 w-4" />
+                <Download className="h-4 w-4" aria-hidden="true" />
                 Export CSV
               </button>
             </div>
@@ -429,7 +429,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
 
           <div className="flex items-center gap-4">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" aria-hidden="true" />
               <input
                 type="text"
                 placeholder={viewMode === 'events' ? 'Search events...' : 'Search attendees by name, event, purchaser...'}
@@ -459,7 +459,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
                   viewMode === 'events' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
                 }`}
               >
-                <CalendarDays className="h-4 w-4" />
+                <CalendarDays className="h-4 w-4" aria-hidden="true" />
                 Events
               </button>
               <button
@@ -468,7 +468,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
                   viewMode === 'attendees' ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-white'
                 }`}
               >
-                <LayoutList className="h-4 w-4" />
+                <LayoutList className="h-4 w-4" aria-hidden="true" />
                 Attendees
               </button>
             </div>
@@ -553,13 +553,13 @@ export default function Events({ onSelectFamily }: EventsProps) {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 text-sm text-zinc-300">
-                            <Calendar className="h-4 w-4 text-zinc-500" />
+                            <Calendar className="h-4 w-4 text-zinc-500" aria-hidden="true" />
                             {formatDate(event.start_at)}
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 text-sm text-zinc-300">
-                            <MapPin className="h-4 w-4 text-zinc-500" />
+                            <MapPin className="h-4 w-4 text-zinc-500" aria-hidden="true" />
                             {event.location || '—'}
                           </div>
                         </td>
@@ -570,13 +570,13 @@ export default function Events({ onSelectFamily }: EventsProps) {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 text-sm text-zinc-300">
-                            <Users className="h-4 w-4 text-zinc-500" />
+                            <Users className="h-4 w-4 text-zinc-500" aria-hidden="true" />
                             {event.attendee_count}
                           </div>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-2 text-sm text-zinc-300">
-                            <DollarSign className="h-4 w-4 text-zinc-500" />
+                            <DollarSign className="h-4 w-4 text-zinc-500" aria-hidden="true" />
                             ${event.revenue.toFixed(2)}
                           </div>
                         </td>
@@ -683,7 +683,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
                             onClick={() => handleFamilyClick(attendee.family_id!)}
                             className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
                           >
-                            <ExternalLink className="h-3 w-3" />
+                            <ExternalLink className="h-3 w-3" aria-hidden="true" />
                             {attendee.family_name}
                           </button>
                         ) : (

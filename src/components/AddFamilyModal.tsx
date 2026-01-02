@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X } from 'lucide-react'
+import { AccessibleModal } from './ui/AccessibleModal'
 import { useFamilyMutations } from '../lib/hooks'
 import type { CustomerStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
@@ -106,217 +106,220 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
     )
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
-          <h2 className="text-lg font-semibold text-zinc-100">Add New Family</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <AccessibleModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Add New Family"
+      size="2xl"
+    >
+      <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        {error && (
+          <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded" role="alert">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label htmlFor="family-name" className="block text-sm font-medium text-zinc-400 mb-1">
+              Family Name *
+            </label>
+            <input
+              id="family-name"
+              type="text"
+              value={formData.display_name}
+              onChange={(e) =>
+                setFormData({ ...formData, display_name: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Last, First (e.g., Smith, John)"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label htmlFor="primary-contact" className="block text-sm font-medium text-zinc-400 mb-1">
+              Primary Contact Name
+            </label>
+            <input
+              id="primary-contact"
+              type="text"
+              value={formData.primary_contact_name}
+              onChange={(e) =>
+                setFormData({ ...formData, primary_contact_name: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="family-status" className="block text-sm font-medium text-zinc-400 mb-1">
+              Status
+            </label>
+            <select
+              id="family-status"
+              value={formData.status}
+              onChange={(e) =>
+                setFormData({ ...formData, status: e.target.value as CustomerStatus })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="lead">Lead</option>
+              <option value="trial">Trial</option>
+              <option value="active">Active</option>
+              <option value="paused">Paused</option>
+              <option value="churned">Churned</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="family-email" className="block text-sm font-medium text-zinc-400 mb-1">
+              Email
+            </label>
+            <input
+              id="family-email"
+              type="email"
+              value={formData.primary_email}
+              onChange={(e) =>
+                setFormData({ ...formData, primary_email: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="family-phone" className="block text-sm font-medium text-zinc-400 mb-1">
+              Phone
+            </label>
+            <input
+              id="family-phone"
+              type="tel"
+              value={formData.primary_phone}
+              onChange={(e) =>
+                setFormData({ ...formData, primary_phone: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="payment-method" className="block text-sm font-medium text-zinc-400 mb-1">
+              Payment Method
+            </label>
+            <select
+              id="payment-method"
+              value={formData.payment_gateway}
+              onChange={(e) =>
+                setFormData({ ...formData, payment_gateway: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select...</option>
+              <option value="StepUp">StepUp</option>
+              <option value="Zelle">Zelle</option>
+              <option value="Cash">Cash</option>
+              <option value="Check">Check</option>
+              <option value="Stripe">Stripe</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+            </select>
+          </div>
+
+          <div className="col-span-2">
+            <label htmlFor="address" className="block text-sm font-medium text-zinc-400 mb-1">
+              Address
+            </label>
+            <input
+              id="address"
+              type="text"
+              value={formData.address_line1}
+              onChange={(e) =>
+                setFormData({ ...formData, address_line1: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Street address"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="city" className="block text-sm font-medium text-zinc-400 mb-1">
+              City
+            </label>
+            <input
+              id="city"
+              type="text"
+              value={formData.city}
+              onChange={(e) =>
+                setFormData({ ...formData, city: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label htmlFor="state" className="block text-sm font-medium text-zinc-400 mb-1">
+                State
+              </label>
+              <input
+                id="state"
+                type="text"
+                value={formData.state}
+                onChange={(e) =>
+                  setFormData({ ...formData, state: e.target.value })
+                }
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="zip" className="block text-sm font-medium text-zinc-400 mb-1">
+                ZIP
+              </label>
+              <input
+                id="zip"
+                type="text"
+                value={formData.zip}
+                onChange={(e) =>
+                  setFormData({ ...formData, zip: e.target.value })
+                }
+                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="col-span-2">
+            <label htmlFor="family-notes" className="block text-sm font-medium text-zinc-400 mb-1">
+              Notes
+            </label>
+            <textarea
+              id="family-notes"
+              value={formData.notes}
+              onChange={(e) =>
+                setFormData({ ...formData, notes: e.target.value })
+              }
+              rows={3}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
-              {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Family Name *
-              </label>
-              <input
-                type="text"
-                value={formData.display_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, display_name: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                placeholder="Last, First (e.g., Smith, John)"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Primary Contact Name
-              </label>
-              <input
-                type="text"
-                value={formData.primary_contact_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, primary_contact_name: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Status
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) =>
-                  setFormData({ ...formData, status: e.target.value as CustomerStatus })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              >
-                <option value="lead">Lead</option>
-                <option value="trial">Trial</option>
-                <option value="active">Active</option>
-                <option value="paused">Paused</option>
-                <option value="churned">Churned</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                value={formData.primary_email}
-                onChange={(e) =>
-                  setFormData({ ...formData, primary_email: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Phone
-              </label>
-              <input
-                type="tel"
-                value={formData.primary_phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, primary_phone: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Payment Method
-              </label>
-              <select
-                value={formData.payment_gateway}
-                onChange={(e) =>
-                  setFormData({ ...formData, payment_gateway: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Select...</option>
-                <option value="StepUp">StepUp</option>
-                <option value="Zelle">Zelle</option>
-                <option value="Cash">Cash</option>
-                <option value="Check">Check</option>
-                <option value="Stripe">Stripe</option>
-                <option value="Bank Transfer">Bank Transfer</option>
-              </select>
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Address
-              </label>
-              <input
-                type="text"
-                value={formData.address_line1}
-                onChange={(e) =>
-                  setFormData({ ...formData, address_line1: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                placeholder="Street address"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                City
-              </label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) =>
-                  setFormData({ ...formData, city: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
-                  State
-                </label>
-                <input
-                  type="text"
-                  value={formData.state}
-                  onChange={(e) =>
-                    setFormData({ ...formData, state: e.target.value })
-                  }
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
-                  ZIP
-                </label>
-                <input
-                  type="text"
-                  value={formData.zip}
-                  onChange={(e) =>
-                    setFormData({ ...formData, zip: e.target.value })
-                  }
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                rows={3}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-zinc-700">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createFamily.isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {createFamily.isPending ? 'Creating...' : 'Add Family'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex justify-end gap-2 pt-4 border-t border-zinc-700">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={createFamily.isPending}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {createFamily.isPending ? 'Creating...' : 'Add Family'}
+          </button>
+        </div>
+      </form>
+    </AccessibleModal>
   )
 }

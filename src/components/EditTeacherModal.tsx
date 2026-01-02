@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { X, Trash2, AlertTriangle, Users, Briefcase, DollarSign, AlertCircle } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useTeacherMutations, useTeacherAssignments, useTeacherPaymentsByTeacher } from '../lib/hooks'
 import type { Teacher, EmployeeStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
+import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
 
 interface EditTeacherModalProps {
   isOpen: boolean
@@ -36,7 +37,7 @@ export function EditTeacherModal({
   const [pendingStatusChange, setPendingStatusChange] = useState<EmployeeStatus | null>(null)
 
   const { updateTeacher, deleteTeacher } = useTeacherMutations()
-  
+
   // Fetch assignments and payments for validation
   const { data: assignments } = useTeacherAssignments(teacher?.id)
   const { data: payments } = useTeacherPaymentsByTeacher(teacher?.id || '')
@@ -44,11 +45,11 @@ export function EditTeacherModal({
   // Calculate counts for validation messages
   const validationCounts = useMemo(() => {
     if (!assignments) return { activeEnrollment: 0, activeService: 0, total: 0, payments: 0 }
-    
+
     const activeAssignments = assignments.filter(a => a.is_active)
     const enrollmentAssignments = activeAssignments.filter(a => a.enrollment_id !== null)
     const serviceAssignments = activeAssignments.filter(a => a.service_id !== null && a.enrollment_id === null)
-    
+
     return {
       activeEnrollment: enrollmentAssignments.length,
       activeService: serviceAssignments.length,
@@ -57,14 +58,6 @@ export function EditTeacherModal({
     }
   }, [assignments, payments])
 
-  // Get service names for service-level assignments
-  const serviceNames = useMemo(() => {
-    if (!assignments) return []
-    const activeServiceAssignments = assignments.filter(
-      a => a.is_active && a.service_id !== null && a.enrollment_id === null
-    )
-    return [...new Set(activeServiceAssignments.map(a => a.service?.name).filter(Boolean))]
-  }, [assignments])
 
   // Populate form when teacher changes
   useEffect(() => {
@@ -181,41 +174,52 @@ export function EditTeacherModal({
   // Can delete only if no active assignments
   const canDelete = validationCounts.total === 0
 
-  if (!isOpen || !teacher) return null
+  if (!teacher) return null
+
+  // Build delete description
+  let deleteDescription = ''
+  if (validationCounts.total > 0) {
+    const parts = []
+    if (validationCounts.activeEnrollment > 0) {
+      parts.push(`${validationCounts.activeEnrollment} active student assignment(s)`)
+    }
+    if (validationCounts.activeService > 0) {
+      parts.push(`${validationCounts.activeService} active service assignment(s)`)
+    }
+    deleteDescription = `Cannot delete - has ${parts.join(' and ')}. End or transfer all active assignments before deleting this teacher.`
+  } else if (validationCounts.payments > 0) {
+    deleteDescription = `This will permanently delete ${teacher.display_name} and ${validationCounts.payments} payment record(s). This action cannot be undone.`
+  } else {
+    deleteDescription = `This will permanently delete ${teacher.display_name}. This action cannot be undone.`
+  }
+
+  // Build status warning description
+  const statusWarningDescription = `${teacher.display_name} has ${validationCounts.activeEnrollment} student assignment(s) and ${validationCounts.activeService} service assignment(s). These assignments will remain linked but won't appear in new assignment dropdowns. Continue?`
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div 
-        className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <AccessibleModal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Edit Teacher"
+        size="2xl"
       >
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
-          <h2 className="text-lg font-semibold text-zinc-100">Edit Teacher</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
+            <div role="alert" className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
               {error}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="teacher-name" className="block text-sm font-medium text-zinc-400 mb-1">
                 Name *
               </label>
               <input
+                id="teacher-name"
                 type="text"
+                autoFocus
                 value={formData.display_name}
                 onChange={(e) =>
                   setFormData({ ...formData, display_name: e.target.value })
@@ -226,10 +230,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="teacher-email" className="block text-sm font-medium text-zinc-400 mb-1">
                 Email
               </label>
               <input
+                id="teacher-email"
                 type="email"
                 value={formData.email}
                 onChange={(e) =>
@@ -240,10 +245,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="teacher-phone" className="block text-sm font-medium text-zinc-400 mb-1">
                 Phone
               </label>
               <input
+                id="teacher-phone"
                 type="tel"
                 value={formData.phone}
                 onChange={(e) =>
@@ -254,10 +260,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="teacher-role" className="block text-sm font-medium text-zinc-400 mb-1">
                 Role
               </label>
               <select
+                id="teacher-role"
                 value={formData.role}
                 onChange={(e) =>
                   setFormData({ ...formData, role: e.target.value })
@@ -275,10 +282,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="teacher-status" className="block text-sm font-medium text-zinc-400 mb-1">
                 Status
               </label>
               <select
+                id="teacher-status"
                 value={formData.status}
                 onChange={(e) => handleStatusChange(e.target.value as EmployeeStatus)}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
@@ -290,10 +298,11 @@ export function EditTeacherModal({
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="skillset" className="block text-sm font-medium text-zinc-400 mb-1">
                 Skillset
               </label>
               <input
+                id="skillset"
                 type="text"
                 value={formData.skillset}
                 onChange={(e) =>
@@ -305,10 +314,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="hourly-rate" className="block text-sm font-medium text-zinc-400 mb-1">
                 Default Hourly Rate ($)
               </label>
               <input
+                id="hourly-rate"
                 type="number"
                 step="0.01"
                 min="0"
@@ -322,10 +332,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="max-hours" className="block text-sm font-medium text-zinc-400 mb-1">
                 Max Hours/Week
               </label>
               <input
+                id="max-hours"
                 type="number"
                 step="0.5"
                 min="0"
@@ -339,10 +350,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="comm-method" className="block text-sm font-medium text-zinc-400 mb-1">
                 Preferred Contact Method
               </label>
               <select
+                id="comm-method"
                 value={formData.preferred_comm_method}
                 onChange={(e) =>
                   setFormData({ ...formData, preferred_comm_method: e.target.value })
@@ -358,10 +370,11 @@ export function EditTeacherModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="hire-date" className="block text-sm font-medium text-zinc-400 mb-1">
                 Hire Date
               </label>
               <input
+                id="hire-date"
                 type="date"
                 value={formData.hire_date}
                 onChange={(e) =>
@@ -387,10 +400,11 @@ export function EditTeacherModal({
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="teacher-notes" className="block text-sm font-medium text-zinc-400 mb-1">
                 Notes
               </label>
               <textarea
+                id="teacher-notes"
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
@@ -407,7 +421,7 @@ export function EditTeacherModal({
               onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
               Delete Teacher
             </button>
 
@@ -429,174 +443,31 @@ export function EditTeacherModal({
             </div>
           </div>
         </form>
+      </AccessibleModal>
 
-        {/* Status Change Warning Dialog */}
-        {showStatusWarning && (
-          <div 
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div 
-              className="bg-zinc-900 border border-amber-600/50 rounded-lg p-6 max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-start gap-3 mb-4">
-                <AlertTriangle className="w-6 h-6 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <h3 className="text-lg font-semibold text-zinc-100">
-                    Active Assignments Warning
-                  </h3>
-                  <p className="text-zinc-400 text-sm mt-1">
-                    {teacher?.display_name} has active assignments:
-                  </p>
-                </div>
-              </div>
-              
-              <div className="bg-zinc-800/50 rounded-lg p-3 mb-4 space-y-2">
-                {validationCounts.activeEnrollment > 0 && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Users className="w-4 h-4 text-blue-400" />
-                    <span className="text-zinc-300">
-                      {validationCounts.activeEnrollment} student assignment{validationCounts.activeEnrollment !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                )}
-                {validationCounts.activeService > 0 && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <Briefcase className="w-4 h-4 text-green-400" />
-                    <span className="text-zinc-300">
-                      {validationCounts.activeService} service assignment{validationCounts.activeService !== 1 ? 's' : ''}
-                      {serviceNames.length > 0 && (
-                        <span className="text-zinc-500 ml-1">
-                          ({serviceNames.join(', ')})
-                        </span>
-                      )}
-                    </span>
-                  </div>
-                )}
-              </div>
+      {/* Status Change Warning Dialog */}
+      <ConfirmationModal
+        isOpen={showStatusWarning}
+        onClose={cancelStatusChange}
+        onConfirm={confirmStatusChange}
+        title="Active Assignments Warning"
+        description={statusWarningDescription}
+        confirmLabel="Change Status Anyway"
+        cancelLabel="Cancel"
+        variant="warning"
+      />
 
-              <p className="text-amber-200/80 text-sm mb-4">
-                These assignments will remain linked to {teacher?.display_name}, but they won't appear in new assignment dropdowns. Continue?
-              </p>
-              
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={cancelStatusChange}
-                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmStatusChange}
-                  className="px-4 py-2 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors"
-                >
-                  Change Status Anyway
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Enhanced Delete Confirmation Dialog */}
-        {showDeleteConfirm && (
-          <div 
-            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div 
-              className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
-                Delete {teacher.display_name}?
-              </h3>
-              
-              {/* Show what's blocking deletion or what will be affected */}
-              {(validationCounts.total > 0 || validationCounts.payments > 0) ? (
-                <div className="mb-4">
-                  <div className="bg-zinc-800/50 rounded-lg p-3 mb-3 space-y-2">
-                    {validationCounts.activeEnrollment > 0 && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Users className="w-4 h-4 text-blue-400" />
-                        <span className="text-zinc-300">
-                          {validationCounts.activeEnrollment} active student assignment{validationCounts.activeEnrollment !== 1 ? 's' : ''}
-                        </span>
-                        {validationCounts.total > 0 && (
-                          <span className="text-red-400 text-xs ml-auto">Blocking</span>
-                        )}
-                      </div>
-                    )}
-                    {validationCounts.activeService > 0 && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <Briefcase className="w-4 h-4 text-green-400" />
-                        <span className="text-zinc-300">
-                          {validationCounts.activeService} active service assignment{validationCounts.activeService !== 1 ? 's' : ''}
-                          {serviceNames.length > 0 && (
-                            <span className="text-zinc-500 ml-1">
-                              ({serviceNames.join(', ')})
-                            </span>
-                          )}
-                        </span>
-                        {validationCounts.total > 0 && (
-                          <span className="text-red-400 text-xs ml-auto">Blocking</span>
-                        )}
-                      </div>
-                    )}
-                    {validationCounts.payments > 0 && (
-                      <div className="flex items-center gap-2 text-sm">
-                        <DollarSign className="w-4 h-4 text-amber-400" />
-                        <span className="text-zinc-300">
-                          {validationCounts.payments} payment record{validationCounts.payments !== 1 ? 's' : ''}
-                        </span>
-                        <span className="text-amber-400 text-xs ml-auto">Will be deleted</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {validationCounts.total > 0 ? (
-                    <div className="flex items-start gap-2 text-amber-200/80 text-sm">
-                      <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                      <span>
-                        End or transfer all active assignments before deleting this teacher.
-                      </span>
-                    </div>
-                  ) : (
-                    <p className="text-zinc-400 text-sm">
-                      This will permanently delete the teacher and their payment history. This cannot be undone.
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-zinc-400 mb-4">
-                  This will permanently delete {teacher.display_name}. This action cannot be undone.
-                </p>
-              )}
-
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleteTeacher.isPending || !canDelete}
-                  className={`px-4 py-2 rounded transition-colors ${
-                    canDelete
-                      ? 'bg-red-600 text-white hover:bg-red-700'
-                      : 'bg-zinc-700 text-zinc-400 cursor-not-allowed'
-                  } disabled:opacity-50`}
-                  title={!canDelete ? 'End all active assignments first' : ''}
-                >
-                  {deleteTeacher.isPending ? 'Deleting...' : canDelete ? 'Delete' : 'Cannot Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title={`Delete ${teacher.display_name}?`}
+        description={deleteDescription}
+        confirmLabel={canDelete ? 'Delete' : 'Cannot Delete'}
+        variant={canDelete ? 'danger' : 'warning'}
+        isLoading={deleteTeacher.isPending}
+      />
+    </>
   )
 }

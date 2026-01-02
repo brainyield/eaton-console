@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { X, Trash2, AlertTriangle } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useStudentMutations } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import type { Student } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
+import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
 
 // Extended Student type that includes homeschool_status which may exist in DB
 interface StudentWithHomeschool extends Student {
@@ -154,7 +155,7 @@ export function EditStudentModal({
     )
   }
 
-  if (!isOpen || !student) return null
+  if (!student) return null
 
   const gradeOptions = [
     'Pre-K',
@@ -173,35 +174,42 @@ export function EditStudentModal({
     '12th',
   ]
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-lg">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-100">Edit Student</h2>
-            <p className="text-sm text-zinc-400">{familyName}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  // Build delete confirmation description
+  let deleteDescription = ''
+  let canDelete = true
+  if (activeEnrollments.length > 0) {
+    canDelete = false
+    deleteDescription = `Cannot delete - has ${activeEnrollments.length} active enrollment(s). End these enrollments first before deleting the student.`
+  } else if (historicalEnrollments.length > 0) {
+    deleteDescription = `Warning: This student has ${historicalEnrollments.length} historical enrollment(s). Deleting will also remove their enrollment history. This cannot be undone.`
+  } else {
+    deleteDescription = `This will permanently delete ${student.full_name}. This cannot be undone.`
+  }
 
+  return (
+    <>
+      <AccessibleModal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Edit Student"
+        subtitle={familyName}
+        size="lg"
+      >
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
+            <div role="alert" className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1">
+            <label htmlFor="student-name" className="block text-sm font-medium text-zinc-400 mb-1">
               Student Name *
             </label>
             <input
+              id="student-name"
               type="text"
+              autoFocus
               value={formData.full_name}
               onChange={(e) =>
                 setFormData({ ...formData, full_name: e.target.value })
@@ -213,10 +221,11 @@ export function EditStudentModal({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="grade-level" className="block text-sm font-medium text-zinc-400 mb-1">
                 Grade Level
               </label>
               <select
+                id="grade-level"
                 value={formData.grade_level}
                 onChange={(e) =>
                   setFormData({ ...formData, grade_level: e.target.value })
@@ -233,10 +242,11 @@ export function EditStudentModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="dob" className="block text-sm font-medium text-zinc-400 mb-1">
                 Date of Birth
               </label>
               <input
+                id="dob"
                 type="date"
                 value={formData.dob}
                 onChange={(e) =>
@@ -247,10 +257,11 @@ export function EditStudentModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="age-group" className="block text-sm font-medium text-zinc-400 mb-1">
                 Age Group
               </label>
               <select
+                id="age-group"
                 value={formData.age_group}
                 onChange={(e) =>
                   setFormData({ ...formData, age_group: e.target.value })
@@ -265,10 +276,11 @@ export function EditStudentModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="homeschool-status" className="block text-sm font-medium text-zinc-400 mb-1">
                 Homeschool Status
               </label>
               <select
+                id="homeschool-status"
                 value={formData.homeschool_status}
                 onChange={(e) =>
                   setFormData({ ...formData, homeschool_status: e.target.value })
@@ -300,10 +312,11 @@ export function EditStudentModal({
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1">
+            <label htmlFor="notes" className="block text-sm font-medium text-zinc-400 mb-1">
               Notes
             </label>
             <textarea
+              id="notes"
               value={formData.notes}
               onChange={(e) =>
                 setFormData({ ...formData, notes: e.target.value })
@@ -320,7 +333,7 @@ export function EditStudentModal({
               onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
               Delete Student
             </button>
 
@@ -342,111 +355,31 @@ export function EditStudentModal({
             </div>
           </div>
         </form>
+      </AccessibleModal>
 
-        {/* Delete Confirmation Dialog */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md">
-              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
-                Delete Student?
-              </h3>
-              
-              {activeEnrollments.length > 0 ? (
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 text-red-400 mb-2">
-                    <AlertTriangle className="w-5 h-5" />
-                    <span className="font-medium">Cannot delete - has active enrollments:</span>
-                  </div>
-                  <ul className="text-sm text-zinc-400 ml-7 list-disc">
-                    {activeEnrollments.map((e: any) => (
-                      <li key={e.id}>{e.service?.name || e.class_title || 'Unknown service'} ({e.status})</li>
-                    ))}
-                  </ul>
-                  <p className="text-sm text-zinc-400 mt-3">
-                    End these enrollments first before deleting the student.
-                  </p>
-                </div>
-              ) : historicalEnrollments.length > 0 ? (
-                <div className="mb-4">
-                  <div className="flex items-center gap-2 text-amber-400 mb-2">
-                    <AlertTriangle className="w-5 h-5" />
-                    <span className="font-medium">Warning - has enrollment history:</span>
-                  </div>
-                  <ul className="text-sm text-zinc-400 ml-7 list-disc">
-                    {historicalEnrollments.map((e: any) => (
-                      <li key={e.id}>{e.service?.name || e.class_title || 'Unknown service'} ({e.status})</li>
-                    ))}
-                  </ul>
-                  <p className="text-sm text-zinc-400 mt-3">
-                    Deleting this student will also delete their enrollment history.
-                  </p>
-                </div>
-              ) : (
-                <p className="text-zinc-400 mb-4">
-                  This will permanently delete {student.full_name}. This cannot be undone.
-                </p>
-              )}
-              
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                {activeEnrollments.length === 0 && (
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleteStudent.isPending}
-                    className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
-                  >
-                    {deleteStudent.isPending ? 'Deleting...' : 'Delete'}
-                  </button>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Student?"
+        description={deleteDescription}
+        confirmLabel={canDelete ? 'Delete' : 'Cannot Delete'}
+        variant={activeEnrollments.length > 0 ? 'warning' : 'danger'}
+        isLoading={deleteStudent.isPending}
+      />
 
-        {/* Force Delete Confirmation Dialog (for historical enrollments) */}
-        {showForceDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md">
-              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
-                Confirm Delete with History?
-              </h3>
-              <div className="mb-4">
-                <div className="flex items-center gap-2 text-amber-400 mb-2">
-                  <AlertTriangle className="w-5 h-5" />
-                  <span className="font-medium">This will permanently delete:</span>
-                </div>
-                <ul className="text-sm text-zinc-400 ml-7 list-disc">
-                  <li>Student: {student?.full_name}</li>
-                  <li>{historicalEnrollments.length} historical enrollment(s)</li>
-                </ul>
-                <p className="text-sm text-red-400 mt-3">
-                  This action cannot be undone. Historical enrollment data will be lost.
-                </p>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowForceDeleteConfirm(false)}
-                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleForceDelete}
-                  disabled={forceDeleteStudent.isPending}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  {forceDeleteStudent.isPending ? 'Deleting...' : 'Delete Permanently'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Force Delete Confirmation Dialog (for historical enrollments) */}
+      <ConfirmationModal
+        isOpen={showForceDeleteConfirm}
+        onClose={() => setShowForceDeleteConfirm(false)}
+        onConfirm={handleForceDelete}
+        title="Confirm Delete with History?"
+        description={`This will permanently delete ${student?.full_name} and ${historicalEnrollments.length} historical enrollment(s). This action cannot be undone and historical enrollment data will be lost.`}
+        confirmLabel="Delete Permanently"
+        variant="danger"
+        isLoading={forceDeleteStudent.isPending}
+      />
+    </>
   )
 }

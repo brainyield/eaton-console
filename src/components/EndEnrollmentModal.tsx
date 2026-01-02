@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { X, Loader2, UserMinus, AlertCircle } from 'lucide-react';
+import { Loader2, UserMinus, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
+import { AccessibleModal } from './ui/AccessibleModal';
 import {
   useEnrollmentMutations,
   useTeacherAssignmentMutations,
@@ -33,7 +34,7 @@ export function EndEnrollmentModal({
   // Mutations
   const { updateEnrollment } = useEnrollmentMutations();
   const { endAssignmentsByEnrollment } = useTeacherAssignmentMutations();
-  
+
   const isSubmitting = updateEnrollment.isPending || endAssignmentsByEnrollment.isPending;
 
   async function handleSubmit(e: React.FormEvent) {
@@ -106,110 +107,85 @@ export function EndEnrollmentModal({
     onClose();
   }
 
-  if (!isOpen || !enrollment) return null;
+  if (!enrollment) return null;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/50 z-50"
-        onClick={handleClose}
-      />
-      
-      {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md">
-          {/* Header */}
-          <div className="border-b border-gray-700 px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-red-500/20 flex items-center justify-center">
-                  <UserMinus className="w-5 h-5 text-red-400" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-white">End Enrollment</h2>
-                  <p className="text-sm text-gray-400">This action cannot be undone</p>
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Content */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Confirmation Message */}
-            <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-              <p className="text-sm text-gray-300">
-                Are you sure you want to end this enrollment?
-              </p>
-              {(studentName || serviceName) && (
-                <p className="mt-2 text-sm text-white font-medium">
-                  {studentName && <span>{studentName}</span>}
-                  {studentName && serviceName && <span> — </span>}
-                  {serviceName && <span>{serviceName}</span>}
-                </p>
-              )}
-              <p className="mt-3 text-xs text-gray-400">
-                This will set the enrollment status to "Ended" and deactivate any associated teacher assignments.
-              </p>
-            </div>
-
-            {/* End Date */}
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                End Date
-              </label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-              />
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Ending...
-                  </>
-                ) : (
-                  <>
-                    <UserMinus className="w-4 h-4" />
-                    End Enrollment
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+    <AccessibleModal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="End Enrollment"
+      subtitle="This action cannot be undone"
+      size="md"
+    >
+      {/* Content */}
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        {/* Confirmation Message */}
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+          <p className="text-sm text-gray-300">
+            Are you sure you want to end this enrollment?
+          </p>
+          {(studentName || serviceName) && (
+            <p className="mt-2 text-sm text-white font-medium">
+              {studentName && <span>{studentName}</span>}
+              {studentName && serviceName && <span> &mdash; </span>}
+              {serviceName && <span>{serviceName}</span>}
+            </p>
+          )}
+          <p className="mt-3 text-xs text-gray-400">
+            This will set the enrollment status to "Ended" and deactivate any associated teacher assignments.
+          </p>
         </div>
-      </div>
-    </>
+
+        {/* End Date */}
+        <div>
+          <label htmlFor="end-date" className="block text-sm font-medium text-gray-300 mb-2">
+            End Date
+          </label>
+          <input
+            type="date"
+            id="end-date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+          />
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div role="alert" className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden="true" />
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                Ending...
+              </>
+            ) : (
+              <>
+                <UserMinus className="w-4 h-4" aria-hidden="true" />
+                End Enrollment
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </AccessibleModal>
   );
 }

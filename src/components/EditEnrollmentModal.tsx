@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, Save, AlertCircle, User } from 'lucide-react';
+import { Loader2, Save, AlertCircle, User } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useEnrollmentMutations,
@@ -15,6 +15,7 @@ import {
 import { queryKeys } from '../lib/queryClient';
 import { getPeriodOptions, getDefaultPeriod, type ServiceCode } from '../lib/enrollmentPeriod';
 import { getTodayString } from '../lib/dateUtils';
+import { AccessibleModal } from './ui/AccessibleModal';
 
 interface EnrollmentWithService extends Enrollment {
   service?: Service
@@ -324,344 +325,333 @@ export function EditEnrollmentModal({
     onClose();
   }
 
-  if (!isOpen || !enrollment) return null;
+  if (!enrollment) return null;
 
   return (
-    <>
-      {/* Backdrop */}
-      <div 
-        className="fixed inset-0 bg-black/50 z-50"
-        onClick={handleClose}
-      />
-      
-      {/* Modal */}
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
-          {/* Header */}
-          <div className="sticky top-0 bg-gray-900 border-b border-gray-700 px-6 py-4 z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                  <Save className="w-5 h-5 text-blue-400" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-white">Edit Enrollment</h2>
-                  <p className="text-sm text-gray-400">Update enrollment details</p>
-                </div>
-              </div>
-              <button
-                onClick={handleClose}
-                className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+    <AccessibleModal
+      isOpen={isOpen}
+      onClose={handleClose}
+      title="Edit Enrollment"
+      subtitle="Update enrollment details"
+      size="lg"
+    >
+      {/* Form */}
+      <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        {/* Status & Dates */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+            Status & Dates
+          </h3>
+
+          <div>
+            <label htmlFor="enrollment-status" className="block text-sm font-medium text-gray-300 mb-2">
+              Status
+            </label>
+            <select
+              id="enrollment-status"
+              name="status"
+              autoFocus
+              value={formData.status}
+              onChange={handleChange}
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              {STATUS_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="start-date" className="block text-sm font-medium text-gray-300 mb-2">
+                Start Date
+              </label>
+              <input
+                id="start-date"
+                type="date"
+                name="start_date"
+                value={formData.start_date}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label htmlFor="end-date" className="block text-sm font-medium text-gray-300 mb-2">
+                End Date
+              </label>
+              <input
+                id="end-date"
+                type="date"
+                name="end_date"
+                value={formData.end_date}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
             </div>
           </div>
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-6">
-            {/* Status & Dates */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
-                Status & Dates
-              </h3>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Status
-                </label>
-                <select
-                  name="status"
-                  value={formData.status}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  {STATUS_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    name="start_date"
-                    value={formData.start_date}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    name="end_date"
-                    value={formData.end_date}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Enrollment Period
-                </label>
-                <select
-                  name="enrollment_period"
-                  value={formData.enrollment_period}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Select period...</option>
-                  {periodOptions.map(period => (
-                    <option key={period} value={period}>{period}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  {serviceCode && ['learning_pod', 'elective_classes'].includes(serviceCode)
-                    ? 'Semester (Fall/Spring/Summer)'
-                    : 'School Year'}
-                </p>
-              </div>
-            </div>
-
-            {/* Billing */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
-                Billing
-              </h3>
-              
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Billing Frequency
-                </label>
-                <select
-                  name="billing_frequency"
-                  value={formData.billing_frequency}
-                  onChange={handleChange}
-                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="">Not specified</option>
-                  {BILLING_FREQUENCY_OPTIONS.map(opt => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Hourly Rate ($)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="hourly_rate_customer"
-                    value={formData.hourly_rate_customer}
-                    onChange={handleChange}
-                    placeholder="90.00"
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Hours/Week
-                  </label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    min="0"
-                    name="hours_per_week"
-                    value={formData.hours_per_week}
-                    onChange={handleChange}
-                    placeholder="5"
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Monthly Rate ($)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="monthly_rate"
-                    value={formData.monthly_rate}
-                    onChange={handleChange}
-                    placeholder="500.00"
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Daily Rate ($)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="daily_rate"
-                    value={formData.daily_rate}
-                    onChange={handleChange}
-                    placeholder="100.00"
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Teacher Assignment */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
-                Teacher Assignment
-              </h3>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Assigned Teacher
-                </label>
-                <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-                  <select
-                    name="teacher_id"
-                    value={formData.teacher_id}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="">No teacher assigned</option>
-                    {(teachers as Teacher[]).map(teacher => (
-                      <option key={teacher.id} value={teacher.id}>
-                        {teacher.display_name}
-                        {teacher.default_hourly_rate && ` ($${teacher.default_hourly_rate}/hr)`}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {formData.teacher_id && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Teacher Hourly Rate ($)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    name="teacher_hourly_rate"
-                    value={formData.teacher_hourly_rate}
-                    onChange={handleChange}
-                    placeholder={
-                      (teachers as Teacher[]).find(t => t.id === formData.teacher_id)?.default_hourly_rate?.toString() || '25.00'
-                    }
-                    className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    Leave blank to use teacher's default rate
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Additional Info */}
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
-                Additional Info
-              </h3>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Class Title
-                </label>
-                <input
-                  type="text"
-                  name="class_title"
-                  value={formData.class_title}
-                  onChange={handleChange}
-                  placeholder="e.g., Bitcoin 101"
-                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Schedule Notes
-                </label>
-                <textarea
-                  name="schedule_notes"
-                  value={formData.schedule_notes}
-                  onChange={handleChange}
-                  rows={2}
-                  placeholder="e.g., Mon/Wed 4pm, Fri 3pm"
-                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-300 mb-2">
-                  Notes
-                </label>
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows={2}
-                  placeholder="Any additional notes..."
-                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
-                />
-              </div>
-            </div>
-
-            {/* Error Message */}
-            {error && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
-              <button
-                type="button"
-                onClick={handleClose}
-                className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    Save Changes
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+          <div>
+            <label htmlFor="enrollment-period" className="block text-sm font-medium text-gray-300 mb-2">
+              Enrollment Period
+            </label>
+            <select
+              id="enrollment-period"
+              name="enrollment_period"
+              value={formData.enrollment_period}
+              onChange={handleChange}
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Select period...</option>
+              {periodOptions.map(period => (
+                <option key={period} value={period}>{period}</option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-gray-500">
+              {serviceCode && ['learning_pod', 'elective_classes'].includes(serviceCode)
+                ? 'Semester (Fall/Spring/Summer)'
+                : 'School Year'}
+            </p>
+          </div>
         </div>
-      </div>
-    </>
+
+        {/* Billing */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+            Billing
+          </h3>
+
+          <div>
+            <label htmlFor="billing-frequency" className="block text-sm font-medium text-gray-300 mb-2">
+              Billing Frequency
+            </label>
+            <select
+              id="billing-frequency"
+              name="billing_frequency"
+              value={formData.billing_frequency}
+              onChange={handleChange}
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+              <option value="">Not specified</option>
+              {BILLING_FREQUENCY_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="hourly-rate" className="block text-sm font-medium text-gray-300 mb-2">
+                Hourly Rate ($)
+              </label>
+              <input
+                id="hourly-rate"
+                type="number"
+                step="0.01"
+                min="0"
+                name="hourly_rate_customer"
+                value={formData.hourly_rate_customer}
+                onChange={handleChange}
+                placeholder="90.00"
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label htmlFor="hours-per-week" className="block text-sm font-medium text-gray-300 mb-2">
+                Hours/Week
+              </label>
+              <input
+                id="hours-per-week"
+                type="number"
+                step="0.5"
+                min="0"
+                name="hours_per_week"
+                value={formData.hours_per_week}
+                onChange={handleChange}
+                placeholder="5"
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="monthly-rate" className="block text-sm font-medium text-gray-300 mb-2">
+                Monthly Rate ($)
+              </label>
+              <input
+                id="monthly-rate"
+                type="number"
+                step="0.01"
+                min="0"
+                name="monthly_rate"
+                value={formData.monthly_rate}
+                onChange={handleChange}
+                placeholder="500.00"
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+            <div>
+              <label htmlFor="daily-rate" className="block text-sm font-medium text-gray-300 mb-2">
+                Daily Rate ($)
+              </label>
+              <input
+                id="daily-rate"
+                type="number"
+                step="0.01"
+                min="0"
+                name="daily_rate"
+                value={formData.daily_rate}
+                onChange={handleChange}
+                placeholder="100.00"
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Teacher Assignment */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+            Teacher Assignment
+          </h3>
+
+          <div>
+            <label htmlFor="assigned-teacher" className="block text-sm font-medium text-gray-300 mb-2">
+              Assigned Teacher
+            </label>
+            <div className="relative">
+              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
+              <select
+                id="assigned-teacher"
+                name="teacher_id"
+                value={formData.teacher_id}
+                onChange={handleChange}
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">No teacher assigned</option>
+                {(teachers as Teacher[]).map(teacher => (
+                  <option key={teacher.id} value={teacher.id}>
+                    {teacher.display_name}
+                    {teacher.default_hourly_rate && ` ($${teacher.default_hourly_rate}/hr)`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {formData.teacher_id && (
+            <div>
+              <label htmlFor="teacher-rate" className="block text-sm font-medium text-gray-300 mb-2">
+                Teacher Hourly Rate ($)
+              </label>
+              <input
+                id="teacher-rate"
+                type="number"
+                step="0.01"
+                min="0"
+                name="teacher_hourly_rate"
+                value={formData.teacher_hourly_rate}
+                onChange={handleChange}
+                placeholder={
+                  (teachers as Teacher[]).find(t => t.id === formData.teacher_id)?.default_hourly_rate?.toString() || '25.00'
+                }
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Leave blank to use teacher's default rate
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Additional Info */}
+        <div className="space-y-4">
+          <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+            Additional Info
+          </h3>
+
+          <div>
+            <label htmlFor="class-title" className="block text-sm font-medium text-gray-300 mb-2">
+              Class Title
+            </label>
+            <input
+              id="class-title"
+              type="text"
+              name="class_title"
+              value={formData.class_title}
+              onChange={handleChange}
+              placeholder="e.g., Bitcoin 101"
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="schedule-notes" className="block text-sm font-medium text-gray-300 mb-2">
+              Schedule Notes
+            </label>
+            <textarea
+              id="schedule-notes"
+              name="schedule_notes"
+              value={formData.schedule_notes}
+              onChange={handleChange}
+              rows={2}
+              placeholder="e.g., Mon/Wed 4pm, Fri 3pm"
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="enrollment-notes" className="block text-sm font-medium text-gray-300 mb-2">
+              Notes
+            </label>
+            <textarea
+              id="enrollment-notes"
+              name="notes"
+              value={formData.notes}
+              onChange={handleChange}
+              rows={2}
+              placeholder="Any additional notes..."
+              className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+            />
+          </div>
+        </div>
+
+        {/* Error Message */}
+        {error && (
+          <div role="alert" className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+            <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" aria-hidden="true" />
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
+          <button
+            type="button"
+            onClick={handleClose}
+            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" aria-hidden="true" />
+                Save Changes
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </AccessibleModal>
   );
 }

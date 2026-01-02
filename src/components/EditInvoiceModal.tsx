@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import {
-  X,
   Plus,
   Trash2,
   Save,
@@ -12,6 +11,7 @@ import type { InvoiceWithDetails } from '../lib/hooks'
 import { multiplyMoney, sumMoney } from '../lib/moneyUtils'
 import { parsePositiveFloat, isValidDateRange } from '../lib/validation'
 import { useToast } from '../lib/toast'
+import { AccessibleModal } from './ui/AccessibleModal'
 
 // ============================================================================
 // Types
@@ -273,228 +273,224 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4">
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-
-        {/* Modal */}
-        <div className="relative bg-zinc-900 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
-            <h2 className="text-xl font-semibold text-white">
-              Edit Invoice {invoice.invoice_number}
-            </h2>
-            <button
-              onClick={onClose}
-              className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+    <AccessibleModal
+      isOpen={true}
+      onClose={onClose}
+      title={`Edit Invoice ${invoice.invoice_number}`}
+      size="2xl"
+    >
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+        {/* Dates */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="invoice-date" className="block text-sm font-medium text-zinc-400 mb-1">
+              Invoice Date
+            </label>
+            <input
+              id="invoice-date"
+              type="date"
+              autoFocus
+              value={invoiceDate}
+              onChange={e => setInvoiceDate(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+            />
           </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
-            {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
-                  Invoice Date
-                </label>
-                <input
-                  type="date"
-                  value={invoiceDate}
-                  onChange={e => setInvoiceDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
-                  Due Date
-                </label>
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={e => setDueDate(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-            </div>
-
-            {/* Period */}
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
-                  Period Start
-                </label>
-                <input
-                  type="date"
-                  value={periodStart}
-                  onChange={e => setPeriodStart(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
-                  Period End
-                </label>
-                <input
-                  type="date"
-                  value={periodEnd}
-                  onChange={e => setPeriodEnd(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                />
-              </div>
-            </div>
-
-            {/* Line Items */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <label className="text-sm font-medium text-zinc-400">
-                  Line Items
-                </label>
-                <button
-                  onClick={addLineItem}
-                  className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Item
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {lineItems.map((item, index) => (
-                  !item.isDeleted && (
-                    <div
-                      key={item.id || `new-${index}`}
-                      className="bg-zinc-800/50 rounded-lg p-4 space-y-3"
-                    >
-                      {/* Description */}
-                      <div>
-                        <input
-                          type="text"
-                          value={item.description}
-                          onChange={e => updateLineItemDescription(index, e.target.value)}
-                          placeholder="Description"
-                          className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
-                        />
-                      </div>
-
-                      {/* Quantity, Rate, Amount */}
-                      <div className="grid grid-cols-4 gap-3">
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">Quantity</label>
-                          <input
-                            type="number"
-                            step="0.5"
-                            min="0"
-                            value={item.quantity}
-                            onChange={e => updateLineItemAmount(index, 'quantity', e.target.value)}
-                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">Unit Price</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={item.unit_price}
-                            onChange={e => updateLineItemAmount(index, 'unit_price', e.target.value)}
-                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-xs text-zinc-500 mb-1">Amount</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={item.amount}
-                            onChange={e => updateLineItemAmountDirect(index, e.target.value)}
-                            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
-                          />
-                        </div>
-                        <div className="flex items-end">
-                          <button
-                            onClick={() => removeLineItem(index)}
-                            className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
-                          >
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                ))}
-
-                {lineItems.filter(i => !i.isDeleted).length === 0 && (
-                  <div className="text-center text-zinc-500 py-8">
-                    No line items. Click "Add Item" to add one.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Notes
-              </label>
-              <textarea
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                rows={3}
-                placeholder="Invoice notes (visible to customer)"
-                className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none"
-              />
-            </div>
-
-            {/* Validation Error */}
-            {validationError && (
-              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {validationError}
-              </div>
-            )}
-
-            {/* Total */}
-            <div className="flex justify-between items-center pt-4 border-t border-zinc-700">
-              <span className="text-lg font-medium text-zinc-400">Total</span>
-              <span className="text-2xl font-bold text-white">
-                {formatCurrency(subtotal)}
-              </span>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="px-6 py-4 border-t border-zinc-700 flex items-center justify-end gap-3">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4" />
-                  Save Changes
-                </>
-              )}
-            </button>
+          <div>
+            <label htmlFor="due-date" className="block text-sm font-medium text-zinc-400 mb-1">
+              Due Date
+            </label>
+            <input
+              id="due-date"
+              type="date"
+              value={dueDate}
+              onChange={e => setDueDate(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+            />
           </div>
         </div>
+
+        {/* Period */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label htmlFor="period-start" className="block text-sm font-medium text-zinc-400 mb-1">
+              Period Start
+            </label>
+            <input
+              id="period-start"
+              type="date"
+              value={periodStart}
+              onChange={e => setPeriodStart(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="period-end" className="block text-sm font-medium text-zinc-400 mb-1">
+              Period End
+            </label>
+            <input
+              id="period-end"
+              type="date"
+              value={periodEnd}
+              onChange={e => setPeriodEnd(e.target.value)}
+              className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+            />
+          </div>
+        </div>
+
+        {/* Line Items */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <label className="text-sm font-medium text-zinc-400">
+              Line Items
+            </label>
+            <button
+              onClick={addLineItem}
+              className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300"
+            >
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              Add Item
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            {lineItems.map((item, index) => (
+              !item.isDeleted && (
+                <div
+                  key={item.id || `new-${index}`}
+                  className="bg-zinc-800/50 rounded-lg p-4 space-y-3"
+                >
+                  {/* Description */}
+                  <div>
+                    <label htmlFor={`item-desc-${index}`} className="sr-only">Description</label>
+                    <input
+                      id={`item-desc-${index}`}
+                      type="text"
+                      value={item.description}
+                      onChange={e => updateLineItemDescription(index, e.target.value)}
+                      placeholder="Description"
+                      className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500"
+                    />
+                  </div>
+
+                  {/* Quantity, Rate, Amount */}
+                  <div className="grid grid-cols-4 gap-3">
+                    <div>
+                      <label htmlFor={`item-qty-${index}`} className="block text-xs text-zinc-500 mb-1">Quantity</label>
+                      <input
+                        id={`item-qty-${index}`}
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        value={item.quantity}
+                        onChange={e => updateLineItemAmount(index, 'quantity', e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`item-price-${index}`} className="block text-xs text-zinc-500 mb-1">Unit Price</label>
+                      <input
+                        id={`item-price-${index}`}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.unit_price}
+                        onChange={e => updateLineItemAmount(index, 'unit_price', e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor={`item-amount-${index}`} className="block text-xs text-zinc-500 mb-1">Amount</label>
+                      <input
+                        id={`item-amount-${index}`}
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={item.amount}
+                        onChange={e => updateLineItemAmountDirect(index, e.target.value)}
+                        className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <button
+                        onClick={() => removeLineItem(index)}
+                        className="p-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
+                        aria-label={`Remove line item ${index + 1}`}
+                      >
+                        <Trash2 className="w-5 h-5" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            ))}
+
+            {lineItems.filter(i => !i.isDeleted).length === 0 && (
+              <div className="text-center text-zinc-500 py-8">
+                No line items. Click "Add Item" to add one.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label htmlFor="invoice-notes" className="block text-sm font-medium text-zinc-400 mb-1">
+            Notes
+          </label>
+          <textarea
+            id="invoice-notes"
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            rows={3}
+            placeholder="Invoice notes (visible to customer)"
+            className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none"
+          />
+        </div>
+
+        {/* Validation Error */}
+        {validationError && (
+          <div role="alert" className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" aria-hidden="true" />
+            {validationError}
+          </div>
+        )}
+
+        {/* Total */}
+        <div className="flex justify-between items-center pt-4 border-t border-zinc-700">
+          <span className="text-lg font-medium text-zinc-400">Total</span>
+          <span className="text-2xl font-bold text-white">
+            {formatCurrency(subtotal)}
+          </span>
+        </div>
       </div>
-    </div>
+
+      {/* Footer */}
+      <div className="px-6 py-4 border-t border-zinc-700 flex items-center justify-end gap-3">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
+        >
+          {isSaving ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" aria-hidden="true" />
+              Save Changes
+            </>
+          )}
+        </button>
+      </div>
+    </AccessibleModal>
   )
 }

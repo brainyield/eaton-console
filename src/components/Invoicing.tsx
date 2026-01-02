@@ -78,7 +78,7 @@ function StatusBadge({ status }: { status: string }) {
   const Icon = config.icon
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${config.bg} ${config.text}`}>
-      <Icon className="w-3 h-3" />
+      <Icon className="w-3 h-3" aria-hidden="true" />
       {status.charAt(0).toUpperCase() + status.slice(1)}
     </span>
   )
@@ -107,9 +107,9 @@ function SortableHeader({ field, label, sort, onSort, className = '' }: Sortable
         {label}
         <span className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
           {sort.direction === 'asc' ? (
-            <ChevronUp className="w-4 h-4" />
+            <ChevronUp className="w-4 h-4" aria-hidden="true" />
           ) : (
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-4 h-4" aria-hidden="true" />
           )}
         </span>
       </div>
@@ -472,22 +472,23 @@ export default function Invoicing() {
               onClick={() => refetch()}
               className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
               title="Refresh"
+              aria-label="Refresh invoices"
             >
-              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
             </button>
             <button
               onClick={() => setShowImportModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
               title="Import a historical invoice from your previous system"
             >
-              <History className="w-4 h-4" />
+              <History className="w-4 h-4" aria-hidden="true" />
               Import Historical
             </button>
             <button
               onClick={() => setShowGenerateModal(true)}
               className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4" aria-hidden="true" />
               Generate Drafts
             </button>
           </div>
@@ -496,7 +497,7 @@ export default function Invoicing() {
         {/* Search and Filters */}
         <div className="flex items-center gap-4 mt-4">
           <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500" aria-hidden="true" />
             <input
               type="text"
               placeholder="Search invoices..."
@@ -590,9 +591,9 @@ export default function Invoicing() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkSendInvoices.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Send className="w-4 h-4" />
+                    <Send className="w-4 h-4" aria-hidden="true" />
                   )}
                   {bulkSendInvoices.isPending ? 'Sending...' : 'Send Selected'}
                 </button>
@@ -602,9 +603,9 @@ export default function Invoicing() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkDeleteInvoices.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-4 h-4" aria-hidden="true" />
                   )}
                   {bulkDeleteInvoices.isPending ? 'Deleting...' : 'Delete'}
                 </button>
@@ -620,9 +621,9 @@ export default function Invoicing() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sendingReminders ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Bell className="w-4 h-4" />
+                    <Bell className="w-4 h-4" aria-hidden="true" />
                   )}
                   {sendingReminders ? 'Sending...' : 'Send Reminder'}
                 </button>
@@ -632,9 +633,9 @@ export default function Invoicing() {
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkVoidInvoices.isPending ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   ) : (
-                    <Ban className="w-4 h-4" />
+                    <Ban className="w-4 h-4" aria-hidden="true" />
                   )}
                   {bulkVoidInvoices.isPending ? 'Voiding...' : 'Void Selected'}
                 </button>

@@ -347,11 +347,11 @@ export default function ActiveRoster() {
   function renderSortIcon(groupKey: string, field: SortField) {
     const config = sortConfigs[groupKey]
     if (config?.field !== field) {
-      return <ArrowUpDown className="w-3 h-3 text-gray-500" />
+      return <ArrowUpDown className="w-3 h-3 text-gray-500" aria-hidden="true" />
     }
-    return config.direction === 'asc' 
-      ? <ArrowUp className="w-3 h-3 text-blue-400" />
-      : <ArrowDown className="w-3 h-3 text-blue-400" />
+    return config.direction === 'asc'
+      ? <ArrowUp className="w-3 h-3 text-blue-400" aria-hidden="true" />
+      : <ArrowDown className="w-3 h-3 text-blue-400" aria-hidden="true" />
   }
 
   function formatRate(enrollment: EnrollmentWithRelations): string {
@@ -495,7 +495,7 @@ export default function ActiveRoster() {
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-4 h-4" aria-hidden="true" />
           Add Enrollment
         </button>
       </div>
@@ -504,7 +504,7 @@ export default function ActiveRoster() {
       <div className="flex flex-wrap items-center gap-4 mb-6">
         {/* Search */}
         <div className="relative flex-1 min-w-[200px] max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" aria-hidden="true" />
           <input
             type="text"
             placeholder="Search students, families, teachers..."
@@ -586,11 +586,11 @@ export default function ActiveRoster() {
                       className="flex items-center gap-3 hover:bg-gray-750 transition-colors rounded -ml-2 px-2 py-1"
                     >
                       {isExpanded ? (
-                        <ChevronDown className="w-5 h-5 text-gray-400" />
+                        <ChevronDown className="w-5 h-5 text-gray-400" aria-hidden="true" />
                       ) : (
-                        <ChevronRight className="w-5 h-5 text-gray-400" />
+                        <ChevronRight className="w-5 h-5 text-gray-400" aria-hidden="true" />
                       )}
-                      <ServiceIcon className="w-5 h-5 text-blue-400" />
+                      <ServiceIcon className="w-5 h-5 text-blue-400" aria-hidden="true" />
                       <span className="font-medium text-white">{groupName}</span>
                       <span className="text-sm text-gray-500">
                         ({groupEnrollments.length} enrollment{groupEnrollments.length !== 1 ? 's' : ''})
@@ -605,8 +605,9 @@ export default function ActiveRoster() {
                         }}
                         className="p-2 text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
                         title={`Download ${groupName} roster as CSV`}
+                        aria-label={`Download ${groupName} roster as CSV`}
                       >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-4 h-4" aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -761,7 +762,7 @@ export default function ActiveRoster() {
                                 <div className="flex-1 min-w-0">
                                   {activeAssignment ? (
                                     <div className="flex items-center gap-2 text-sm text-gray-300">
-                                      <User className="w-3 h-3 flex-shrink-0" />
+                                      <User className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
                                       <span className="truncate">{activeAssignment.teacher?.display_name}</span>
                                     </div>
                                   ) : (
@@ -775,7 +776,7 @@ export default function ActiveRoster() {
                                 <div className="w-16 text-right">
                                   {activeAssignment?.hours_per_week ? (
                                     <div className="flex items-center gap-1 text-gray-400 text-sm justify-end">
-                                      <Clock className="w-3 h-3" />
+                                      <Clock className="w-3 h-3" aria-hidden="true" />
                                       {activeAssignment.hours_per_week}
                                     </div>
                                   ) : (
@@ -788,7 +789,7 @@ export default function ActiveRoster() {
                               {columns.showRate && (
                                 <div className="w-24 text-right">
                                   <div className="flex items-center gap-1 text-gray-300 justify-end">
-                                    <DollarSign className="w-3 h-3" />
+                                    <DollarSign className="w-3 h-3" aria-hidden="true" />
                                     <span className="text-sm">{formatRate(enrollment)}</span>
                                   </div>
                                 </div>
@@ -814,7 +815,7 @@ export default function ActiveRoster() {
           {/* Empty State */}
           {Object.keys(groupedEnrollments).length === 0 && (
             <div className="text-center py-12 bg-gray-800 border border-gray-700 rounded-lg">
-              <Users className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+              <Users className="w-12 h-12 text-gray-600 mx-auto mb-3" aria-hidden="true" />
               <p className="text-gray-400">No enrollments found</p>
               <p className="text-gray-500 text-sm mt-1">
                 Try adjusting your filters or add a new enrollment
@@ -823,7 +824,7 @@ export default function ActiveRoster() {
                 onClick={() => setShowAddModal(true)}
                 className="mt-4 inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
                 Add Enrollment
               </button>
             </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { X } from 'lucide-react'
+import { AccessibleModal } from './ui/AccessibleModal'
 import { useTeacherMutations } from '../lib/hooks'
 import type { EmployeeStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
@@ -114,240 +114,243 @@ export function AddTeacherModal({ isOpen, onClose, onSuccess }: AddTeacherModalP
     )
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
-          <h2 className="text-lg font-semibold text-zinc-100">Add New Teacher</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+    <AccessibleModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Add New Teacher"
+      size="2xl"
+    >
+      <form onSubmit={handleSubmit} className="p-4 space-y-4">
+        {error && (
+          <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded" role="alert">
+            {error}
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="col-span-2">
+            <label htmlFor="teacher-name" className="block text-sm font-medium text-zinc-400 mb-1">
+              Name *
+            </label>
+            <input
+              id="teacher-name"
+              type="text"
+              value={formData.display_name}
+              onChange={(e) =>
+                setFormData({ ...formData, display_name: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="Last, First (e.g., Aviles, Wilmary)"
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label htmlFor="teacher-email" className="block text-sm font-medium text-zinc-400 mb-1">
+              Email
+            </label>
+            <input
+              id="teacher-email"
+              type="email"
+              value={formData.email}
+              onChange={(e) =>
+                setFormData({ ...formData, email: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="teacher-phone" className="block text-sm font-medium text-zinc-400 mb-1">
+              Phone
+            </label>
+            <input
+              id="teacher-phone"
+              type="tel"
+              value={formData.phone}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="teacher-role" className="block text-sm font-medium text-zinc-400 mb-1">
+              Role
+            </label>
+            <select
+              id="teacher-role"
+              value={formData.role}
+              onChange={(e) =>
+                setFormData({ ...formData, role: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select role...</option>
+              <option value="Academic Coach">Academic Coach</option>
+              <option value="Pod Teacher">Pod Teacher</option>
+              <option value="Online Instructor">Online Instructor</option>
+              <option value="Hub Staff">Hub Staff</option>
+              <option value="Elective Instructor">Elective Instructor</option>
+              <option value="Consultant">Consultant</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="teacher-status" className="block text-sm font-medium text-zinc-400 mb-1">
+              Status
+            </label>
+            <select
+              id="teacher-status"
+              value={formData.status}
+              onChange={(e) =>
+                setFormData({ ...formData, status: e.target.value as EmployeeStatus })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="active">Active</option>
+              <option value="reserve">Reserve</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          <div className="col-span-2">
+            <label htmlFor="teacher-skillset" className="block text-sm font-medium text-zinc-400 mb-1">
+              Skillset
+            </label>
+            <input
+              id="teacher-skillset"
+              type="text"
+              value={formData.skillset}
+              onChange={(e) =>
+                setFormData({ ...formData, skillset: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="e.g., K-8 All Subjects; High School Math & Science"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="teacher-rate" className="block text-sm font-medium text-zinc-400 mb-1">
+              Default Hourly Rate ($)
+            </label>
+            <input
+              id="teacher-rate"
+              type="number"
+              step="0.01"
+              min="0"
+              value={formData.default_hourly_rate}
+              onChange={(e) =>
+                setFormData({ ...formData, default_hourly_rate: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="e.g., 70.00"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="teacher-max-hours" className="block text-sm font-medium text-zinc-400 mb-1">
+              Max Hours/Week
+            </label>
+            <input
+              id="teacher-max-hours"
+              type="number"
+              step="0.5"
+              min="0"
+              value={formData.max_hours_per_week}
+              onChange={(e) =>
+                setFormData({ ...formData, max_hours_per_week: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="e.g., 30"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="teacher-contact-method" className="block text-sm font-medium text-zinc-400 mb-1">
+              Preferred Contact Method
+            </label>
+            <select
+              id="teacher-contact-method"
+              value={formData.preferred_comm_method}
+              onChange={(e) =>
+                setFormData({ ...formData, preferred_comm_method: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="">Select...</option>
+              <option value="Email">Email</option>
+              <option value="Text">Text</option>
+              <option value="Call">Call</option>
+              <option value="WhatsApp">WhatsApp</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="teacher-hire-date" className="block text-sm font-medium text-zinc-400 mb-1">
+              Hire Date
+            </label>
+            <input
+              id="teacher-hire-date"
+              type="date"
+              value={formData.hire_date}
+              onChange={(e) =>
+                setFormData({ ...formData, hire_date: e.target.value })
+              }
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+
+          <div className="col-span-2 flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="payment_info"
+              checked={formData.payment_info_on_file}
+              onChange={(e) =>
+                setFormData({ ...formData, payment_info_on_file: e.target.checked })
+              }
+              className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-blue-600 focus:ring-blue-500"
+            />
+            <label htmlFor="payment_info" className="text-sm text-zinc-400">
+              Payment information on file
+            </label>
+          </div>
+
+          <div className="col-span-2">
+            <label htmlFor="teacher-notes" className="block text-sm font-medium text-zinc-400 mb-1">
+              Notes
+            </label>
+            <textarea
+              id="teacher-notes"
+              value={formData.notes}
+              onChange={(e) =>
+                setFormData({ ...formData, notes: e.target.value })
+              }
+              rows={3}
+              className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          {error && (
-            <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
-              {error}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Name *
-              </label>
-              <input
-                type="text"
-                value={formData.display_name}
-                onChange={(e) =>
-                  setFormData({ ...formData, display_name: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                placeholder="Last, First (e.g., Aviles, Wilmary)"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                value={formData.email}
-                onChange={(e) =>
-                  setFormData({ ...formData, email: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Phone
-              </label>
-              <input
-                type="tel"
-                value={formData.phone}
-                onChange={(e) =>
-                  setFormData({ ...formData, phone: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Role
-              </label>
-              <select
-                value={formData.role}
-                onChange={(e) =>
-                  setFormData({ ...formData, role: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Select role...</option>
-                <option value="Academic Coach">Academic Coach</option>
-                <option value="Pod Teacher">Pod Teacher</option>
-                <option value="Online Instructor">Online Instructor</option>
-                <option value="Hub Staff">Hub Staff</option>
-                <option value="Elective Instructor">Elective Instructor</option>
-                <option value="Consultant">Consultant</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Status
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) =>
-                  setFormData({ ...formData, status: e.target.value as EmployeeStatus })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              >
-                <option value="active">Active</option>
-                <option value="reserve">Reserve</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Skillset
-              </label>
-              <input
-                type="text"
-                value={formData.skillset}
-                onChange={(e) =>
-                  setFormData({ ...formData, skillset: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                placeholder="e.g., K-8 All Subjects; High School Math & Science"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Default Hourly Rate ($)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={formData.default_hourly_rate}
-                onChange={(e) =>
-                  setFormData({ ...formData, default_hourly_rate: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                placeholder="e.g., 70.00"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Max Hours/Week
-              </label>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                value={formData.max_hours_per_week}
-                onChange={(e) =>
-                  setFormData({ ...formData, max_hours_per_week: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-                placeholder="e.g., 30"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Preferred Contact Method
-              </label>
-              <select
-                value={formData.preferred_comm_method}
-                onChange={(e) =>
-                  setFormData({ ...formData, preferred_comm_method: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              >
-                <option value="">Select...</option>
-                <option value="Email">Email</option>
-                <option value="Text">Text</option>
-                <option value="Call">Call</option>
-                <option value="WhatsApp">WhatsApp</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Hire Date
-              </label>
-              <input
-                type="date"
-                value={formData.hire_date}
-                onChange={(e) =>
-                  setFormData({ ...formData, hire_date: e.target.value })
-                }
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="col-span-2 flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="payment_info"
-                checked={formData.payment_info_on_file}
-                onChange={(e) =>
-                  setFormData({ ...formData, payment_info_on_file: e.target.checked })
-                }
-                className="w-4 h-4 rounded border-zinc-700 bg-zinc-800 text-blue-600 focus:ring-blue-500"
-              />
-              <label htmlFor="payment_info" className="text-sm text-zinc-400">
-                Payment information on file
-              </label>
-            </div>
-
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
-                Notes
-              </label>
-              <textarea
-                value={formData.notes}
-                onChange={(e) =>
-                  setFormData({ ...formData, notes: e.target.value })
-                }
-                rows={3}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-zinc-700">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={createTeacher.isPending}
-              className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-            >
-              {createTeacher.isPending ? 'Creating...' : 'Add Teacher'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex justify-end gap-2 pt-4 border-t border-zinc-700">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={createTeacher.isPending}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            {createTeacher.isPending ? 'Creating...' : 'Add Teacher'}
+          </button>
+        </div>
+      </form>
+    </AccessibleModal>
   )
 }

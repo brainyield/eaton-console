@@ -84,14 +84,16 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
               <button
                 onClick={() => setShowEditModal(true)}
                 className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                aria-label="Edit teacher"
               >
-                <Edit2 className="h-4 w-4" />
+                <Edit2 className="h-4 w-4" aria-hidden="true" />
               </button>
               <button
                 onClick={onClose}
                 className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                aria-label="Close panel"
               >
-                <X className="h-5 w-5" />
+                <X className="h-5 w-5" aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -103,7 +105,7 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
                 href={`mailto:${teacher.email}`}
                 className="flex items-center gap-1.5 text-gray-400 hover:text-blue-400"
               >
-                <Mail className="h-4 w-4" />
+                <Mail className="h-4 w-4" aria-hidden="true" />
                 {teacher.email}
               </a>
             )}
@@ -112,7 +114,7 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
                 href={`tel:${teacher.phone}`}
                 className="flex items-center gap-1.5 text-gray-400 hover:text-blue-400"
               >
-                <Phone className="h-4 w-4" />
+                <Phone className="h-4 w-4" aria-hidden="true" />
                 {teacher.phone}
               </a>
             )}
@@ -208,25 +210,25 @@ function OverviewTab({ teacher }: { teacher: any }) {
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
         <StatCard
-          icon={<User className="h-5 w-5" />}
+          icon={<User className="h-5 w-5" aria-hidden="true" />}
           label="Active Students"
           value={teacher.totalActiveStudents.toString()}
           sublabel={`${teacher.enrollmentAssignmentCount} assignments`}
         />
         <StatCard
-          icon={<Clock className="h-5 w-5" />}
+          icon={<Clock className="h-5 w-5" aria-hidden="true" />}
           label="Hours/Week"
           value={teacher.hoursDisplay}
           sublabel={`of ${maxHours} max${teacher.hasVariableHours ? ' (+ variable)' : ''}`}
         />
         <StatCard
-          icon={<DollarSign className="h-5 w-5" />}
+          icon={<DollarSign className="h-5 w-5" aria-hidden="true" />}
           label="Rate Range"
           value={teacher.rateDisplay}
           sublabel={teacher.avgRate ? `Avg: $${teacher.avgRate}/hr` : undefined}
         />
         <StatCard
-          icon={<CreditCard className="h-5 w-5" />}
+          icon={<CreditCard className="h-5 w-5" aria-hidden="true" />}
           label="Payment Info"
           value={teacher.payment_info_on_file ? 'On File' : 'Missing'}
           valueClass={teacher.payment_info_on_file ? 'text-green-400' : 'text-amber-400'}
@@ -344,7 +346,7 @@ function AssignmentsTab({
           onClick={onAddAssignment}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
         >
-          <Plus className="h-4 w-4" />
+          <Plus className="h-4 w-4" aria-hidden="true" />
           Add Assignment
         </button>
       </div>
@@ -379,7 +381,7 @@ function AssignmentsTab({
       {serviceAssignments.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-            <Briefcase className="h-4 w-4" />
+            <Briefcase className="h-4 w-4" aria-hidden="true" />
             Service Assignments ({serviceAssignments.filter(a => a.is_active).length})
             {showInactive && serviceAssignments.some(a => !a.is_active) && (
               <span className="text-xs text-amber-400">
@@ -403,7 +405,7 @@ function AssignmentsTab({
       {enrollmentAssignments.length > 0 && (
         <div>
           <h3 className="text-sm font-medium text-gray-400 mb-3 flex items-center gap-2">
-            <GraduationCap className="h-4 w-4" />
+            <GraduationCap className="h-4 w-4" aria-hidden="true" />
             Student Assignments ({enrollmentAssignments.filter(a => a.is_active).length})
             {showInactive && enrollmentAssignments.some(a => !a.is_active) && (
               <span className="text-xs text-amber-400">
@@ -601,9 +603,9 @@ function PayrollTab({
   const SortIcon = ({ columnKey }: { columnKey: PayrollSortKey }) => {
     if (sortKey !== columnKey) return null
     return sortDir === 'asc' ? (
-      <ChevronUp className="h-3 w-3" />
+      <ChevronUp className="h-3 w-3" aria-hidden="true" />
     ) : (
-      <ChevronDown className="h-3 w-3" />
+      <ChevronDown className="h-3 w-3" aria-hidden="true" />
     )
   }
 

@@ -714,11 +714,11 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   // Render sort icon
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortConfig.field !== field) {
-      return <ChevronUp className="h-3 w-3 text-zinc-600" />
+      return <ChevronUp className="h-3 w-3 text-zinc-600" aria-hidden="true" />
     }
-    return sortConfig.direction === 'asc' 
-      ? <ChevronUp className="h-3 w-3 text-blue-400" />
-      : <ChevronDown className="h-3 w-3 text-blue-400" />
+    return sortConfig.direction === 'asc'
+      ? <ChevronUp className="h-3 w-3 text-blue-400" aria-hidden="true" />
+      : <ChevronDown className="h-3 w-3 text-blue-400" aria-hidden="true" />
   }
 
   return (
@@ -729,7 +729,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
           
           <div className="flex items-center gap-4">
             <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" aria-hidden="true" />
               <input
                 type="text"
                 placeholder="Search families, students, emails, phones..."
@@ -752,11 +752,11 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <option value="churned">Churned</option>
             </select>
 
-            <button 
+            <button
               onClick={() => setShowAddFamily(true)}
               className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 rounded-md px-4 py-2 text-sm text-white font-medium transition-colors"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-4 w-4" aria-hidden="true" />
               Add Family
             </button>
           </div>
@@ -777,9 +777,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                   className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {bulkUpdateStatus.isPending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                   ) : (
-                    <RefreshCw className="h-4 w-4" />
+                    <RefreshCw className="h-4 w-4" aria-hidden="true" />
                   )}
                   Change Status
                 </button>
@@ -806,9 +806,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-zinc-700 hover:bg-zinc-600 rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isExporting ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Download className="h-4 w-4" />
+                  <Download className="h-4 w-4" aria-hidden="true" />
                 )}
                 Export CSV
               </button>
@@ -820,9 +820,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                 className="flex items-center gap-2 px-3 py-1.5 text-sm bg-red-600/80 hover:bg-red-600 rounded-md text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {bulkDelete.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
                 ) : (
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                 )}
                 Delete
               </button>
@@ -832,7 +832,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                 onClick={() => setSelectedIds(new Set())}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
               >
-                <X className="h-4 w-4" />
+                <X className="h-4 w-4" aria-hidden="true" />
                 Clear
               </button>
             </div>
@@ -859,21 +859,33 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <thead className="bg-zinc-900 sticky top-0">
                 <tr className="border-b border-zinc-800">
                   <th className="w-10 px-4 py-3">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       checked={isAllSelected}
                       onChange={(e) => handleSelectAll(e.target.checked)}
-                      className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500" 
+                      className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
+                      aria-label="Select all families"
                     />
                   </th>
-                  <th 
-                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
-                    onClick={() => handleSort('display_name')}
+                  <th
+                    className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider"
+                    aria-sort={sortConfig.field === 'display_name' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
                   >
-                    <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => handleSort('display_name')}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          handleSort('display_name')
+                        }
+                      }}
+                      className="flex items-center gap-1 hover:text-white focus:outline-none focus:text-white focus:underline"
+                      aria-label={`Sort by family name, currently ${sortConfig.field === 'display_name' ? (sortConfig.direction === 'asc' ? 'ascending' : 'descending') : 'not sorted'}`}
+                    >
                       Family
                       <SortIcon field="display_name" />
-                    </div>
+                    </button>
                   </th>
                   <th 
                     className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
@@ -923,18 +935,28 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                   <tr
                     key={family.id}
                     onClick={() => handleSelectFamily(family)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        handleSelectFamily(family)
+                      }
+                    }}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={`Select ${family.display_name}`}
                     className={`
-                      hover:bg-zinc-800/50 cursor-pointer
+                      hover:bg-zinc-800/50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset
                       ${selectedFamily?.id === family.id ? 'bg-zinc-800' : ''}
                       ${selectedIds.has(family.id) ? 'bg-blue-900/20' : ''}
                     `}
                   >
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={selectedIds.has(family.id)}
                         onChange={(e) => handleSelectOne(family.id, e.target.checked)}
-                        className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500" 
+                        className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
+                        aria-label={`Select ${family.display_name}`}
                       />
                     </td>
                     <td className="px-4 py-3">
@@ -1005,8 +1027,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
               className="p-2 rounded-md bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Previous page"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
             <span className="text-sm text-zinc-400">
               Page {page} of {totalPages || 1}
@@ -1015,8 +1038,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               onClick={() => setPage(p => p + 1)}
               disabled={page >= totalPages}
               className="p-2 rounded-md bg-zinc-800 text-zinc-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              aria-label="Next page"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         </div>

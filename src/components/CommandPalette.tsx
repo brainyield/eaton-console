@@ -181,11 +181,11 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
   const getIcon = (type: SearchResult['type']) => {
     switch (type) {
       case 'family':
-        return <Users className="w-4 h-4 text-zinc-400" />
+        return <Users className="w-4 h-4 text-zinc-400" aria-hidden="true" />
       case 'student':
-        return <GraduationCap className="w-4 h-4 text-zinc-400" />
+        return <GraduationCap className="w-4 h-4 text-zinc-400" aria-hidden="true" />
       case 'teacher':
-        return <UserCircle className="w-4 h-4 text-zinc-400" />
+        return <UserCircle className="w-4 h-4 text-zinc-400" aria-hidden="true" />
     }
   }
 
@@ -227,7 +227,7 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
         >
           {/* Search Input */}
           <div className="flex items-center border-b border-zinc-700 px-4">
-            <Search className="w-5 h-5 text-zinc-400 shrink-0" />
+            <Search className="w-5 h-5 text-zinc-400 shrink-0" aria-hidden="true" />
             <Command.Input
               value={query}
               onValueChange={setQuery}
@@ -239,8 +239,9 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
               <button
                 onClick={() => setQuery('')}
                 className="p-1 hover:bg-zinc-800 rounded"
+                aria-label="Clear search"
               >
-                <X className="w-4 h-4 text-zinc-400" />
+                <X className="w-4 h-4 text-zinc-400" aria-hidden="true" />
               </button>
             )}
             <kbd className="ml-2 px-2 py-1 text-xs text-zinc-500 bg-zinc-800 rounded">

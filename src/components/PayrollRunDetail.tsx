@@ -109,9 +109,9 @@ function TeacherSection({
       >
         <div className="flex items-center gap-3">
           {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-zinc-500" />
+            <ChevronDown className="w-4 h-4 text-zinc-500" aria-hidden="true" />
           ) : (
-            <ChevronRight className="w-4 h-4 text-zinc-500" />
+            <ChevronRight className="w-4 h-4 text-zinc-500" aria-hidden="true" />
           )}
           <span className="font-medium text-white">{teacherName}</span>
           {hasAdjustments && (
@@ -173,14 +173,16 @@ function TeacherSection({
                         <button
                           onClick={() => handleEditSave(item.id)}
                           className="p-1 text-green-400 hover:text-green-300"
+                          aria-label="Save hours"
                         >
-                          <Check className="w-4 h-4" />
+                          <Check className="w-4 h-4" aria-hidden="true" />
                         </button>
                         <button
                           onClick={handleEditCancel}
                           className="p-1 text-zinc-400 hover:text-zinc-300"
+                          aria-label="Cancel edit"
                         >
-                          <X className="w-4 h-4" />
+                          <X className="w-4 h-4" aria-hidden="true" />
                         </button>
                       </div>
                     ) : (
@@ -192,8 +194,9 @@ function TeacherSection({
                           <button
                             onClick={() => handleEditStart(item)}
                             className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+                            aria-label="Edit hours"
                           >
-                            <Edit2 className="w-3 h-3" />
+                            <Edit2 className="w-3 h-3" aria-hidden="true" />
                           </button>
                         )}
                       </div>
@@ -338,8 +341,9 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
             <button
               onClick={onClose}
               className="p-2 text-zinc-400 hover:text-white transition-colors"
+              aria-label="Close panel"
             >
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -350,7 +354,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
           <div className="grid grid-cols-3 gap-4">
             <div className="bg-zinc-800/50 rounded-lg p-4">
               <div className="flex items-center gap-2 text-zinc-400 text-sm mb-1">
-                <Clock className="w-4 h-4" />
+                <Clock className="w-4 h-4" aria-hidden="true" />
                 Total Hours
               </div>
               <div className="text-2xl font-semibold text-white">
@@ -359,7 +363,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
             </div>
             <div className="bg-zinc-800/50 rounded-lg p-4">
               <div className="flex items-center gap-2 text-zinc-400 text-sm mb-1">
-                <Users className="w-4 h-4" />
+                <Users className="w-4 h-4" aria-hidden="true" />
                 Teachers
               </div>
               <div className="text-2xl font-semibold text-white">
@@ -368,7 +372,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
             </div>
             <div className="bg-zinc-800/50 rounded-lg p-4">
               <div className="flex items-center gap-2 text-zinc-400 text-sm mb-1">
-                <DollarSign className="w-4 h-4" />
+                <DollarSign className="w-4 h-4" aria-hidden="true" />
                 Total Payroll
               </div>
               <div className="text-2xl font-semibold text-white">
@@ -409,7 +413,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
           {run.status === 'review' && (
             <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
               <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" />
+                <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" aria-hidden="true" />
                 <div>
                   <h4 className="font-medium text-blue-400">Review Mode</h4>
                   <p className="text-sm text-zinc-400 mt-1">
@@ -481,7 +485,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
                     onClick={onExportCSV}
                     className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
                   >
-                    <Download className="w-4 h-4" />
+                    <Download className="w-4 h-4" aria-hidden="true" />
                     Export CSV
                   </button>
                   <button
@@ -499,7 +503,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
                   onClick={onExportCSV}
                   className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-4 h-4" aria-hidden="true" />
                   Export CSV
                 </button>
               )}

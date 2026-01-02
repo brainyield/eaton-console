@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, AlertTriangle, Briefcase, GraduationCap, Trash2 } from 'lucide-react'
+import { Briefcase, GraduationCap, Trash2 } from 'lucide-react'
 import {
   useTeacherAssignmentMutations,
   getServiceBadgeColor,
@@ -7,6 +7,7 @@ import {
   type TeacherAssignmentWithDetails,
 } from '../lib/hooks'
 import { getTodayString } from '../lib/dateUtils'
+import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
 
 interface EditAssignmentModalProps {
   isOpen: boolean
@@ -148,41 +149,36 @@ export function EditAssignmentModal({
     onClose()
   }
 
-  if (!isOpen || !assignment) return null
+  if (!assignment) return null
+
+  // Build subtitle for the modal
+  const subtitleContent = (
+    <div className="flex items-center gap-2">
+      {isServiceLevel ? (
+        <Briefcase className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+      ) : (
+        <GraduationCap className="h-4 w-4 text-zinc-400" aria-hidden="true" />
+      )}
+      <span className={`px-2 py-0.5 text-xs rounded border ${getServiceBadgeColor(serviceCode || '')}`}>
+        {getServiceShortName(serviceCode || '')}
+      </span>
+      <span className="text-sm text-zinc-400">
+        {isServiceLevel ? serviceName : studentName}
+      </span>
+    </div>
+  )
 
   return (
-    <div 
-      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-      onClick={(e) => e.stopPropagation()}
-    >
-      <div 
-        className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
+    <>
+      <AccessibleModal
+        isOpen={isOpen}
+        onClose={handleClose}
+        title="Edit Assignment"
+        size="lg"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <div>
-            <h2 className="text-lg font-semibold text-white">Edit Assignment</h2>
-            <div className="flex items-center gap-2 mt-1">
-              {isServiceLevel ? (
-                <Briefcase className="h-4 w-4 text-zinc-400" />
-              ) : (
-                <GraduationCap className="h-4 w-4 text-zinc-400" />
-              )}
-              <span className={`px-2 py-0.5 text-xs rounded border ${getServiceBadgeColor(serviceCode || '')}`}>
-                {getServiceShortName(serviceCode || '')}
-              </span>
-              <span className="text-sm text-zinc-400">
-                {isServiceLevel ? serviceName : studentName}
-              </span>
-            </div>
-          </div>
-          <button
-            onClick={handleClose}
-            className="p-2 hover:bg-zinc-800 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5 text-zinc-400" />
-          </button>
+        {/* Custom subtitle with service info */}
+        <div className="px-6 -mt-2 mb-4">
+          {subtitleContent}
         </div>
 
         {/* Content */}
@@ -216,12 +212,14 @@ export function EditAssignmentModal({
             {/* Editable Fields */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
+                <label htmlFor="hourly-rate" className="block text-sm font-medium text-zinc-400 mb-1">
                   Hourly Rate ($)
                 </label>
                 <input
+                  id="hourly-rate"
                   type="number"
                   step="0.01"
+                  autoFocus
                   value={hourlyRate}
                   onChange={(e) => setHourlyRate(e.target.value)}
                   placeholder="70.00"
@@ -229,10 +227,11 @@ export function EditAssignmentModal({
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
+                <label htmlFor="hours-week" className="block text-sm font-medium text-zinc-400 mb-1">
                   Hours/Week
                 </label>
                 <input
+                  id="hours-week"
                   type="number"
                   step="0.5"
                   value={hoursPerWeek}
@@ -245,10 +244,11 @@ export function EditAssignmentModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="start-date" className="block text-sm font-medium text-zinc-400 mb-1">
                 Start Date
               </label>
               <input
+                id="start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -257,10 +257,11 @@ export function EditAssignmentModal({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="assignment-notes" className="block text-sm font-medium text-zinc-400 mb-1">
                 Notes
               </label>
               <textarea
+                id="assignment-notes"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Schedule details, special instructions, etc."
@@ -280,10 +281,13 @@ export function EditAssignmentModal({
               <button
                 type="button"
                 onClick={() => setIsActive(!isActive)}
+                role="switch"
+                aria-checked={isActive}
                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                   isActive ? 'bg-green-600' : 'bg-zinc-700'
                 }`}
               >
+                <span className="sr-only">Toggle active status</span>
                 <span
                   className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                     isActive ? 'translate-x-6' : 'translate-x-1'
@@ -292,73 +296,9 @@ export function EditAssignmentModal({
               </button>
             </div>
 
-            {/* Deactivate Confirmation */}
-            {showDeactivateConfirm && (
-              <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-amber-300 font-medium">Confirm Deactivation</p>
-                    <p className="text-xs text-amber-300/70 mt-1">
-                      This will end the assignment and set today as the end date. The assignment will no longer appear in active lists.
-                    </p>
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        type="button"
-                        onClick={handleDeactivate}
-                        disabled={isSubmitting}
-                        className="px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-500 text-white rounded-lg disabled:opacity-50"
-                      >
-                        {isSubmitting ? 'Deactivating...' : 'Yes, Deactivate'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowDeactivateConfirm(false)}
-                        className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Delete Confirmation (only for inactive assignments) */}
-            {showDeleteConfirm && (
-              <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-                <div className="flex items-start gap-3">
-                  <Trash2 className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm text-red-300 font-medium">Permanently Delete Assignment?</p>
-                    <p className="text-xs text-red-300/70 mt-1">
-                      This will permanently remove this assignment from the system. This action cannot be undone.
-                    </p>
-                    <div className="flex gap-2 mt-3">
-                      <button
-                        type="button"
-                        onClick={handleDelete}
-                        disabled={isSubmitting}
-                        className="px-3 py-1.5 text-sm bg-red-600 hover:bg-red-500 text-white rounded-lg disabled:opacity-50"
-                      >
-                        {isSubmitting ? 'Deleting...' : 'Yes, Delete Permanently'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowDeleteConfirm(false)}
-                        className="px-3 py-1.5 text-sm text-zinc-400 hover:text-white"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* Error */}
             {error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+              <div role="alert" className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
                 {error}
               </div>
             )}
@@ -368,7 +308,7 @@ export function EditAssignmentModal({
           <div className="flex items-center justify-between px-6 py-4 border-t border-zinc-800">
             <div className="flex items-center gap-2">
               {/* Deactivate button for active assignments */}
-              {assignment.is_active && !showDeactivateConfirm && !showDeleteConfirm && (
+              {assignment.is_active && (
                 <button
                   type="button"
                   onClick={() => setShowDeactivateConfirm(true)}
@@ -378,13 +318,13 @@ export function EditAssignmentModal({
                 </button>
               )}
               {/* Delete button for inactive assignments */}
-              {!assignment.is_active && !showDeactivateConfirm && !showDeleteConfirm && (
+              {!assignment.is_active && (
                 <button
                   type="button"
                   onClick={() => setShowDeleteConfirm(true)}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors"
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <Trash2 className="h-4 w-4" aria-hidden="true" />
                   Delete
                 </button>
               )}
@@ -407,7 +347,33 @@ export function EditAssignmentModal({
             </div>
           </div>
         </form>
-      </div>
-    </div>
+      </AccessibleModal>
+
+      {/* Deactivate Confirmation */}
+      <ConfirmationModal
+        isOpen={showDeactivateConfirm}
+        onClose={() => setShowDeactivateConfirm(false)}
+        onConfirm={handleDeactivate}
+        title="Confirm Deactivation"
+        description="This will end the assignment and set today as the end date. The assignment will no longer appear in active lists."
+        confirmLabel="Yes, Deactivate"
+        cancelLabel="Cancel"
+        variant="warning"
+        isLoading={isSubmitting}
+      />
+
+      {/* Delete Confirmation */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Permanently Delete Assignment?"
+        description="This will permanently remove this assignment from the system. This action cannot be undone."
+        confirmLabel="Yes, Delete Permanently"
+        cancelLabel="Cancel"
+        variant="danger"
+        isLoading={isSubmitting}
+      />
+    </>
   )
 }

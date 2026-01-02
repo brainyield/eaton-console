@@ -79,12 +79,12 @@ function getEmailTypeBadgeColor(emailType: string): string {
 
 function getEmailTypeIcon(emailType: string) {
   if (emailType.includes('reminder')) {
-    return <Bell className="w-3.5 h-3.5" />
+    return <Bell className="w-3.5 h-3.5" aria-hidden="true" />
   }
   if (emailType === 'payment_received') {
-    return <CheckCircle className="w-3.5 h-3.5" />
+    return <CheckCircle className="w-3.5 h-3.5" aria-hidden="true" />
   }
-  return <Mail className="w-3.5 h-3.5" />
+  return <Mail className="w-3.5 h-3.5" aria-hidden="true" />
 }
 
 function formatEmailDate(dateStr: string): string {
@@ -290,8 +290,9 @@ export default function InvoiceDetailPanel({
           <button
             onClick={onClose}
             className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
+            aria-label="Close panel"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5" aria-hidden="true" />
           </button>
         </div>
 
@@ -301,7 +302,7 @@ export default function InvoiceDetailPanel({
           {isVoid && (
             <div className="px-6 py-3 bg-zinc-800 border-b border-zinc-700">
               <div className="flex items-center gap-2 text-zinc-400">
-                <Ban className="w-4 h-4" />
+                <Ban className="w-4 h-4" aria-hidden="true" />
                 <span className="text-sm">This invoice has been voided and is excluded from revenue calculations.</span>
               </div>
             </div>
@@ -311,7 +312,7 @@ export default function InvoiceDetailPanel({
           <div className="px-6 py-4 border-b border-zinc-800">
             <div className="flex items-center gap-3 mb-3">
               <div className="w-10 h-10 rounded-full bg-zinc-800 flex items-center justify-center">
-                <User className="w-5 h-5 text-zinc-400" />
+                <User className="w-5 h-5 text-zinc-400" aria-hidden="true" />
               </div>
               <div>
                 <div className="text-white font-medium">
@@ -326,7 +327,7 @@ export default function InvoiceDetailPanel({
             </div>
             {invoice.family?.primary_phone && (
               <div className="flex items-center gap-2 text-sm text-zinc-400">
-                <Phone className="w-4 h-4" />
+                <Phone className="w-4 h-4" aria-hidden="true" />
                 {invoice.family.primary_phone}
               </div>
             )}
@@ -416,7 +417,7 @@ export default function InvoiceDetailPanel({
             {hasBalanceError && (
               <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" />
+                  <AlertTriangle className="w-4 h-4 text-red-400 mt-0.5 flex-shrink-0" aria-hidden="true" />
                   <div className="flex-1">
                     <p className="text-sm text-red-400 font-medium">Balance calculation error</p>
                     <p className="text-xs text-red-400/70 mt-1">
@@ -429,12 +430,12 @@ export default function InvoiceDetailPanel({
                     >
                       {fixingBalance ? (
                         <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <Loader2 className="w-3 h-3 animate-spin" aria-hidden="true" />
                           Fixing...
                         </>
                       ) : (
                         <>
-                          <Wrench className="w-3 h-3" />
+                          <Wrench className="w-3 h-3" aria-hidden="true" />
                           Recalculate Balance
                         </>
                       )}
@@ -457,7 +458,7 @@ export default function InvoiceDetailPanel({
           {(paymentHistory && paymentHistory.length > 0) && (
             <div className="px-6 py-4 border-b border-zinc-800">
               <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
-                <DollarSign className="w-4 h-4" />
+                <DollarSign className="w-4 h-4" aria-hidden="true" />
                 Payment History
               </h3>
 
@@ -500,7 +501,7 @@ export default function InvoiceDetailPanel({
           {/* Email History Section */}
           <div className="px-6 py-4 border-b border-zinc-800">
             <h3 className="text-sm font-medium text-zinc-400 mb-3 flex items-center gap-2">
-              <Mail className="w-4 h-4" />
+              <Mail className="w-4 h-4" aria-hidden="true" />
               Email History
             </h3>
 
@@ -532,7 +533,7 @@ export default function InvoiceDetailPanel({
                       </div>
                     </div>
                     <div className="text-xs text-zinc-500 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
+                      <Clock className="w-3 h-3" aria-hidden="true" />
                       {formatEmailDate(email.sent_at)}
                     </div>
                   </div>
@@ -554,12 +555,12 @@ export default function InvoiceDetailPanel({
             >
               {isSending ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   Sending...
                 </>
               ) : (
                 <>
-                  <Send className="w-4 h-4" />
+                  <Send className="w-4 h-4" aria-hidden="true" />
                   Send Invoice
                 </>
               )}
@@ -575,12 +576,12 @@ export default function InvoiceDetailPanel({
             >
               {sendingReminder ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   Sending...
                 </>
               ) : (
                 <>
-                  <Bell className="w-4 h-4" />
+                  <Bell className="w-4 h-4" aria-hidden="true" />
                   Send Reminder
                 </>
               )}
@@ -593,7 +594,7 @@ export default function InvoiceDetailPanel({
               onClick={openPaymentModal}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
             >
-              <DollarSign className="w-4 h-4" />
+              <DollarSign className="w-4 h-4" aria-hidden="true" />
               Record Payment
             </button>
           )}
@@ -602,7 +603,7 @@ export default function InvoiceDetailPanel({
             onClick={() => window.open(publicUrl, '_blank')}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
           >
-            <ExternalLink className="w-4 h-4" />
+            <ExternalLink className="w-4 h-4" aria-hidden="true" />
             View Public Invoice
           </button>
 
@@ -611,7 +612,7 @@ export default function InvoiceDetailPanel({
               onClick={onEdit}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-4 h-4" aria-hidden="true" />
               Edit Invoice
             </button>
           )}
@@ -623,7 +624,7 @@ export default function InvoiceDetailPanel({
             }}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
           >
-            <Download className="w-4 h-4" />
+            <Download className="w-4 h-4" aria-hidden="true" />
             Download PDF
           </button>
 
@@ -636,12 +637,12 @@ export default function InvoiceDetailPanel({
             >
               {isVoiding ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                   Voiding...
                 </>
               ) : (
                 <>
-                  <Ban className="w-4 h-4" />
+                  <Ban className="w-4 h-4" aria-hidden="true" />
                   Void Invoice
                 </>
               )}
@@ -654,7 +655,7 @@ export default function InvoiceDetailPanel({
               onClick={onDelete}
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
               Delete Draft
             </button>
           )}
@@ -728,12 +729,12 @@ export default function InvoiceDetailPanel({
                 >
                   {recordingPayment ? (
                     <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
                       Recording...
                     </>
                   ) : (
                     <>
-                      <CheckCircle className="w-4 h-4" />
+                      <CheckCircle className="w-4 h-4" aria-hidden="true" />
                       Record Payment
                     </>
                   )}

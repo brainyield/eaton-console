@@ -155,7 +155,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
   if (!email) {
     return (
       <div className="text-center py-8">
-        <Mail className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+        <Mail className="w-12 h-12 text-zinc-600 mx-auto mb-3" aria-hidden="true" />
         <p className="text-zinc-400">No email address available</p>
         <p className="text-zinc-500 text-sm mt-1">Add an email to view communication history</p>
       </div>
@@ -167,7 +167,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
       {/* Search and Compose row */}
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" aria-hidden="true" />
           <input
             type="text"
             value={searchQuery}
@@ -182,8 +182,9 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
                 setDebouncedQuery('')
               }}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-500 hover:text-zinc-300"
+              aria-label="Clear search"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -191,7 +192,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
           onClick={handleCompose}
           className="flex items-center gap-1.5 px-3 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
         >
-          <PenSquare className="h-4 w-4" />
+          <PenSquare className="h-4 w-4" aria-hidden="true" />
           Compose
         </button>
       </div>
@@ -205,7 +206,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
             className="flex items-center gap-1 text-zinc-400 hover:text-white transition-colors disabled:opacity-50"
             title="Refresh"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
             Refresh
           </button>
           <span className="text-zinc-500">
@@ -236,7 +237,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
       {/* Error state */}
       {hasError && (
         <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
-          <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+          <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" aria-hidden="true" />
           <div className="flex-1">
             <p className="text-sm text-red-400">Failed to load emails</p>
             <p className="text-xs text-red-400/70 mt-1">
@@ -255,7 +256,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
       {/* Empty state */}
       {!isLoading && !hasError && unifiedEmails.length === 0 && (
         <div className="text-center py-8">
-          <Mail className="w-12 h-12 text-zinc-600 mx-auto mb-3" />
+          <Mail className="w-12 h-12 text-zinc-600 mx-auto mb-3" aria-hidden="true" />
           <p className="text-zinc-400">
             {debouncedQuery ? 'No emails match your search' : 'No emails found'}
           </p>
@@ -292,12 +293,12 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
           >
             {isFetchingNextPage ? (
               <>
-                <RefreshCw className="h-4 w-4 animate-spin" />
+                <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" />
                 Loading...
               </>
             ) : (
               <>
-                <ChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-4 w-4" aria-hidden="true" />
                 Load More
               </>
             )}

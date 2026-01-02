@@ -128,15 +128,16 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
           <button
             onClick={onClose}
             className="p-1 rounded-md text-zinc-400 hover:text-white hover:bg-zinc-800"
+            aria-label="Close panel"
           >
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5" aria-hidden="true" />
           </button>
           <div className="flex items-center gap-2">
-            <button 
+            <button
               onClick={() => setShowEditFamily(true)}
               className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
             >
-              <Pencil className="h-4 w-4" />
+              <Pencil className="h-4 w-4" aria-hidden="true" />
               Edit
             </button>
           </div>
@@ -154,7 +155,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
           <div className="space-y-2 text-sm">
             {family.primary_email && (
               <div className="flex items-center gap-2 text-zinc-400">
-                <Mail className="h-4 w-4" />
+                <Mail className="h-4 w-4" aria-hidden="true" />
                 <a href={`mailto:${family.primary_email}`} className="hover:text-white">
                   {family.primary_email}
                 </a>
@@ -162,7 +163,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
             )}
             {family.primary_phone && (
               <div className="flex items-center gap-2 text-zinc-400">
-                <Phone className="h-4 w-4" />
+                <Phone className="h-4 w-4" aria-hidden="true" />
                 <a href={`tel:${family.primary_phone}`} className="hover:text-white">
                   {family.primary_phone}
                 </a>
@@ -170,13 +171,13 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
             )}
             {family.payment_gateway && (
               <div className="flex items-center gap-2 text-zinc-400">
-                <CreditCard className="h-4 w-4" />
+                <CreditCard className="h-4 w-4" aria-hidden="true" />
                 <span>{family.payment_gateway}</span>
               </div>
             )}
             {family.last_contact_at && (
               <div className="flex items-center gap-2 text-zinc-400">
-                <Calendar className="h-4 w-4" />
+                <Calendar className="h-4 w-4" aria-hidden="true" />
                 <span>Last contact: {new Date(family.last_contact_at).toLocaleDateString()}</span>
               </div>
             )}
@@ -210,11 +211,11 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                   <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider">
                     Students ({family.students?.length || 0})
                   </h3>
-                  <button 
+                  <button
                     onClick={() => setShowAddStudent(true)}
                     className="flex items-center gap-1 text-sm text-blue-400 hover:text-blue-300 transition-colors"
                   >
-                    <UserPlus className="h-4 w-4" />
+                    <UserPlus className="h-4 w-4" aria-hidden="true" />
                     Add
                   </button>
                 </div>
@@ -232,7 +233,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                       >
                         <div className="flex items-center gap-3">
                           <div className="p-2 bg-zinc-700 rounded-lg">
-                            <GraduationCap className="h-4 w-4 text-zinc-400" />
+                            <GraduationCap className="h-4 w-4 text-zinc-400" aria-hidden="true" />
                           </div>
                           <div>
                             <div className="text-sm font-medium text-white">{student.full_name}</div>
@@ -262,7 +263,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                           {!student.active && (
                             <span className="text-xs text-zinc-500 bg-zinc-700 px-2 py-0.5 rounded">Inactive</span>
                           )}
-                          <ChevronRight className="h-4 w-4 text-zinc-500" />
+                          <ChevronRight className="h-4 w-4 text-zinc-500" aria-hidden="true" />
                         </div>
                       </div>
                       )
@@ -403,7 +404,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                   >
                     <div className="flex items-start justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-zinc-400" />
+                        <FileText className="h-4 w-4 text-zinc-400" aria-hidden="true" />
                         <span className="text-sm font-medium text-white">
                           {invoice.invoice_number || `INV-${invoice.public_id?.slice(0, 6)}`}
                         </span>
@@ -432,8 +433,9 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                             rel="noopener noreferrer"
                             className="text-zinc-400 hover:text-white"
                             onClick={(e) => e.stopPropagation()}
+                            aria-label="Open invoice in new tab"
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink className="h-4 w-4" aria-hidden="true" />
                           </a>
                         )}
                       </div>

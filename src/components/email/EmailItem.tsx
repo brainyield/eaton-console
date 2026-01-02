@@ -43,7 +43,7 @@ export function EmailItem({ email, onView, onReply, isConsoleSent }: EmailItemPr
             ? 'bg-blue-900/50 text-blue-400'
             : 'bg-zinc-700 text-zinc-400'
         }`}>
-          {email.isOutbound ? <Send className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
+          {email.isOutbound ? <Send className="h-4 w-4" aria-hidden="true" /> : <Mail className="h-4 w-4" aria-hidden="true" />}
         </div>
 
         {/* Content */}
@@ -67,7 +67,7 @@ export function EmailItem({ email, onView, onReply, isConsoleSent }: EmailItemPr
             )}
             {isMassEmail && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 bg-amber-900/50 text-amber-400 rounded text-[10px]">
-                <Users className="h-3 w-3" />
+                <Users className="h-3 w-3" aria-hidden="true" />
                 {email.recipientCount}
               </span>
             )}

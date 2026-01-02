@@ -66,17 +66,17 @@ export function Sidebar({ currentPath, onNavigate, onSelectFamily }: SidebarProp
     <div className="flex h-full w-56 flex-col bg-zinc-900 border-r border-zinc-800">
       {/* Logo */}
       <div className="flex h-14 items-center gap-2 px-4 border-b border-zinc-800">
-        <Train className="w-5 h-5 text-blue-400" />
+        <Train className="w-5 h-5 text-blue-400" aria-hidden="true" />
         <span className="text-lg font-semibold text-white">NON-STOP TRAIN</span>
       </div>
 
       {/* Search */}
       <div className="px-3 py-3">
-        <button 
+        <button
           className="flex w-full items-center gap-2 rounded-md bg-zinc-800 px-3 py-2 text-sm text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"
           onClick={openCommandPalette}
         >
-          <Search className="h-4 w-4" />
+          <Search className="h-4 w-4" aria-hidden="true" />
           <span>Search...</span>
           <kbd className="ml-auto text-xs bg-zinc-700 px-1.5 py-0.5 rounded">⌘K</kbd>
         </button>
@@ -100,7 +100,7 @@ export function Sidebar({ currentPath, onNavigate, onSelectFamily }: SidebarProp
                 }
               `}
             >
-              <item.icon className="h-4 w-4" />
+              <item.icon className="h-4 w-4" aria-hidden="true" />
               {item.name}
             </button>
           )
@@ -111,7 +111,7 @@ export function Sidebar({ currentPath, onNavigate, onSelectFamily }: SidebarProp
       <div className="px-3 py-4 border-t border-zinc-800">
         <div className="flex items-center justify-between px-3 mb-2">
           <span className="text-xs font-medium text-zinc-500 uppercase">Recent</span>
-          <ChevronDown className="h-3 w-3 text-zinc-500" />
+          <ChevronDown className="h-3 w-3 text-zinc-500" aria-hidden="true" />
         </div>
         <div className="space-y-1">
           {recentItems.length === 0 ? (

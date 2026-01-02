@@ -55,7 +55,7 @@ function StatusBadge({ status }: { status: PayrollRunStatus }) {
   const Icon = config.icon
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full ${config.bg} ${config.text}`}>
-      <Icon className="w-3 h-3" />
+      <Icon className="w-3 h-3" aria-hidden="true" />
       {config.label}
     </span>
   )
@@ -84,9 +84,9 @@ function SortableHeader({ field, label, sort, onSort, className = '' }: Sortable
         {label}
         <span className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
           {sort.direction === 'asc' ? (
-            <ChevronUp className="w-4 h-4" />
+            <ChevronUp className="w-4 h-4" aria-hidden="true" />
           ) : (
-            <ChevronDown className="w-4 h-4" />
+            <ChevronDown className="w-4 h-4" aria-hidden="true" />
           )}
         </span>
       </div>
@@ -235,7 +235,7 @@ export default function Payroll() {
               onClick={() => setShowAdjustmentModal(true)}
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4" aria-hidden="true" />
               Add Adjustment
             </button>
             {!currentRun && (
@@ -243,7 +243,7 @@ export default function Payroll() {
                 onClick={() => setShowCreateModal(true)}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
                 New Payroll Run
               </button>
             )}
@@ -294,15 +294,15 @@ export default function Payroll() {
                     </div>
                     <div className="flex items-center gap-6 text-sm text-zinc-400">
                       <span className="flex items-center gap-1">
-                        <Users className="w-4 h-4" />
+                        <Users className="w-4 h-4" aria-hidden="true" />
                         {currentRun.teacher_count} teachers
                       </span>
                       <span className="flex items-center gap-1">
-                        <Clock className="w-4 h-4" />
+                        <Clock className="w-4 h-4" aria-hidden="true" />
                         {currentRun.total_hours.toFixed(1)} hours
                       </span>
                       <span className="flex items-center gap-1">
-                        <DollarSign className="w-4 h-4" />
+                        <DollarSign className="w-4 h-4" aria-hidden="true" />
                         {formatCurrency(currentRun.total_adjusted)}
                       </span>
                     </div>
@@ -313,8 +313,9 @@ export default function Payroll() {
                         onClick={() => handleDeleteRun(currentRun.id)}
                         className="p-2 text-zinc-400 hover:text-red-400 transition-colors"
                         title="Delete draft"
+                        aria-label="Delete draft payroll run"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
                       </button>
                     )}
                     <button
@@ -367,7 +368,7 @@ export default function Payroll() {
               </div>
             ) : (
               <div className="bg-zinc-900 border border-zinc-800 border-dashed rounded-lg p-12 text-center">
-                <Calendar className="w-12 h-12 text-zinc-600 mx-auto mb-4" />
+                <Calendar className="w-12 h-12 text-zinc-600 mx-auto mb-4" aria-hidden="true" />
                 <h3 className="text-lg font-medium text-white mb-2">No Active Payroll Run</h3>
                 <p className="text-zinc-400 mb-6">
                   Create a new payroll run to calculate teacher pay for the next period.
@@ -376,7 +377,7 @@ export default function Payroll() {
                   onClick={() => setShowCreateModal(true)}
                   className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-4 h-4" aria-hidden="true" />
                   New Payroll Run
                 </button>
               </div>
@@ -386,7 +387,7 @@ export default function Payroll() {
             {pendingAdjustments.length > 0 && (
               <div className="mt-4 bg-amber-500/10 border border-amber-500/20 rounded-lg p-4">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5" />
+                  <AlertCircle className="w-5 h-5 text-amber-400 mt-0.5" aria-hidden="true" />
                   <div>
                     <h4 className="font-medium text-amber-400">Pending Adjustments</h4>
                     <p className="text-sm text-zinc-400 mt-1">
@@ -503,7 +504,7 @@ export default function Payroll() {
                 onClick={() => setShowAdjustmentModal(true)}
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 rounded-lg transition-colors"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-4 h-4" aria-hidden="true" />
                 Add Adjustment
               </button>
             </div>

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import { X, Trash2 } from 'lucide-react'
+import { Trash2 } from 'lucide-react'
 import { useFamilyMutations } from '../lib/hooks'
 import type { Family, CustomerStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
+import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
 
 interface EditFamilyModalProps {
   isOpen: boolean
@@ -112,35 +113,32 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
     })
   }
 
-  if (!isOpen || !family) return null
+  if (!family) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-zinc-700">
-          <h2 className="text-lg font-semibold text-zinc-100">Edit Family</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
+    <>
+      <AccessibleModal
+        isOpen={isOpen}
+        onClose={onClose}
+        title="Edit Family"
+        size="2xl"
+      >
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {error && (
-            <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
+            <div role="alert" className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
               {error}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="family-name" className="block text-sm font-medium text-zinc-400 mb-1">
                 Family Name *
               </label>
               <input
+                id="family-name"
                 type="text"
+                autoFocus
                 value={formData.display_name}
                 onChange={(e) =>
                   setFormData({ ...formData, display_name: e.target.value })
@@ -151,10 +149,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="primary-contact" className="block text-sm font-medium text-zinc-400 mb-1">
                 Primary Contact Name
               </label>
               <input
+                id="primary-contact"
                 type="text"
                 value={formData.primary_contact_name}
                 onChange={(e) =>
@@ -165,10 +164,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="status" className="block text-sm font-medium text-zinc-400 mb-1">
                 Status
               </label>
               <select
+                id="status"
                 value={formData.status}
                 onChange={(e) =>
                   setFormData({ ...formData, status: e.target.value as CustomerStatus })
@@ -184,10 +184,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium text-zinc-400 mb-1">
                 Email
               </label>
               <input
+                id="email"
                 type="email"
                 value={formData.primary_email}
                 onChange={(e) =>
@@ -198,10 +199,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="phone" className="block text-sm font-medium text-zinc-400 mb-1">
                 Phone
               </label>
               <input
+                id="phone"
                 type="tel"
                 value={formData.primary_phone}
                 onChange={(e) =>
@@ -212,10 +214,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="payment-method" className="block text-sm font-medium text-zinc-400 mb-1">
                 Payment Method
               </label>
               <select
+                id="payment-method"
                 value={formData.payment_gateway}
                 onChange={(e) =>
                   setFormData({ ...formData, payment_gateway: e.target.value })
@@ -233,10 +236,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="address" className="block text-sm font-medium text-zinc-400 mb-1">
                 Address
               </label>
               <input
+                id="address"
                 type="text"
                 value={formData.address_line1}
                 onChange={(e) =>
@@ -248,10 +252,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="city" className="block text-sm font-medium text-zinc-400 mb-1">
                 City
               </label>
               <input
+                id="city"
                 type="text"
                 value={formData.city}
                 onChange={(e) =>
@@ -263,10 +268,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
+                <label htmlFor="state" className="block text-sm font-medium text-zinc-400 mb-1">
                   State
                 </label>
                 <input
+                  id="state"
                   type="text"
                   value={formData.state}
                   onChange={(e) =>
@@ -276,10 +282,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-zinc-400 mb-1">
+                <label htmlFor="zip" className="block text-sm font-medium text-zinc-400 mb-1">
                   ZIP
                 </label>
                 <input
+                  id="zip"
                   type="text"
                   value={formData.zip}
                   onChange={(e) =>
@@ -291,10 +298,11 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
 
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-zinc-400 mb-1">
+              <label htmlFor="notes" className="block text-sm font-medium text-zinc-400 mb-1">
                 Notes
               </label>
               <textarea
+                id="notes"
                 value={formData.notes}
                 onChange={(e) =>
                   setFormData({ ...formData, notes: e.target.value })
@@ -311,7 +319,7 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
               onClick={() => setShowDeleteConfirm(true)}
               className="flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-4 h-4" aria-hidden="true" />
               Delete Family
             </button>
 
@@ -333,38 +341,19 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
             </div>
           </div>
         </form>
+      </AccessibleModal>
 
-        {/* Delete Confirmation Dialog */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 max-w-md">
-              <h3 className="text-lg font-semibold text-zinc-100 mb-2">
-                Delete Family?
-              </h3>
-              <p className="text-zinc-400 mb-4">
-                This will permanently delete {family.display_name} and cannot be
-                undone. Any associated students, enrollments, and invoices must be
-                deleted first.
-              </p>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleteFamily.isPending}
-                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition-colors disabled:opacity-50"
-                >
-                  {deleteFamily.isPending ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+      {/* Delete Confirmation Dialog */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Family?"
+        description={`This will permanently delete ${family.display_name} and cannot be undone. Any associated students, enrollments, and invoices must be deleted first.`}
+        confirmLabel="Delete"
+        variant="danger"
+        isLoading={deleteFamily.isPending}
+      />
+    </>
   )
 }
