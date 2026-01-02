@@ -5,10 +5,12 @@ import {
   Trash2,
   Save,
   Loader2,
+  AlertCircle,
 } from 'lucide-react'
 import { useInvoiceMutations } from '../lib/hooks'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { multiplyMoney, sumMoney } from '../lib/moneyUtils'
+import { parsePositiveFloat, isValidDateRange } from '../lib/validation'
 
 // ============================================================================
 // Types
@@ -43,6 +45,7 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   const [notes, setNotes] = useState(invoice.notes || '')
   const [lineItems, setLineItems] = useState<LineItemEdit[]>([])
   const [isSaving, setIsSaving] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
 
   const { updateInvoice, updateLineItem } = useInvoiceMutations()
 
@@ -64,7 +67,11 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   )
 
   // Update amount when quantity or unit_price changes
-  const updateLineItemAmount = (index: number, field: 'quantity' | 'unit_price', value: number) => {
+  const updateLineItemAmount = (index: number, field: 'quantity' | 'unit_price', valueStr: string) => {
+    // Parse and validate - allow 0 but not negative
+    const value = parsePositiveFloat(valueStr) ?? 0
+    setValidationError(null) // Clear validation error on input change
+
     setLineItems(prev => {
       const updated = [...prev]
       updated[index] = {
@@ -88,7 +95,11 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   }
 
   // Update amount directly (override calculated)
-  const updateLineItemAmountDirect = (index: number, amount: number) => {
+  const updateLineItemAmountDirect = (index: number, amountStr: string) => {
+    // Parse and validate - allow 0 but not negative
+    const amount = parsePositiveFloat(amountStr) ?? 0
+    setValidationError(null) // Clear validation error on input change
+
     setLineItems(prev => {
       const updated = [...prev]
       updated[index] = { ...updated[index], amount }
@@ -127,6 +138,33 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
 
   // Save changes with error tracking and partial failure handling
   const handleSave = async () => {
+    setValidationError(null)
+
+    // Validate date ranges
+    if (invoiceDate && dueDate && !isValidDateRange(invoiceDate, dueDate)) {
+      setValidationError('Invoice date must be before or equal to due date')
+      return
+    }
+
+    if (periodStart && periodEnd && !isValidDateRange(periodStart, periodEnd)) {
+      setValidationError('Period start date must be before or equal to period end date')
+      return
+    }
+
+    // Validate line items have no negative amounts
+    const activeItems = lineItems.filter(item => !item.isDeleted)
+    const hasNegativeAmount = activeItems.some(item => item.amount < 0 || item.quantity < 0 || item.unit_price < 0)
+    if (hasNegativeAmount) {
+      setValidationError('Line item amounts, quantities, and prices must be positive')
+      return
+    }
+
+    // Validate at least one line item if not all deleted
+    if (activeItems.length === 0 && lineItems.some(item => item.id)) {
+      setValidationError('Invoice must have at least one line item')
+      return
+    }
+
     setIsSaving(true)
     const errors: string[] = []
     let invoiceUpdated = false
@@ -140,7 +178,7 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
           due_date: dueDate,
           period_start: periodStart,
           period_end: periodEnd,
-          notes,
+          notes: notes.trim(),
           subtotal,
           total_amount: subtotal,
         },
@@ -316,8 +354,9 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
                           <input
                             type="number"
                             step="0.5"
+                            min="0"
                             value={item.quantity}
-                            onChange={e => updateLineItemAmount(index, 'quantity', parseFloat(e.target.value) || 0)}
+                            onChange={e => updateLineItemAmount(index, 'quantity', e.target.value)}
                             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                           />
                         </div>
@@ -326,8 +365,9 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
                           <input
                             type="number"
                             step="0.01"
+                            min="0"
                             value={item.unit_price}
-                            onChange={e => updateLineItemAmount(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                            onChange={e => updateLineItemAmount(index, 'unit_price', e.target.value)}
                             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                           />
                         </div>
@@ -336,8 +376,9 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
                           <input
                             type="number"
                             step="0.01"
+                            min="0"
                             value={item.amount}
-                            onChange={e => updateLineItemAmountDirect(index, parseFloat(e.target.value) || 0)}
+                            onChange={e => updateLineItemAmountDirect(index, e.target.value)}
                             className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white focus:outline-none focus:border-zinc-500"
                           />
                         </div>
@@ -375,6 +416,14 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
                 className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-zinc-500 resize-none"
               />
             </div>
+
+            {/* Validation Error */}
+            {validationError && (
+              <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {validationError}
+              </div>
+            )}
 
             {/* Total */}
             <div className="flex justify-between items-center pt-4 border-t border-zinc-700">

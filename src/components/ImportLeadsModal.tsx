@@ -3,10 +3,12 @@ import {
   X,
   AlertCircle,
   CheckCircle,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle
 } from 'lucide-react'
 import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type Lead } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
+import { isValidEmail } from '../lib/validation'
 
 interface ImportLeadsModalProps {
   onClose: () => void
@@ -21,6 +23,7 @@ interface ParsedLead {
   created_at: string | null
   isDuplicate?: boolean
   isExistingCustomer?: boolean
+  isInvalidEmail?: boolean
 }
 
 type ImportSource = 'pdf_leads' | 'eligibility_widget' | 'calendly_routing' | 'ea_deals' | 'event_orders' | 'custom'
@@ -232,6 +235,13 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
         }
       }
 
+      // Validate email formats and mark invalid ones
+      leads = leads.map(l => ({
+        ...l,
+        email: l.email.trim().toLowerCase(),
+        isInvalidEmail: !isValidEmail(l.email),
+      }))
+
       // Dedupe within the import (by email)
       const seen = new Set<string>()
       leads = leads.filter(l => {
@@ -275,7 +285,11 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
   }
 
   const leadsToImport = useMemo(() => {
-    return parsedLeads.filter(l => !l.isDuplicate && !l.isExistingCustomer)
+    return parsedLeads.filter(l => !l.isDuplicate && !l.isExistingCustomer && !l.isInvalidEmail)
+  }, [parsedLeads])
+
+  const invalidEmailCount = useMemo(() => {
+    return parsedLeads.filter(l => l.isInvalidEmail).length
   }, [parsedLeads])
 
   const handleImport = async () => {
@@ -380,7 +394,7 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
           {step === 'preview' && (
             <div className="space-y-4">
               {/* Summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div className="bg-zinc-800 rounded-lg p-4">
                   <p className="text-2xl font-semibold text-white">{parsedLeads.length}</p>
                   <p className="text-sm text-zinc-400">Total rows</p>
@@ -391,11 +405,25 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
                 </div>
                 <div className="bg-zinc-800 rounded-lg p-4">
                   <p className="text-2xl font-semibold text-zinc-400">
-                    {parsedLeads.length - leadsToImport.length}
+                    {parsedLeads.length - leadsToImport.length - invalidEmailCount}
                   </p>
-                  <p className="text-sm text-zinc-400">Skipped (duplicates)</p>
+                  <p className="text-sm text-zinc-400">Duplicates</p>
                 </div>
+                {invalidEmailCount > 0 && (
+                  <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                    <p className="text-2xl font-semibold text-yellow-400">{invalidEmailCount}</p>
+                    <p className="text-sm text-zinc-400">Invalid emails</p>
+                  </div>
+                )}
               </div>
+
+              {/* Invalid email warning */}
+              {invalidEmailCount > 0 && (
+                <div className="flex items-center gap-2 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-400 text-sm">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  {invalidEmailCount} row(s) have invalid email formats and will be skipped.
+                </div>
+              )}
 
               {/* Preview Table */}
               <div className="border border-zinc-700 rounded-lg overflow-hidden">
@@ -409,11 +437,13 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
                   </thead>
                   <tbody className="divide-y divide-zinc-800">
                     {parsedLeads.slice(0, 10).map((lead, idx) => (
-                      <tr key={idx} className={lead.isDuplicate || lead.isExistingCustomer ? 'opacity-50' : ''}>
+                      <tr key={idx} className={lead.isDuplicate || lead.isExistingCustomer || lead.isInvalidEmail ? 'opacity-50' : ''}>
                         <td className="px-4 py-2 text-white">{lead.email}</td>
                         <td className="px-4 py-2 text-zinc-400">{lead.name || '-'}</td>
                         <td className="px-4 py-2">
-                          {lead.isExistingCustomer ? (
+                          {lead.isInvalidEmail ? (
+                            <span className="text-red-400 text-xs">Invalid email</span>
+                          ) : lead.isExistingCustomer ? (
                             <span className="text-yellow-400 text-xs">Existing customer</span>
                           ) : lead.isDuplicate ? (
                             <span className="text-zinc-500 text-xs">Already a lead</span>

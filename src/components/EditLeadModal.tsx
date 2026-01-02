@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { X, RefreshCw } from 'lucide-react'
+import { X, RefreshCw, AlertCircle } from 'lucide-react'
 import { useLeadMutations, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { isValidEmail, parseIntInRange, isValidUrl } from '../lib/validation'
 
 interface EditLeadModalProps {
   lead: LeadWithFamily
@@ -10,6 +11,7 @@ interface EditLeadModalProps {
 export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
   const { updateLead } = useLeadMutations()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
     name: lead.name || '',
@@ -25,24 +27,56 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setError(null)
+
+    // Validate required fields
+    const trimmedEmail = formData.email.trim()
+    if (!trimmedEmail) {
+      setError('Email is required')
+      return
+    }
+
+    // Validate email format
+    if (!isValidEmail(trimmedEmail)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
+    // Validate source URL if provided
+    if (formData.source_url && !isValidUrl(formData.source_url)) {
+      setError('Please enter a valid URL for the source')
+      return
+    }
+
+    // Validate num_children if provided (must be positive integer, max 20)
+    let numChildren: number | null = null
+    if (formData.num_children) {
+      numChildren = parseIntInRange(formData.num_children, 0, 20)
+      if (numChildren === null) {
+        setError('Number of children must be between 0 and 20')
+        return
+      }
+    }
+
     setIsSubmitting(true)
 
     try {
       await updateLead.mutateAsync({
         id: lead.id,
-        name: formData.name || null,
-        email: formData.email,
-        phone: formData.phone || null,
+        name: formData.name.trim() || null,
+        email: trimmedEmail.toLowerCase(),
+        phone: formData.phone.trim() || null,
         lead_type: formData.lead_type as LeadType,
         status: formData.status as LeadStatus,
-        source_url: formData.source_url || null,
-        num_children: formData.num_children ? parseInt(formData.num_children) : null,
-        service_interest: formData.service_interest || null,
-        notes: formData.notes || null,
+        source_url: formData.source_url.trim() || null,
+        num_children: numChildren,
+        service_interest: formData.service_interest.trim() || null,
+        notes: formData.notes.trim() || null,
       })
       onClose()
     } catch (err) {
       console.error('Failed to update lead:', err)
+      setError(err instanceof Error ? err.message : 'Failed to update lead. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -64,6 +98,12 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              {error}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-zinc-400 mb-1">

@@ -3,6 +3,7 @@ import { X } from 'lucide-react'
 import { useTeacherMutations } from '../lib/hooks'
 import type { EmployeeStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
+import { isValidEmail, parsePositiveFloat } from '../lib/validation'
 
 interface AddTeacherModalProps {
   isOpen: boolean
@@ -38,21 +39,46 @@ export function AddTeacherModal({ isOpen, onClose, onSuccess }: AddTeacherModalP
       return
     }
 
+    // Validate email format if provided
+    const trimmedEmail = formData.email.trim()
+    if (trimmedEmail && !isValidEmail(trimmedEmail)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
+    // Validate hourly rate if provided
+    const hourlyRate = parsePositiveFloat(formData.default_hourly_rate)
+    if (formData.default_hourly_rate && hourlyRate === null) {
+      setError('Hourly rate must be a valid positive number')
+      return
+    }
+    if (hourlyRate !== null && hourlyRate > 500) {
+      setError('Hourly rate seems too high (max $500/hr)')
+      return
+    }
+
+    // Validate max hours per week if provided
+    const maxHours = parsePositiveFloat(formData.max_hours_per_week)
+    if (formData.max_hours_per_week && maxHours === null) {
+      setError('Max hours per week must be a valid positive number')
+      return
+    }
+    if (maxHours !== null && maxHours > 168) {
+      setError('Max hours per week cannot exceed 168')
+      return
+    }
+
     createTeacher.mutate(
       {
         display_name: formatNameLastFirst(formData.display_name),
-        email: formData.email.trim() || null,
+        email: trimmedEmail ? trimmedEmail.toLowerCase() : null,
         phone: formData.phone.trim() || null,
         role: formData.role || null,
         skillset: formData.skillset.trim() || null,
         preferred_comm_method: formData.preferred_comm_method || null,
         status: formData.status,
-        default_hourly_rate: formData.default_hourly_rate
-          ? parseFloat(formData.default_hourly_rate)
-          : null,
-        max_hours_per_week: formData.max_hours_per_week
-          ? parseFloat(formData.max_hours_per_week)
-          : null,
+        default_hourly_rate: hourlyRate,
+        max_hours_per_week: maxHours,
         payment_info_on_file: formData.payment_info_on_file,
         hire_date: formData.hire_date || null,
         notes: formData.notes.trim() || null,

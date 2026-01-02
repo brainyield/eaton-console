@@ -15,6 +15,7 @@ import {
 import { queryKeys } from '../lib/queryClient';
 import { getTodayString } from '../lib/dateUtils';
 import { multiplyMoney } from '../lib/moneyUtils';
+import { parsePositiveFloat, parsePositiveInt } from '../lib/validation';
 
 // Extended family type with students
 interface FamilyWithStudents extends Family {
@@ -279,7 +280,7 @@ export function AddEnrollmentModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     // Validation
     if (!formData.family_id) {
       setError('Please select a family');
@@ -290,9 +291,60 @@ export function AddEnrollmentModal({
       return;
     }
 
+    // Validate numeric fields with proper bounds checking
+    const hourlyRateCustomer = parsePositiveFloat(formData.hourly_rate_customer);
+    if (formData.hourly_rate_customer && hourlyRateCustomer === null) {
+      setError('Hourly rate must be a valid positive number');
+      return;
+    }
+
+    const hoursPerWeek = parsePositiveFloat(formData.hours_per_week);
+    if (formData.hours_per_week && hoursPerWeek === null) {
+      setError('Hours per week must be a valid positive number');
+      return;
+    }
+    if (hoursPerWeek !== null && hoursPerWeek > 168) {
+      setError('Hours per week cannot exceed 168');
+      return;
+    }
+
+    const monthlyRate = parsePositiveFloat(formData.monthly_rate);
+    if (formData.monthly_rate && monthlyRate === null) {
+      setError('Monthly rate must be a valid positive number');
+      return;
+    }
+
+    const weeklyTuition = parsePositiveFloat(formData.weekly_tuition);
+    if (formData.weekly_tuition && weeklyTuition === null) {
+      setError('Weekly tuition must be a valid positive number');
+      return;
+    }
+
+    const dailyRate = parsePositiveFloat(formData.daily_rate);
+    if (formData.daily_rate && dailyRate === null) {
+      setError('Daily rate must be a valid positive number');
+      return;
+    }
+
+    const numberOfWeeks = parsePositiveInt(formData.number_of_weeks);
+    if (formData.number_of_weeks && numberOfWeeks === null) {
+      setError('Number of weeks must be a valid positive whole number');
+      return;
+    }
+    if (numberOfWeeks !== null && numberOfWeeks > 52) {
+      setError('Number of weeks cannot exceed 52');
+      return;
+    }
+
+    const hourlyRateTeacher = parsePositiveFloat(formData.hourly_rate_teacher);
+    if (formData.hourly_rate_teacher && hourlyRateTeacher === null) {
+      setError('Teacher rate must be a valid positive number');
+      return;
+    }
+
     setError(null);
 
-    // Build enrollment data
+    // Build enrollment data with validated values
     const enrollmentData: Record<string, unknown> = {
       family_id: formData.family_id,
       service_id: formData.service_id,
@@ -306,20 +358,20 @@ export function AddEnrollmentModal({
     if (formData.start_date) {
       enrollmentData.start_date = formData.start_date;
     }
-    if (formData.hourly_rate_customer) {
-      enrollmentData.hourly_rate_customer = parseFloat(formData.hourly_rate_customer);
+    if (hourlyRateCustomer !== null) {
+      enrollmentData.hourly_rate_customer = hourlyRateCustomer;
     }
-    if (formData.hours_per_week) {
-      enrollmentData.hours_per_week = parseFloat(formData.hours_per_week);
+    if (hoursPerWeek !== null) {
+      enrollmentData.hours_per_week = hoursPerWeek;
     }
-    if (formData.monthly_rate) {
-      enrollmentData.monthly_rate = parseFloat(formData.monthly_rate);
+    if (monthlyRate !== null) {
+      enrollmentData.monthly_rate = monthlyRate;
     }
-    if (formData.weekly_tuition) {
-      enrollmentData.weekly_tuition = parseFloat(formData.weekly_tuition);
+    if (weeklyTuition !== null) {
+      enrollmentData.weekly_tuition = weeklyTuition;
     }
-    if (formData.daily_rate) {
-      enrollmentData.daily_rate = parseFloat(formData.daily_rate);
+    if (dailyRate !== null) {
+      enrollmentData.daily_rate = dailyRate;
     }
     if (formData.billing_frequency) {
       enrollmentData.billing_frequency = formData.billing_frequency;
@@ -330,11 +382,11 @@ export function AddEnrollmentModal({
     if (formData.schedule_notes.trim()) {
       enrollmentData.schedule_notes = formData.schedule_notes.trim();
     }
-    
+
     // FIX #5: Include number of weeks in notes for Eaton Online
     let notes = formData.notes.trim();
-    if (formData.number_of_weeks && selectedService?.code === 'eaton_online') {
-      const weeksNote = `${formData.number_of_weeks} weeks program`;
+    if (numberOfWeeks !== null && selectedService?.code === 'eaton_online') {
+      const weeksNote = `${numberOfWeeks} weeks program`;
       notes = notes ? `${notes} | ${weeksNote}` : weeksNote;
     }
     if (notes) {
@@ -354,11 +406,11 @@ export function AddEnrollmentModal({
             start_date: formData.start_date || getTodayString(),
           };
 
-          if (formData.hourly_rate_teacher) {
-            assignmentData.hourly_rate_teacher = parseFloat(formData.hourly_rate_teacher);
+          if (hourlyRateTeacher !== null) {
+            assignmentData.hourly_rate_teacher = hourlyRateTeacher;
           }
-          if (formData.hours_per_week) {
-            assignmentData.hours_per_week = parseFloat(formData.hours_per_week);
+          if (hoursPerWeek !== null) {
+            assignmentData.hours_per_week = hoursPerWeek;
           }
 
           try {
