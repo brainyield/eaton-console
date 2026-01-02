@@ -59,10 +59,12 @@ export function CommandPalette({ onSelect }: CommandPaletteProps) {
     return () => document.removeEventListener('keydown', down)
   }, [])
 
-  // Close on Escape
+  // Close on Escape - only add listener when modal is open
   useEffect(() => {
+    if (!open) return
+
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && open) {
+      if (e.key === 'Escape') {
         setOpen(false)
       }
     }

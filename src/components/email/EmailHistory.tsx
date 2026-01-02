@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Mail, RefreshCw, AlertCircle, PenSquare, Search, X, ChevronDown } from 'lucide-react'
 import { useGmailSearch, useInvoiceEmailsByFamily } from '../../lib/hooks'
 import { EmailItem } from './EmailItem'
@@ -29,15 +29,13 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [showMassEmails, setShowMassEmails] = useState(false)
 
-  // Debounce search query
-  const handleSearchChange = useCallback((value: string) => {
-    setSearchQuery(value)
-    // Simple debounce - in production you might use useDebouncedValue hook
+  // Debounce search query with proper cleanup
+  useEffect(() => {
     const timeoutId = setTimeout(() => {
-      setDebouncedQuery(value)
+      setDebouncedQuery(searchQuery)
     }, 300)
     return () => clearTimeout(timeoutId)
-  }, [])
+  }, [searchQuery])
 
   // Fetch Gmail emails with infinite query (limited to MAX_EMAIL_PAGES to prevent memory issues)
   const {
@@ -173,7 +171,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => handleSearchChange(e.target.value)}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search emails..."
             className="w-full pl-9 pr-8 py-2 bg-zinc-800 border border-zinc-700 rounded text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500"
           />
