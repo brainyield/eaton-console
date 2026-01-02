@@ -352,7 +352,7 @@ export function getServiceShortName(code: string): string {
 // FAMILIES HOOKS
 // =============================================================================
 
-export function useFamilies(filters?: { status?: string; search?: string }) {
+export function useFamilies(filters?: { status?: string; search?: string; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.families.list(filters),
     queryFn: async () => {
@@ -360,6 +360,7 @@ export function useFamilies(filters?: { status?: string; search?: string }) {
         .from('families')
         .select('*')
         .order('display_name')
+        .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status && filters.status !== 'all') {
         query = query.eq('status', filters.status as 'lead' | 'trial' | 'active' | 'paused' | 'churned')
@@ -970,7 +971,7 @@ export interface EnrollmentWithDetails extends Enrollment {
 // ENROLLMENTS HOOKS
 // =============================================================================
 
-export function useEnrollments(filters?: { status?: string; serviceId?: string }) {
+export function useEnrollments(filters?: { status?: string; serviceId?: string; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.enrollments.list(filters),
     queryFn: async () => {
@@ -986,6 +987,7 @@ export function useEnrollments(filters?: { status?: string; serviceId?: string }
           )
         `)
         .order('created_at', { ascending: false })
+        .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status && filters.status !== 'all') {
         query = query.eq('status', filters.status)
@@ -1414,7 +1416,7 @@ export interface InvoiceWithFamily extends Invoice {
 // INVOICE HOOKS
 // =============================================================================
 
-export function useInvoices(filters?: { status?: string | string[] }) {
+export function useInvoices(filters?: { status?: string | string[]; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.invoices.list(filters),
     queryFn: async () => {
@@ -1424,6 +1426,7 @@ export function useInvoices(filters?: { status?: string | string[] }) {
           family:families(*)
         `)
         .order('invoice_date', { ascending: false })
+        .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status) {
         if (Array.isArray(filters.status)) {
@@ -2962,11 +2965,14 @@ export function formatMonthYear(date: Date): string {
 /**
  * Search Gmail for emails to/from a specific email address
  * Supports pagination via infinite query and custom search queries
+ * @param options.maxPages - Maximum number of pages to allow loading (default: 50, max 1000 emails)
  */
 export function useGmailSearch(
   email: string | undefined,
-  options?: { query?: string; maxResults?: number }
+  options?: { query?: string; maxResults?: number; maxPages?: number }
 ) {
+  const maxPages = options?.maxPages ?? 50 // Default to 50 pages (1000 emails max)
+
   return useInfiniteQuery({
     queryKey: [...queryKeys.gmail.search(email || ''), options?.query || ''],
     queryFn: ({ pageParam }) => {
@@ -2981,7 +2987,13 @@ export function useGmailSearch(
     enabled: !!email,
     staleTime: 1000 * 60 * 2, // 2 minutes
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.nextPageToken,
+    getNextPageParam: (lastPage, allPages) => {
+      // Enforce max page limit to prevent unbounded memory accumulation
+      if (allPages.length >= maxPages) {
+        return undefined // Stop pagination
+      }
+      return lastPage.nextPageToken
+    },
   })
 }
 
@@ -3770,11 +3782,14 @@ export function getScoreLabel(score: number): 'hot' | 'warm' | 'cold' {
 
 /**
  * Fetch leads with optional filters
+ * @param filters.limit - Maximum number of leads to fetch (default: 500)
  */
-export function useLeads(filters?: { type?: string; status?: string; search?: string }) {
+export function useLeads(filters?: { type?: string; status?: string; search?: string; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.leads.list(filters),
     queryFn: async () => {
+      const limit = filters?.limit ?? 500 // Default limit to prevent unbounded fetching
+
       // Fetch leads with family relationship
       let query = supabase
         .from('leads')
@@ -3783,6 +3798,7 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
           family:families(id, display_name)
         `)
         .order('created_at', { ascending: false })
+        .limit(limit)
 
       if (filters?.type) {
         query = query.eq('lead_type', filters.type as LeadType)
@@ -3797,11 +3813,17 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
       const { data: leads, error: leadsError } = await query
       if (leadsError) throw leadsError
 
-      // Fetch activity stats for all leads
+      // Fetch activity stats only for the leads we have (not all activities)
+      const leadIds = (leads || []).map(l => l.id)
+      if (leadIds.length === 0) {
+        return [] as LeadWithFamily[]
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { data: activityStats, error: statsError } = await (supabase as any)
         .from('lead_activities')
         .select('lead_id, contacted_at')
+        .in('lead_id', leadIds)
         .order('contacted_at', { ascending: false })
 
       if (statsError) {

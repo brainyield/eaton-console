@@ -102,13 +102,18 @@ function usePaginatedFamilies(
     queryFn: async () => {
       // When searching, we need to search across all families including student names
       // This requires fetching more data and filtering client-side for student matches
+      // Limit search results to prevent unbounded data fetching
+      const SEARCH_LIMIT = 500
+
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase().trim()
 
-        // Fetch all families with students (with status filter if applicable)
+        // Fetch families with students (with status filter if applicable)
+        // Limited to prevent unbounded fetching on broad searches
         let familyQuery = supabase
           .from('families')
-          .select(`*, students (*)`) as any
+          .select(`*, students (*)`)
+          .limit(SEARCH_LIMIT) as any
 
         if (statusFilter !== 'all') {
           familyQuery = familyQuery.eq('status', statusFilter)
@@ -124,10 +129,12 @@ function usePaginatedFamilies(
 
         // Also search for families by student name (separate query since Supabase
         // doesn't support filtering parent by child fields easily)
+        // Limited to prevent unbounded fetching
         let studentQuery = supabase
           .from('students')
           .select('family_id')
-          .ilike('full_name', `%${query}%`) as any
+          .ilike('full_name', `%${query}%`)
+          .limit(SEARCH_LIMIT) as any
 
         const { data: studentMatches } = await studentQuery
         const studentFamilyIds = new Set<string>((studentMatches || []).map((s: any) => s.family_id))
@@ -139,11 +146,14 @@ function usePaginatedFamilies(
           const existingIds = new Set((familyMatches || []).map((f: any) => f.id))
           const missingIds = [...studentFamilyIds].filter(id => !existingIds.has(id))
 
-          if (missingIds.length > 0) {
+          // Limit to prevent fetching too many additional families
+          const limitedMissingIds = missingIds.slice(0, SEARCH_LIMIT)
+
+          if (limitedMissingIds.length > 0) {
             let additionalQuery = supabase
               .from('families')
               .select(`*, students (*)`)
-              .in('id', missingIds) as any
+              .in('id', limitedMissingIds) as any
 
             if (statusFilter !== 'all') {
               additionalQuery = additionalQuery.eq('status', statusFilter)
@@ -238,13 +248,16 @@ function usePaginatedFamilies(
       // 1. Get all family balances first
       // 2. Sort by balance
       // 3. Then paginate
+      // Note: Limited to 2000 families for balance sorting to prevent memory issues
+      const BALANCE_SORT_LIMIT = 2000
 
       if (sortConfig.field === 'total_balance') {
-        // Get balances for ALL families matching the filter (not just current page)
+        // Get balances for families matching the filter (limited to prevent unbounded fetching)
         // Query invoices directly to avoid the Cartesian product bug in family_overview
         let familyQuery = supabase
           .from('families')
-          .select('id', { count: 'exact' }) as any
+          .select('id', { count: 'exact' })
+          .limit(BALANCE_SORT_LIMIT) as any
 
         if (statusFilter !== 'all') {
           familyQuery = familyQuery.eq('status', statusFilter)

@@ -12,6 +12,7 @@ interface EmailHistoryProps {
 }
 
 const MASS_EMAIL_THRESHOLD = 5 // Emails with more recipients are considered "mass"
+const MAX_EMAIL_PAGES = 50 // Maximum pages to load (50 pages × 20 = 1000 emails max)
 
 export function EmailHistory({ email, familyId }: EmailHistoryProps) {
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null)
@@ -38,7 +39,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
     return () => clearTimeout(timeoutId)
   }, [])
 
-  // Fetch Gmail emails with infinite query
+  // Fetch Gmail emails with infinite query (limited to MAX_EMAIL_PAGES to prevent memory issues)
   const {
     data: gmailData,
     isLoading: loadingGmail,
@@ -49,7 +50,12 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
     hasNextPage,
   } = useGmailSearch(email || undefined, {
     query: debouncedQuery || undefined,
+    maxPages: MAX_EMAIL_PAGES,
   })
+
+  // Check if we've hit the max pages limit
+  const pagesLoaded = gmailData?.pages?.length || 0
+  const hasReachedMaxPages = pagesLoaded >= MAX_EMAIL_PAGES
 
   // Fetch console-sent invoice emails
   const {
@@ -279,7 +285,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
       )}
 
       {/* Load More button */}
-      {hasNextPage && (
+      {hasNextPage && !hasReachedMaxPages && (
         <div className="flex justify-center pt-2">
           <button
             onClick={handleLoadMore}
@@ -298,6 +304,13 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
               </>
             )}
           </button>
+        </div>
+      )}
+
+      {/* Max pages reached notice */}
+      {hasReachedMaxPages && (
+        <div className="text-center py-2 text-xs text-zinc-500">
+          Showing maximum of {pagesLoaded * 20} emails. Use search to find older messages.
         </div>
       )}
 
