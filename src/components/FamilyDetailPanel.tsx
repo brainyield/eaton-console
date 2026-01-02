@@ -23,7 +23,6 @@ const STATUS_COLORS: Record<CustomerStatus, string> = {
   trial: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   paused: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
   churned: 'bg-red-500/20 text-red-400 border-red-500/30',
-  lead: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
 }
 
 const ENROLLMENT_STATUS_COLORS: Record<EnrollmentStatus, string> = {

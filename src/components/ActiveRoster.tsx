@@ -24,6 +24,7 @@ import { useEnrollments, useActiveServices } from '../lib/hooks'
 import type { Service, Enrollment } from '../lib/hooks'
 import { queryKeys } from '../lib/queryClient'
 import { getTodayString } from '../lib/dateUtils'
+import { calculateAge } from '../lib/utils'
 import { EnrollmentDetailPanel } from './EnrollmentDetailPanel'
 import { AddEnrollmentModal } from './AddEnrollmentModal'
 import { EditEnrollmentModal } from './EditEnrollmentModal'
@@ -45,6 +46,7 @@ interface Student {
   full_name: string
   grade_level: string | null
   age_group: string | null
+  dob: string | null
 }
 
 interface Family {
@@ -710,6 +712,9 @@ export default function ActiveRoster() {
                               <div className="flex-[2] min-w-0">
                                 <p className="font-medium text-white truncate">
                                   {enrollment.student?.full_name || enrollment.family.display_name}
+                                  {enrollment.student && calculateAge(enrollment.student.dob) !== null && (
+                                    <span className="text-gray-500 font-normal ml-1">({calculateAge(enrollment.student.dob)})</span>
+                                  )}
                                 </p>
                               </div>
 

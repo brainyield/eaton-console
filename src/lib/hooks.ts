@@ -10,7 +10,7 @@ import type { GmailSearchParams } from '../types/gmail'
 // TYPE DEFINITIONS
 // =============================================================================
 
-export type CustomerStatus = 'lead' | 'trial' | 'active' | 'paused' | 'churned'
+export type CustomerStatus = 'trial' | 'active' | 'paused' | 'churned'
 export type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
 export type EmployeeStatus = 'active' | 'reserve' | 'inactive'
 export type BillingFrequency = 'per_session' | 'weekly' | 'monthly' | 'bi_monthly' | 'annual' | 'one_time'
@@ -363,7 +363,7 @@ export function useFamilies(filters?: { status?: string; search?: string; limit?
         .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status as 'lead' | 'trial' | 'active' | 'paused' | 'churned')
+        query = query.eq('status', filters.status as 'trial' | 'active' | 'paused' | 'churned')
       }
 
       if (filters?.search) {
@@ -387,7 +387,7 @@ export function useFamiliesWithStudents() {
           *,
           students(*)
         `)
-        .in('status', ['active', 'trial', 'lead'])
+        .in('status', ['active', 'trial'])
         .order('display_name')
 
       if (error) throw error

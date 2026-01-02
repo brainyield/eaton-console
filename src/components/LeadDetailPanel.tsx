@@ -26,6 +26,7 @@ import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../
 import { queryKeys } from '../lib/queryClient'
 import { useToast } from '../lib/toast'
 import { AddFamilyModal } from './AddFamilyModal'
+import { formatNameLastFirst } from '../lib/utils'
 
 const engagementColors = {
   cold: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
@@ -311,7 +312,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
         {/* Name & Email */}
         <div>
           <h3 className="text-xl font-semibold text-white">
-            {lead.name || 'No name'}
+            {lead.name ? formatNameLastFirst(lead.name) : 'No name'}
           </h3>
           <a
             href={`mailto:${lead.email}`}

@@ -175,7 +175,6 @@ export function EditFamilyModal({ isOpen, onClose, family, onSuccess }: EditFami
                 }
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
               >
-                <option value="lead">Lead</option>
                 <option value="trial">Trial</option>
                 <option value="active">Active</option>
                 <option value="paused">Paused</option>

@@ -26,7 +26,7 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
     primary_email: initialData?.primary_email || '',
     primary_phone: initialData?.primary_phone || '',
     primary_contact_name: initialData?.primary_contact_name || '',
-    status: initialData?.status || 'lead' as CustomerStatus,
+    status: initialData?.status || 'trial' as CustomerStatus,
     payment_gateway: '',
     address_line1: '',
     city: '',
@@ -47,7 +47,7 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
         primary_email: initialData.primary_email || '',
         primary_phone: initialData.primary_phone || '',
         primary_contact_name: initialData.primary_contact_name || '',
-        status: initialData.status || 'lead',
+        status: initialData.status || 'trial',
         notes: initialData.notes || '',
       }))
     }
@@ -84,7 +84,7 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
             primary_email: '',
             primary_phone: '',
             primary_contact_name: '',
-            status: 'lead',
+            status: 'trial',
             payment_gateway: '',
             address_line1: '',
             city: '',
@@ -165,7 +165,6 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
               }
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
-              <option value="lead">Lead</option>
               <option value="trial">Trial</option>
               <option value="active">Active</option>
               <option value="paused">Paused</option>

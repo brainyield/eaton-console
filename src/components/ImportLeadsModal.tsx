@@ -10,6 +10,7 @@ import {
 import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type Lead } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { isValidEmail } from '../lib/validation'
+import { formatNameLastFirst } from '../lib/utils'
 
 interface ImportLeadsModalProps {
   onClose: () => void
@@ -440,7 +441,7 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
                     {parsedLeads.slice(0, 10).map((lead, idx) => (
                       <tr key={idx} className={lead.isDuplicate || lead.isExistingCustomer || lead.isInvalidEmail ? 'opacity-50' : ''}>
                         <td className="px-4 py-2 text-white">{lead.email}</td>
-                        <td className="px-4 py-2 text-zinc-400">{lead.name || '-'}</td>
+                        <td className="px-4 py-2 text-zinc-400">{lead.name ? formatNameLastFirst(lead.name) : '-'}</td>
                         <td className="px-4 py-2">
                           {lead.isInvalidEmail ? (
                             <span className="text-red-400 text-xs">Invalid email</span>

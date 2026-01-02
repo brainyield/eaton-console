@@ -18,6 +18,7 @@ import { useTeacherAssignmentsByEnrollment } from '../lib/hooks';
 import { EmailHistory } from './email';
 import { parseLocalDate } from '../lib/dateUtils';
 import { multiplyMoney } from '../lib/moneyUtils';
+import { calculateAge } from '../lib/utils';
 
 // Types
 type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended';
@@ -33,6 +34,8 @@ interface Student {
   id: string;
   full_name: string;
   grade_level: string | null;
+  dob: string | null;
+  age_group: string | null;
 }
 
 interface Family {
@@ -245,8 +248,11 @@ export function EnrollmentDetailPanel({
               <div className="flex items-center gap-1">
                 <GraduationCap className="w-4 h-4" />
                 <span>{enrollment.student?.full_name}</span>
+                {calculateAge(enrollment.student?.dob) !== null && (
+                  <span className="text-gray-500">({calculateAge(enrollment.student?.dob)} yrs)</span>
+                )}
                 {enrollment.student?.grade_level && (
-                  <span className="text-gray-500">({enrollment.student?.grade_level})</span>
+                  <span className="text-gray-500">• {enrollment.student?.grade_level}</span>
                 )}
               </div>
             )}

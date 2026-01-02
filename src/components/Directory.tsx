@@ -4,13 +4,14 @@ import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
 import { addRecentlyViewed } from '../lib/useRecentlyViewed'
 import { getTodayString } from '../lib/dateUtils'
-import type { CustomerStatus, LeadType } from '../lib/hooks'
+import type { CustomerStatus } from '../lib/hooks'
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Download, Trash2, RefreshCw, X, Loader2
 } from 'lucide-react'
 import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
+import { calculateAge } from '../lib/utils'
 
 // Define Student locally with all required fields from database
 interface Student {
@@ -50,7 +51,6 @@ interface FamilyWithStudents {
   students: Student[]
   total_balance: number
   active_enrollment_count?: number
-  lead_type?: LeadType | null  // From leads table join when filtering by leads
 }
 
 interface DirectoryProps {
@@ -72,22 +72,8 @@ const STATUS_COLORS: Record<CustomerStatus, string> = {
   trial: 'bg-blue-500/20 text-blue-400',
   paused: 'bg-amber-500/20 text-amber-400',
   churned: 'bg-red-500/20 text-red-400',
-  lead: 'bg-gray-500/20 text-gray-400',
 }
 
-const LEAD_TYPE_LABELS: Record<LeadType, string> = {
-  exit_intent: 'Exit Intent',
-  waitlist: 'Waitlist',
-  calendly_call: 'Calendly',
-  event: 'Event',
-}
-
-const LEAD_TYPE_COLORS: Record<LeadType, string> = {
-  exit_intent: 'bg-purple-500/20 text-purple-400',
-  waitlist: 'bg-green-500/20 text-green-400',
-  calendly_call: 'bg-blue-500/20 text-blue-400',
-  event: 'bg-orange-500/20 text-orange-400',
-}
 
 // Custom hook for paginated families with students and balance
 function usePaginatedFamilies(
@@ -186,36 +172,10 @@ function usePaginatedFamilies(
         }
 
         // Merge balance into family data
-        let familiesWithBalance = allMatches.map(f => ({
+        const familiesWithBalance = allMatches.map(f => ({
           ...f,
           total_balance: balanceMap.get(f.id) || 0
         })) as FamilyWithStudents[]
-
-        // Fetch lead types when filtering by leads
-        if (statusFilter === 'lead' && familiesWithBalance.length > 0) {
-          const emails = familiesWithBalance
-            .filter(f => f.primary_email)
-            .map(f => f.primary_email?.toLowerCase() ?? '')
-
-          if (emails.length > 0) {
-            const { data: leads } = await (supabase
-              .from('leads')
-              .select('email, lead_type')
-              .in('email', emails) as any)
-
-            if (leads) {
-              const leadTypeMap = new Map<string, LeadType>()
-              ;(leads as any[]).forEach(lead => {
-                leadTypeMap.set(lead.email.toLowerCase(), lead.lead_type)
-              })
-
-              familiesWithBalance = familiesWithBalance.map(f => ({
-                ...f,
-                lead_type: f.primary_email ? leadTypeMap.get(f.primary_email.toLowerCase()) || null : null
-              }))
-            }
-          }
-        }
 
         // Apply sorting
         if (sortConfig.field === 'display_name') {
@@ -316,32 +276,6 @@ function usePaginatedFamilies(
           } : null
         }).filter(Boolean) as FamilyWithStudents[]
 
-        // Fetch lead types when filtering by leads
-        if (statusFilter === 'lead' && familiesWithBalance.length > 0) {
-          const emails = familiesWithBalance
-            .filter(f => f.primary_email)
-            .map(f => f.primary_email?.toLowerCase() ?? '')
-
-          if (emails.length > 0) {
-            const { data: leads } = await (supabase
-              .from('leads')
-              .select('email, lead_type')
-              .in('email', emails) as any)
-
-            if (leads) {
-              const leadTypeMap = new Map<string, LeadType>()
-              ;(leads as any[]).forEach(lead => {
-                leadTypeMap.set(lead.email.toLowerCase(), lead.lead_type)
-              })
-
-              familiesWithBalance = familiesWithBalance.map(f => ({
-                ...f,
-                lead_type: f.primary_email ? leadTypeMap.get(f.primary_email.toLowerCase()) || null : null
-              }))
-            }
-          }
-        }
-
         return { families: familiesWithBalance, totalCount: count || 0 }
       }
 
@@ -399,36 +333,10 @@ function usePaginatedFamilies(
       }
 
       // Merge balance into family data
-      let familiesWithBalance = familyData.map(f => ({
+      const familiesWithBalance = familyData.map(f => ({
         ...f,
         total_balance: balanceMap.get(f.id) || 0
       })) as FamilyWithStudents[]
-
-      // Fetch lead types when filtering by leads
-      if (statusFilter === 'lead' && familiesWithBalance.length > 0) {
-        const emails = familiesWithBalance
-          .filter(f => f.primary_email)
-          .map(f => f.primary_email?.toLowerCase() ?? '')
-
-        if (emails.length > 0) {
-          const { data: leads } = await (supabase
-            .from('leads')
-            .select('email, lead_type')
-            .in('email', emails) as any)
-
-          if (leads) {
-            const leadTypeMap = new Map<string, LeadType>()
-            ;(leads as any[]).forEach(lead => {
-              leadTypeMap.set(lead.email.toLowerCase(), lead.lead_type)
-            })
-
-            familiesWithBalance = familiesWithBalance.map(f => ({
-              ...f,
-              lead_type: f.primary_email ? leadTypeMap.get(f.primary_email.toLowerCase()) || null : null
-            }))
-          }
-        }
-      }
 
       // Client-side sorting for student count
       if (sortConfig.field === 'students') {
@@ -748,7 +656,6 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
               <option value="active">Active</option>
               <option value="trial">Trial</option>
               <option value="paused">Paused</option>
-              <option value="lead">Lead</option>
               <option value="churned">Churned</option>
             </select>
 
@@ -785,7 +692,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                 </button>
                 {showStatusDropdown && (
                   <div className="absolute top-full left-0 mt-1 bg-zinc-800 border border-zinc-700 rounded-md shadow-lg z-50">
-                    {(['active', 'trial', 'paused', 'lead', 'churned'] as CustomerStatus[]).map(status => (
+                    {(['active', 'trial', 'paused', 'churned'] as CustomerStatus[]).map(status => (
                       <button
                         key={status}
                         onClick={() => handleBulkStatusChange(status)}
@@ -905,11 +812,6 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                       <SortIcon field="status" />
                     </div>
                   </th>
-                  {statusFilter === 'lead' && (
-                    <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                      Lead Type
-                    </th>
-                  )}
                   <th
                     className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider cursor-pointer hover:text-white"
                     onClick={() => handleSort('total_balance')}
@@ -970,6 +872,9 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                         {family.students.slice(0, 2).map((student) => (
                           <div key={student.id} className="text-sm text-zinc-300">
                             {student.full_name}
+                            {calculateAge(student.dob) !== null && (
+                              <span className="text-zinc-500 ml-1">({calculateAge(student.dob)})</span>
+                            )}
                           </div>
                         ))}
                         {family.students.length > 2 && (
@@ -987,17 +892,6 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                         {family.status}
                       </span>
                     </td>
-                    {statusFilter === 'lead' && (
-                      <td className="px-4 py-3">
-                        {family.lead_type ? (
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${LEAD_TYPE_COLORS[family.lead_type]}`}>
-                            {LEAD_TYPE_LABELS[family.lead_type]}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-zinc-500">—</span>
-                        )}
-                      </td>
-                    )}
                     <td className="px-4 py-3">
                       <span className={`text-sm ${family.total_balance > 0 ? 'text-amber-400' : 'text-zinc-400'}`}>
                         ${family.total_balance.toFixed(2)}

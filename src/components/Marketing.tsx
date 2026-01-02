@@ -28,6 +28,7 @@ import { EditLeadModal } from './EditLeadModal'
 import { ConversionAnalytics } from './ConversionAnalytics'
 import { bulkSyncLeadsToMailchimp, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
+import { formatNameLastFirst } from '../lib/utils'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
 type SortOption = 'created_desc' | 'created_asc' | 'score_desc' | 'score_asc'
@@ -447,7 +448,7 @@ export default function Marketing() {
                         </span>
                       </div>
                       <div className="flex items-center gap-2 text-xs text-zinc-500">
-                        <span>{followUp.lead_name || followUp.lead_email}</span>
+                        <span>{followUp.lead_name ? formatNameLastFirst(followUp.lead_name) : followUp.lead_email}</span>
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
                           {parseLocalDate(followUp.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -713,7 +714,7 @@ export default function Marketing() {
                     <td className="px-4 py-3">
                       <div>
                         <p className="text-sm font-medium text-white">
-                          {lead.name || 'No name'}
+                          {lead.name ? formatNameLastFirst(lead.name) : 'No name'}
                         </p>
                         <p className="text-sm text-zinc-400">{lead.email}</p>
                       </div>

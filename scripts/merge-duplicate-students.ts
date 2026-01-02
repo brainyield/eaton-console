@@ -35,6 +35,11 @@ const duplicatesToMerge = [
     keepStudentId: '0b0861aa-b674-4c3d-adaf-34de52b3ffba',      // Learning Pod
     deleteStudentId: '6fc27ec6-fed0-42d9-99fb-ee9d15d0675e',   // Elective Classes
   },
+  {
+    name: 'Cabana, Cali',
+    keepStudentId: '6cc9df47-8b60-4bfc-b64e-23d02c868f6f',      // Learning Pod
+    deleteStudentId: 'db69eceb-0522-4b77-a56f-c131a912d44d',   // Academic Coaching
+  },
 ]
 
 async function main() {
