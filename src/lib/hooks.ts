@@ -2210,6 +2210,58 @@ export function useInvoiceMutations() {
     onError: () => {},
   })
 
+  const createLineItem = useMutation({
+    mutationFn: async ({ invoiceId, data }: {
+      invoiceId: string
+      data: {
+        description: string
+        quantity: number
+        unit_price: number
+        amount: number
+        enrollment_id?: string | null
+        teacher_cost?: number | null
+        profit?: number | null
+        sort_order?: number
+      }
+    }) => {
+      const { data: lineItem, error } = await (supabase.from('invoice_line_items') as any)
+        .insert({
+          ...data,
+          invoice_id: invoiceId,
+          enrollment_id: data.enrollment_id ?? null,
+          teacher_cost: data.teacher_cost ?? null,
+          profit: data.profit ?? null,
+          sort_order: data.sort_order ?? 0,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      return lineItem
+    },
+    onSuccess: (lineItem) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      if (lineItem.invoice_id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(lineItem.invoice_id) })
+      }
+    },
+    // Suppress global error toast - callers handle errors explicitly
+    onError: () => {},
+  })
+
+  const deleteLineItem = useMutation({
+    mutationFn: async ({ id, invoiceId }: { id: string; invoiceId: string }) => {
+      const { error } = await supabase.from('invoice_line_items').delete().eq('id', id)
+      if (error) throw error
+      return { id, invoiceId }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.invoiceId) })
+    },
+    // Suppress global error toast - callers handle errors explicitly
+    onError: () => {},
+  })
+
   const deleteInvoice = useMutation({
     mutationFn: async (id: string) => {
       // Unlink any event_orders referencing this invoice first
@@ -2771,6 +2823,8 @@ export function useInvoiceMutations() {
     generateEventInvoice,
     updateInvoice,
     updateLineItem,
+    createLineItem,
+    deleteLineItem,
     deleteInvoice,
     bulkDeleteInvoices,
     voidInvoice,

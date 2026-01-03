@@ -50,7 +50,7 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
   const [isSaving, setIsSaving] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
 
-  const { updateInvoice, updateLineItem } = useInvoiceMutations()
+  const { updateInvoice, updateLineItem, createLineItem, deleteLineItem } = useInvoiceMutations()
 
   // Initialize line items from invoice
   useEffect(() => {
@@ -219,16 +219,37 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
         }
       }
 
-      // Handle new items (log for now - would need createLineItem mutation)
+      // Create new line items
       const newItems = lineItems.filter(item => item.isNew && !item.isDeleted)
-      if (newItems.length > 0) {
-        console.log('New items to create:', newItems)
+      for (const item of newItems) {
+        try {
+          await createLineItem.mutateAsync({
+            invoiceId: invoice.id,
+            data: {
+              description: item.description,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+              amount: item.amount,
+            },
+          })
+        } catch (err) {
+          errors.push(`Failed to create line item: ${item.description || 'New item'}`)
+          console.error('Failed to create line item:', err)
+        }
       }
 
-      // Handle deleted items (log for now - would need deleteLineItem mutation)
+      // Delete removed line items
       const deletedItems = lineItems.filter(item => item.isDeleted && item.id)
-      if (deletedItems.length > 0) {
-        console.log('Items to delete:', deletedItems)
+      for (const item of deletedItems) {
+        try {
+          await deleteLineItem.mutateAsync({
+            id: item.id!,
+            invoiceId: invoice.id,
+          })
+        } catch (err) {
+          errors.push(`Failed to delete line item: ${item.description || item.id}`)
+          console.error(`Failed to delete line item ${item.id}:`, err)
+        }
       }
 
       // If any line items failed, rollback invoice header to original state
