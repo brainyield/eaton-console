@@ -10,6 +10,8 @@ import {
   AlertCircle,
   Users,
   Edit2,
+  CheckSquare,
+  Square,
 } from 'lucide-react'
 import {
   usePayrollMutations,
@@ -22,6 +24,7 @@ import type {
   InvoiceWithDetails,
 } from '../lib/hooks'
 import { useToast } from '../lib/toast'
+import BulkAdjustHoursModal from './BulkAdjustHoursModal'
 
 interface Props {
   run: PayrollRunWithDetails
@@ -62,17 +65,23 @@ const STATUS_CONFIG: Record<PayrollRunStatus, { bg: string; text: string }> = {
 // ============================================================================
 
 interface TeacherSectionProps {
+  teacherId: string
   teacherName: string
   items: PayrollLineItemWithDetails[]
   isEditable: boolean
+  isSelected: boolean
   onUpdateHours: (itemId: string, hours: number) => void
+  onToggleSelect: (teacherId: string) => void
 }
 
 function TeacherSection({
+  teacherId,
   teacherName,
   items,
   isEditable,
+  isSelected,
   onUpdateHours,
+  onToggleSelect,
 }: TeacherSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   const [editingItemId, setEditingItemId] = useState<string | null>(null)
@@ -101,34 +110,53 @@ function TeacherSection({
   }
 
   return (
-    <div className="border border-zinc-800 rounded-lg overflow-hidden">
+    <div className={`border rounded-lg overflow-hidden ${isSelected ? 'border-blue-500' : 'border-zinc-800'}`}>
       {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 bg-zinc-900 hover:bg-zinc-800/50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-zinc-500" aria-hidden="true" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-zinc-500" aria-hidden="true" />
-          )}
-          <span className="font-medium text-white">{teacherName}</span>
-          {hasAdjustments && (
-            <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">
-              Adjusted
+      <div className="flex items-center bg-zinc-900">
+        {/* Selection Checkbox (only in editable mode) */}
+        {isEditable && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect(teacherId)
+            }}
+            className="p-4 text-zinc-400 hover:text-white transition-colors"
+            aria-label={isSelected ? `Deselect ${teacherName}` : `Select ${teacherName}`}
+          >
+            {isSelected ? (
+              <CheckSquare className="w-5 h-5 text-blue-400" aria-hidden="true" />
+            ) : (
+              <Square className="w-5 h-5" aria-hidden="true" />
+            )}
+          </button>
+        )}
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className={`flex-1 flex items-center justify-between p-4 ${isEditable ? 'pl-0' : ''} hover:bg-zinc-800/50 transition-colors`}
+        >
+          <div className="flex items-center gap-3">
+            {isExpanded ? (
+              <ChevronDown className="w-4 h-4 text-zinc-500" aria-hidden="true" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-zinc-500" aria-hidden="true" />
+            )}
+            <span className="font-medium text-white">{teacherName}</span>
+            {hasAdjustments && (
+              <span className="px-1.5 py-0.5 text-xs bg-amber-500/20 text-amber-400 rounded">
+                Adjusted
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-6 text-sm">
+            <span className="text-zinc-400">
+              {totalHours.toFixed(1)} hrs
             </span>
-          )}
-        </div>
-        <div className="flex items-center gap-6 text-sm">
-          <span className="text-zinc-400">
-            {totalHours.toFixed(1)} hrs
-          </span>
-          <span className="text-white font-medium">
-            {formatCurrency(totalAmount)}
-          </span>
-        </div>
-      </button>
+            <span className="text-white font-medium">
+              {formatCurrency(totalAmount)}
+            </span>
+          </div>
+        </button>
+      </div>
 
       {/* Expanded Content */}
       {isExpanded && (
@@ -230,6 +258,8 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
   const { showError, showSuccess } = useToast()
   const { updateRunStatus, updateLineItem } = usePayrollMutations()
   const [isUpdating, setIsUpdating] = useState(false)
+  const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set())
+  const [showBulkAdjustModal, setShowBulkAdjustModal] = useState(false)
 
   // Group line items by teacher
   const teacherGroups = useMemo(() => {
@@ -285,6 +315,31 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
   }, [periodInvoices, run])
 
   const isEditable = run.status === 'review'
+
+  // Selection handlers
+  const handleToggleSelect = (teacherId: string) => {
+    setSelectedTeacherIds(prev => {
+      const next = new Set(prev)
+      if (next.has(teacherId)) {
+        next.delete(teacherId)
+      } else {
+        next.add(teacherId)
+      }
+      return next
+    })
+  }
+
+  const handleSelectAll = () => {
+    if (selectedTeacherIds.size === teacherGroups.length) {
+      setSelectedTeacherIds(new Set())
+    } else {
+      setSelectedTeacherIds(new Set(teacherGroups.map(([id]) => id)))
+    }
+  }
+
+  const selectedTeachers = teacherGroups
+    .filter(([id]) => selectedTeacherIds.has(id))
+    .map(([id, group]) => ({ id, name: group.name }))
 
   const handleUpdateHours = async (itemId: string, hours: number) => {
     try {
@@ -409,17 +464,51 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
             </div>
           )}
 
-          {/* Instructions based on status */}
+          {/* Instructions and Bulk Actions (only in review mode) */}
           {run.status === 'review' && (
-            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" aria-hidden="true" />
-                <div>
-                  <h4 className="font-medium text-blue-400">Review Mode</h4>
-                  <p className="text-sm text-zinc-400 mt-1">
-                    Click on any teacher row to expand and edit hours. When ready, click "Approve" to finalize.
-                  </p>
+            <div className="space-y-3">
+              <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-blue-400 mt-0.5" aria-hidden="true" />
+                  <div>
+                    <h4 className="font-medium text-blue-400">Review Mode</h4>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      Click on any teacher row to expand and edit hours individually.
+                      Select multiple teachers to bulk adjust their hours.
+                    </p>
+                  </div>
                 </div>
+              </div>
+
+              {/* Bulk Actions Toolbar */}
+              <div className="flex items-center justify-between bg-zinc-800/50 rounded-lg p-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={handleSelectAll}
+                    className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-300 hover:text-white transition-colors"
+                  >
+                    {selectedTeacherIds.size === teacherGroups.length && teacherGroups.length > 0 ? (
+                      <CheckSquare className="w-4 h-4 text-blue-400" aria-hidden="true" />
+                    ) : (
+                      <Square className="w-4 h-4" aria-hidden="true" />
+                    )}
+                    {selectedTeacherIds.size === teacherGroups.length && teacherGroups.length > 0
+                      ? 'Deselect All'
+                      : 'Select All'}
+                  </button>
+                  {selectedTeacherIds.size > 0 && (
+                    <span className="text-sm text-zinc-400">
+                      {selectedTeacherIds.size} teacher{selectedTeacherIds.size !== 1 ? 's' : ''} selected
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowBulkAdjustModal(true)}
+                  disabled={selectedTeacherIds.size === 0}
+                  className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Bulk Adjust Hours
+                </button>
               </div>
             </div>
           )}
@@ -433,15 +522,32 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
               {teacherGroups.map(([teacherId, group]) => (
                 <TeacherSection
                   key={teacherId}
+                  teacherId={teacherId}
                   teacherName={group.name}
                   items={group.items}
                   isEditable={isEditable}
+                  isSelected={selectedTeacherIds.has(teacherId)}
                   onUpdateHours={handleUpdateHours}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </div>
           </div>
         </div>
+
+        {/* Bulk Adjust Hours Modal */}
+        {showBulkAdjustModal && (
+          <BulkAdjustHoursModal
+            runId={run.id}
+            selectedTeachers={selectedTeachers}
+            onClose={() => setShowBulkAdjustModal(false)}
+            onSuccess={() => {
+              setShowBulkAdjustModal(false)
+              setSelectedTeacherIds(new Set())
+              showSuccess(`Updated hours for ${selectedTeachers.length} teacher${selectedTeachers.length !== 1 ? 's' : ''}`)
+            }}
+          />
+        )}
 
         {/* Footer Actions */}
         <div className="sticky bottom-0 bg-zinc-900 border-t border-zinc-800 px-6 py-4">

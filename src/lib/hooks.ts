@@ -3703,12 +3703,74 @@ export function usePayrollMutations() {
     },
   })
 
+  /**
+   * Bulk update hours for all line items belonging to selected teachers
+   * Sets all their line items to the specified hours value (including 0)
+   */
+  const bulkUpdateTeacherHours = useMutation({
+    mutationFn: async ({
+      runId,
+      teacherIds,
+      hours,
+    }: {
+      runId: string
+      teacherIds: string[]
+      hours: number
+    }) => {
+      if (teacherIds.length === 0) {
+        throw new Error('No teachers selected')
+      }
+
+      // Fetch all line items for these teachers in this run
+      const { data: lineItems, error: fetchError } = await payrollDb.from('payroll_line_item')
+        .select('id, hourly_rate, adjustment_amount')
+        .eq('payroll_run_id', runId)
+        .in('teacher_id', teacherIds)
+
+      if (fetchError) throw fetchError
+      if (!lineItems || lineItems.length === 0) {
+        throw new Error('No line items found for selected teachers')
+      }
+
+      // Update each line item with new hours
+      const updates = lineItems.map((item: { id: string; hourly_rate: number; adjustment_amount: number }) => {
+        const calculatedAmount = hours * item.hourly_rate
+        const finalAmount = calculatedAmount + (item.adjustment_amount || 0)
+        return payrollDb.from('payroll_line_item')
+          .update({
+            actual_hours: hours,
+            calculated_amount: calculatedAmount,
+            final_amount: finalAmount,
+          })
+          .eq('id', item.id)
+      })
+
+      // Execute all updates
+      const results = await Promise.allSettled(updates)
+      const failed = results.filter(r => r.status === 'rejected').length
+
+      if (failed > 0) {
+        throw new Error(`Failed to update ${failed} of ${lineItems.length} line items`)
+      }
+
+      // Recalculate run totals
+      await recalculateRunTotals(runId)
+
+      return { updated: lineItems.length, runId }
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(data.runId) })
+    },
+  })
+
   return {
     createPayrollRun,
     updateRunStatus,
     updateLineItem,
     createAdjustment,
     deletePayrollRun,
+    bulkUpdateTeacherHours,
   }
 }
 
