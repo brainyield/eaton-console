@@ -2674,6 +2674,7 @@ export type Database = {
           event_order_count: number | null
           family_id: string | null
           family_name: string | null
+          family_status: Database["public"]["Enums"]["customer_status"] | null
           last_event_order_at: string | null
           primary_email: string | null
           primary_phone: string | null
