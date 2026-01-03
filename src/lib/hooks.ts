@@ -1862,10 +1862,6 @@ export function useInvoiceMutations() {
       for (const [familyId, group] of Object.entries(byFamily)) {
         try {
         // Create invoice
-        const invoiceNote = invoiceType === 'weekly'
-          ? `For the week of ${new Date(periodStart).toLocaleDateString()} - ${new Date(periodEnd).toLocaleDateString()}`
-          : `For ${new Date(periodStart).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`
-
         const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
           .insert({
             family_id: familyId,
@@ -1874,7 +1870,7 @@ export function useInvoiceMutations() {
             period_start: periodStart,
             period_end: periodEnd,
             status: 'draft',
-            notes: invoiceNote,
+            notes: null,
           })
           .select()
           .single()
@@ -2070,7 +2066,7 @@ export function useInvoiceMutations() {
   const generateEventInvoice = useMutation({
     mutationFn: async ({
       familyId,
-      familyName,
+      familyName: _familyName,
       orderIds,
       orders,
       dueDate,
@@ -2082,15 +2078,13 @@ export function useInvoiceMutations() {
       dueDate: string
     }) => {
       // Create invoice
-      const invoiceNote = `Event registrations for ${familyName}`
-
       const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
         .insert({
           family_id: familyId,
           invoice_date: getTodayString(),
           due_date: dueDate,
           status: 'draft',
-          notes: invoiceNote,
+          notes: null,
         })
         .select()
         .single()
