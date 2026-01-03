@@ -2185,6 +2185,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
     },
+    // Suppress global error toast - callers handle errors explicitly
+    onError: () => {},
   })
 
   const updateLineItem = useMutation({
@@ -2204,6 +2206,8 @@ export function useInvoiceMutations() {
         queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(lineItem.invoice_id) })
       }
     },
+    // Suppress global error toast - callers handle errors explicitly
+    onError: () => {},
   })
 
   const deleteInvoice = useMutation({
