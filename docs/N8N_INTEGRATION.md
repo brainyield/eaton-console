@@ -357,3 +357,106 @@ If you're receiving duplicate emails (e.g., invoice + reminder at the same time)
 
 ### v1 (Initial)
 - Basic invoice send functionality
+
+---
+
+## Workflow: Payroll Notification
+
+**Endpoint**: `POST https://eatonacademic.app.n8n.cloud/webhook/payroll-notification`
+
+**Purpose**: Sends email notifications to teachers when their payroll is processed.
+
+### Trigger Points
+
+This webhook is triggered in two scenarios:
+
+1. **Bulk Payroll** (Primary): When a payroll run is marked as "Paid" in `PayrollRunDetail.tsx`, notifications are automatically sent to all teachers included in that payroll run.
+
+2. **Manual Payments** (Disabled): The manual "Add Payment" button in `RecordTeacherPaymentModal.tsx` no longer triggers notifications. This is intentional - manual payments are ad-hoc adjustments that don't require automated notifications.
+
+### Payload Structure
+
+```json
+{
+  "payment_id": "bulk-run-id-teacher-id",
+  "teacher": {
+    "id": "uuid",
+    "name": "Teacher Name",
+    "email": "teacher@example.com"
+  },
+  "amounts": {
+    "total": 1250.00,
+    "hours": 25.0
+  },
+  "period": {
+    "start": "2025-12-16",
+    "end": "2025-12-20"
+  },
+  "line_items": [
+    {
+      "student": "Student Name",
+      "service": "Tutoring",
+      "hours": 5.0,
+      "rate": 50.00,
+      "amount": 250.00
+    }
+  ],
+  "payment_method": "Bulk Payroll",
+  "timestamp": "2025-12-27T10:30:00.000Z"
+}
+```
+
+### Workflow Structure
+
+```
+Webhook --> Format Email --> Send Email (Gmail) --> Set Response
+```
+
+**Email Template:**
+- Header: Green gradient (#10b981 to #059669)
+- Shows payment summary with hours and amount
+- Detailed breakdown table of all line items
+- Payment method and period dates
+
+### Frontend Integration
+
+**PayrollRunDetail.tsx - Mark as Paid:**
+```typescript
+// When status changes to 'paid', notifications are sent automatically
+const handleStatusChange = async (newStatus: PayrollRunStatus) => {
+  await updateRunStatus.mutateAsync({ id, status: newStatus })
+
+  if (newStatus === 'paid') {
+    // Fire and forget - doesn't block UI
+    triggerBulkPayrollNotifications(run, teacherGroups)
+  }
+}
+```
+
+**TeacherDetailPanel - Payroll Tab:**
+
+The payroll tab now shows combined payment history from two sources:
+- **Manual payments** (`teacher_payments` table)
+- **Bulk payroll** (`payroll_line_item` table, from paid runs)
+
+Bulk payroll entries are marked with a "Bulk Payroll" badge in the Source column.
+
+### Query Invalidation
+
+When a payroll run is marked as paid:
+- `queryKeys.payroll.all` - Refreshes payroll run list
+- `queryKeys.payroll.runWithItems(runId)` - Refreshes the specific run
+- `['payroll', 'teacher']` - Refreshes all teacher payroll queries (for TeacherDetailPanel updates)
+
+---
+
+## Changelog (Payroll Notification)
+
+### v2 (Jan 2026)
+- **Changed**: Notifications now triggered by bulk payroll completion instead of manual payments
+- **Added**: TeacherDetailPanel payroll tab shows combined manual + bulk payroll history
+- **Added**: "Bulk Payroll" badge to distinguish payment sources
+- **Fixed**: Query invalidation ensures real-time updates in TeacherDetailPanel
+
+### v1 (Dec 2025)
+- Basic payroll notification on manual payment recording

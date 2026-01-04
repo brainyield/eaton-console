@@ -136,54 +136,6 @@ export function RecordTeacherPaymentModal({
   }
 
   const totalAmount = lineItems.reduce((sum, item) => sum + item.amount, 0)
-  const totalHours = lineItems.reduce((sum, item) => sum + item.hours, 0)
-
-  // Trigger n8n payroll notification
-  async function triggerPayrollNotification(paymentId: string) {
-    try {
-      const payload = {
-        payment_id: paymentId,
-        teacher: {
-          id: teacher.id,
-          name: teacher.display_name,
-          email: teacher.email,
-        },
-        amounts: {
-          total: totalAmount,
-          hours: totalHours,
-        },
-        period: {
-          start: payPeriodStart,
-          end: payPeriodEnd,
-        },
-        line_items: lineItems.filter(li => li.amount > 0).map((li) => {
-          const assignment = assignments.find(a => a.enrollment_id === li.enrollment_id)
-          return {
-            student: assignment?.student_name || 'Unknown',
-            service: assignment?.service_name || 'Unknown',
-            hours: li.hours,
-            rate: li.hourly_rate,
-            amount: li.amount,
-          }
-        }),
-        payment_method: paymentMethod,
-        timestamp: new Date().toISOString(),
-      }
-
-      console.log('Triggering n8n webhook with payload:', payload)
-
-      const response = await fetch('https://eatonacademic.app.n8n.cloud/webhook/payroll-notification', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-
-      console.log('n8n webhook response:', response.status)
-    } catch (err) {
-      console.error('Failed to trigger payroll notification:', err)
-      // Don't throw - notification failure shouldn't block payment
-    }
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -198,8 +150,8 @@ export function RecordTeacherPaymentModal({
     if (saving) return
 
     try {
-      // FIX: Include line_items in the mutation call (the mutation handles insertion)
-      const paymentData = await createPayment.mutateAsync({
+      // Include line_items in the mutation call (the mutation handles insertion)
+      await createPayment.mutateAsync({
         teacher_id: teacher.id,
         pay_period_start: payPeriodStart,
         pay_period_end: payPeriodEnd,
@@ -220,11 +172,7 @@ export function RecordTeacherPaymentModal({
           })),
       })
 
-      const paymentId = paymentData.id
-
-      // Trigger n8n notification (fire and forget)
-      await triggerPayrollNotification(paymentId)
-
+      // Manual payments don't trigger notifications - bulk payroll handles that
       onSuccess?.()
       onClose()
     } catch (err) {

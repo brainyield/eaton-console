@@ -18,9 +18,11 @@ import {
   useTeacherWithLoad,
   useTeacherAssignments,
   useTeacherPaymentsByTeacher,
+  usePayrollLineItemsByTeacher,
   getServiceBadgeColor,
   getServiceShortName,
   type TeacherAssignmentWithDetails,
+  type TeacherPayrollLineItem,
 } from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
 import { parseLocalDate } from '../lib/dateUtils'
@@ -46,6 +48,7 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
   const { data: teacher, isLoading: teacherLoading } = useTeacherWithLoad(teacherId)
   const { data: assignments } = useTeacherAssignments(teacherId)
   const { data: payments, isLoading: paymentsLoading } = useTeacherPaymentsByTeacher(teacherId)
+  const { data: payrollLineItems, isLoading: payrollLoading } = usePayrollLineItemsByTeacher(teacherId)
 
   // Handler for clicking an assignment card
   const handleAssignmentClick = (assignment: TeacherAssignmentWithDetails) => {
@@ -158,7 +161,8 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
           {activeTab === 'payroll' && (
             <PayrollTab
               payments={payments || []}
-              isLoading={paymentsLoading}
+              payrollLineItems={payrollLineItems || []}
+              isLoading={paymentsLoading || payrollLoading}
               onRecordPayment={() => setShowPaymentModal(true)}
             />
           )}
@@ -550,37 +554,98 @@ function EnrollmentAssignmentCard({
 // PAYROLL TAB
 // ============================================================================
 
+// Unified payment record for display (both manual and bulk payroll)
+interface UnifiedPayment {
+  id: string
+  pay_date: string
+  pay_period_start: string
+  pay_period_end: string
+  total_amount: number
+  payment_method: string
+  source: 'manual' | 'bulk'
+}
+
 type PayrollSortKey = 'pay_date' | 'pay_period_start' | 'total_amount'
 type SortDirection = 'asc' | 'desc'
 
 function PayrollTab({
   payments,
+  payrollLineItems,
   isLoading,
   onRecordPayment,
 }: {
   payments: any[]
+  payrollLineItems: TeacherPayrollLineItem[]
   isLoading: boolean
   onRecordPayment: () => void
 }) {
   const [sortKey, setSortKey] = useState<PayrollSortKey>('pay_date')
   const [sortDir, setSortDir] = useState<SortDirection>('desc')
 
+  // Combine manual payments and bulk payroll runs into unified format
+  const allPayments = useMemo(() => {
+    const unified: UnifiedPayment[] = []
+
+    // Add manual payments
+    for (const payment of payments) {
+      unified.push({
+        id: payment.id,
+        pay_date: payment.pay_date,
+        pay_period_start: payment.pay_period_start,
+        pay_period_end: payment.pay_period_end,
+        total_amount: parseFloat(payment.total_amount) || 0,
+        payment_method: payment.payment_method || 'Manual',
+        source: 'manual',
+      })
+    }
+
+    // Group bulk payroll line items by payroll_run_id and aggregate
+    const bulkByRun: Record<string, {
+      id: string
+      paid_at: string
+      period_start: string
+      period_end: string
+      total_amount: number
+    }> = {}
+
+    for (const item of payrollLineItems) {
+      if (!bulkByRun[item.payroll_run_id]) {
+        bulkByRun[item.payroll_run_id] = {
+          id: `bulk-${item.payroll_run_id}`,
+          paid_at: item.paid_at,
+          period_start: item.period_start,
+          period_end: item.period_end,
+          total_amount: 0,
+        }
+      }
+      bulkByRun[item.payroll_run_id].total_amount += item.final_amount
+    }
+
+    // Add aggregated bulk payroll runs
+    for (const runData of Object.values(bulkByRun)) {
+      unified.push({
+        id: runData.id,
+        pay_date: runData.paid_at,
+        pay_period_start: runData.period_start,
+        pay_period_end: runData.period_end,
+        total_amount: runData.total_amount,
+        payment_method: 'Bulk Payroll',
+        source: 'bulk',
+      })
+    }
+
+    return unified
+  }, [payments, payrollLineItems])
+
   const sortedPayments = useMemo(() => {
-    if (!payments) return []
-    return [...payments].sort((a, b) => {
-      let aVal = a[sortKey]
-      let bVal = b[sortKey]
+    return [...allPayments].sort((a, b) => {
+      let aVal: number | string = a[sortKey]
+      let bVal: number | string = b[sortKey]
 
       // Handle dates
       if (sortKey === 'pay_date' || sortKey === 'pay_period_start') {
-        aVal = new Date(aVal).getTime()
-        bVal = new Date(bVal).getTime()
-      }
-
-      // Handle numbers
-      if (typeof aVal === 'string' && !Number.isNaN(parseFloat(aVal))) {
-        aVal = parseFloat(aVal)
-        bVal = parseFloat(bVal)
+        aVal = new Date(aVal as string).getTime()
+        bVal = new Date(bVal as string).getTime()
       }
 
       if (sortDir === 'asc') {
@@ -589,7 +654,7 @@ function PayrollTab({
         return aVal > bVal ? -1 : aVal < bVal ? 1 : 0
       }
     })
-  }, [payments, sortKey, sortDir])
+  }, [allPayments, sortKey, sortDir])
 
   const toggleSort = (key: PayrollSortKey) => {
     if (sortKey === key) {
@@ -609,11 +674,10 @@ function PayrollTab({
     )
   }
 
-  // Calculate total paid
-  const totalPaid = payments.reduce((sum, p) => {
-    const amount = parseFloat(p.total_amount || '0')
-    return sum + (Number.isNaN(amount) ? 0 : amount)
-  }, 0)
+  // Calculate total paid from all sources
+  const totalPaid = allPayments.reduce((sum, p) => sum + p.total_amount, 0)
+  const manualCount = allPayments.filter(p => p.source === 'manual').length
+  const bulkCount = allPayments.filter(p => p.source === 'bulk').length
 
   if (isLoading) {
     return (
@@ -630,18 +694,23 @@ function PayrollTab({
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="text-sm text-gray-400">
-          {payments.length} payment{payments.length !== 1 ? 's' : ''} recorded
+          {allPayments.length} payment{allPayments.length !== 1 ? 's' : ''}
+          {bulkCount > 0 && manualCount > 0 && (
+            <span className="ml-1">
+              ({bulkCount} bulk, {manualCount} manual)
+            </span>
+          )}
         </div>
         <button
           onClick={onRecordPayment}
           className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
         >
-          + Record Payment
+          + Add Payment
         </button>
       </div>
 
       {/* Table */}
-      {payments.length > 0 ? (
+      {allPayments.length > 0 ? (
         <div className="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden">
           <table className="w-full">
             <thead>
@@ -651,7 +720,7 @@ function PayrollTab({
                   onClick={() => toggleSort('pay_date')}
                 >
                   <div className="flex items-center gap-1">
-                    Pay Date
+                    Paid
                     <SortIcon columnKey="pay_date" />
                   </div>
                 </th>
@@ -674,7 +743,7 @@ function PayrollTab({
                   </div>
                 </th>
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">
-                  Method
+                  Source
                 </th>
               </tr>
             </thead>
@@ -688,16 +757,19 @@ function PayrollTab({
                     {formatDateRange(payment.pay_period_start, payment.pay_period_end)}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium text-green-400">
-                    ${(() => {
-                      const amount = parseFloat(payment.total_amount)
-                      return (Number.isNaN(amount) ? 0 : amount).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })
-                    })()}
+                    ${payment.total_amount.toLocaleString('en-US', {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">
-                    {payment.payment_method || '—'}
+                  <td className="px-4 py-3 text-sm">
+                    {payment.source === 'bulk' ? (
+                      <span className="inline-flex items-center px-2 py-0.5 text-xs rounded-full bg-blue-500/20 text-blue-400">
+                        Bulk Payroll
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">{payment.payment_method}</span>
+                    )}
                   </td>
                 </tr>
               ))}

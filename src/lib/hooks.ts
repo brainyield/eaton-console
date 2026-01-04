@@ -3429,6 +3429,71 @@ export function usePayrollRunWithItems(runId: string | undefined) {
 }
 
 /**
+ * Fetch payroll line items for a specific teacher from paid payroll runs
+ * This is used in TeacherDetailPanel to show bulk payroll history
+ */
+export interface TeacherPayrollLineItem {
+  id: string
+  payroll_run_id: string
+  period_start: string
+  period_end: string
+  paid_at: string
+  description: string
+  actual_hours: number
+  hourly_rate: number
+  final_amount: number
+  service_name: string | null
+  student_name: string | null
+}
+
+export function usePayrollLineItemsByTeacher(teacherId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.payroll.byTeacher(teacherId),
+    queryFn: async () => {
+      // Fetch line items from paid payroll runs for this teacher
+      const { data, error } = await payrollDb.from('payroll_line_item')
+        .select(`
+          id,
+          payroll_run_id,
+          description,
+          actual_hours,
+          hourly_rate,
+          final_amount,
+          service:services(name),
+          enrollment:enrollments(student:students(full_name)),
+          payroll_run:payroll_run!inner(
+            period_start,
+            period_end,
+            paid_at,
+            status
+          )
+        `)
+        .eq('teacher_id', teacherId)
+        .eq('payroll_run.status', 'paid')
+        .order('payroll_run(paid_at)', { ascending: false })
+
+      if (error) throw error
+
+      // Transform the data to flatten the nested structure
+      return (data || []).map((item: any) => ({
+        id: item.id,
+        payroll_run_id: item.payroll_run_id,
+        period_start: item.payroll_run?.period_start,
+        period_end: item.payroll_run?.period_end,
+        paid_at: item.payroll_run?.paid_at,
+        description: item.description,
+        actual_hours: item.actual_hours,
+        hourly_rate: item.hourly_rate,
+        final_amount: item.final_amount,
+        service_name: item.service?.name || null,
+        student_name: item.enrollment?.student?.full_name || null,
+      })) as TeacherPayrollLineItem[]
+    },
+    enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
+  })
+}
+
+/**
  * Fetch pending adjustments that haven't been applied to a payroll run yet
  */
 export function usePendingPayrollAdjustments(teacherId?: string) {
@@ -3645,6 +3710,12 @@ export function usePayrollMutations() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(variables.id) })
+
+      // When status changes to 'paid', invalidate all teacher payroll queries
+      // so TeacherDetailPanel's payroll tab updates automatically
+      if (variables.status === 'paid') {
+        queryClient.invalidateQueries({ queryKey: ['payroll', 'teacher'] })
+      }
     },
   })
 
