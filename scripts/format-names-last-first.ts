@@ -23,10 +23,19 @@ loadEnv()
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_ANON_KEY!)
 
+// Parse command line arguments
+const args = process.argv.slice(2)
+const DRY_RUN = args.includes('--dry-run')
+
+// Name suffixes that should not be treated as last names
+const NAME_SUFFIXES = ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v', 'esq', 'esq.', 'phd', 'md', 'dds']
+
 /**
  * Formats a name to "Last Name, First Name" format.
  * - If the name already contains a comma, return as-is
+ * - If the name ends with " Family", strip the suffix and return just the last name
  * - If the name has no spaces (single name), return as-is
+ * - Handles suffixes like Jr., Sr., III, etc. correctly
  * - Otherwise, move the last word to the front with a comma
  */
 function formatNameLastFirst(name: string): string {
@@ -37,6 +46,12 @@ function formatNameLastFirst(name: string): string {
     return trimmed
   }
 
+  // Handle "XYZ Family" format - strip " Family" suffix
+  if (trimmed.endsWith(' Family')) {
+    // Return just the last name (without " Family")
+    return trimmed.slice(0, -7) // Remove " Family" (7 chars)
+  }
+
   // No spaces - single name, leave as-is
   if (!trimmed.includes(' ')) {
     return trimmed
@@ -44,42 +59,86 @@ function formatNameLastFirst(name: string): string {
 
   // Split and rearrange
   const parts = trimmed.split(/\s+/)
+
+  // Check if the last part is a suffix (Jr., Sr., III, etc.)
+  let suffix = ''
+  if (parts.length > 2 && NAME_SUFFIXES.includes(parts[parts.length - 1].toLowerCase())) {
+    suffix = ' ' + parts.pop()!
+  }
+
   const lastName = parts.pop()!
   const firstNames = parts.join(' ')
 
-  return `${lastName}, ${firstNames}`
+  return `${lastName}, ${firstNames}${suffix}`
+}
+
+/**
+ * Formats a family display name using the primary contact name if available.
+ * Falls back to stripping " Family" suffix if present.
+ */
+function formatFamilyDisplayName(displayName: string, primaryContactName: string | null): string {
+  const trimmed = displayName.trim()
+
+  // Already has comma - assume already formatted
+  if (trimmed.includes(',')) {
+    return trimmed
+  }
+
+  // If we have a primary contact name, use that for proper "Last, First" formatting
+  if (primaryContactName && primaryContactName.includes(' ') && !primaryContactName.includes(',')) {
+    return formatNameLastFirst(primaryContactName)
+  }
+
+  // Handle "XYZ Family" format - strip " Family" suffix
+  if (trimmed.endsWith(' Family')) {
+    return trimmed.slice(0, -7)
+  }
+
+  // Otherwise use standard formatting
+  return formatNameLastFirst(trimmed)
 }
 
 async function main() {
   console.log('='.repeat(60))
-  console.log('Name Format Migration: First Last → Last, First')
+  console.log('Name Format Migration: "XYZ Family" / "First Last" → "Last, First"')
   console.log('='.repeat(60))
+
+  if (DRY_RUN) {
+    console.log('\n=== DRY RUN MODE - No changes will be made ===')
+  }
 
   // Process families.display_name
   console.log('\n📁 Processing families.display_name...')
   const { data: families, error: famError } = await supabase
     .from('families')
-    .select('id, display_name')
+    .select('id, display_name, primary_contact_name')
     .not('display_name', 'is', null)
     .not('display_name', 'like', '%,%')  // Skip already formatted
-    .like('display_name', '% %')          // Must have a space
 
   if (famError) {
     console.error('  Error fetching families:', famError.message)
   } else {
-    console.log(`  Found ${families?.length || 0} names to update`)
-    for (const fam of families || []) {
-      const newName = formatNameLastFirst(fam.display_name!)
+    // Filter to those that need updating (has space OR ends with " Family")
+    const toUpdate = (families || []).filter(f =>
+      f.display_name && (f.display_name.includes(' ') || f.display_name.endsWith(' Family'))
+    )
+    console.log(`  Found ${toUpdate.length} names to update`)
+    for (const fam of toUpdate) {
+      const newName = formatFamilyDisplayName(fam.display_name!, fam.primary_contact_name)
       if (newName !== fam.display_name) {
-        const { error } = await supabase
-          .from('families')
-          .update({ display_name: newName })
-          .eq('id', fam.id)
-
-        if (error) {
-          console.log(`  ✗ ${fam.display_name} → Error: ${error.message}`)
+        if (DRY_RUN) {
+          console.log(`  [DRY] ${fam.display_name} → ${newName}`)
         } else {
-          console.log(`  ✓ ${fam.display_name} → ${newName}`)
+          const { error } = await supabase
+            .from('families')
+            .update({ display_name: newName })
+            .eq('id', fam.id)
+
+          if (error) {
+            console.log(`  ✗ ${fam.display_name} → Error: ${error.message}`)
+          } else {
+            console.log(`  ✓ ${fam.display_name} → ${newName}`)
+          }
         }
       }
     }
@@ -101,15 +160,19 @@ async function main() {
     for (const c of contacts || []) {
       const newName = formatNameLastFirst(c.primary_contact_name!)
       if (newName !== c.primary_contact_name) {
-        const { error } = await supabase
-          .from('families')
-          .update({ primary_contact_name: newName })
-          .eq('id', c.id)
-
-        if (error) {
-          console.log(`  ✗ ${c.primary_contact_name} → Error: ${error.message}`)
+        if (DRY_RUN) {
+          console.log(`  [DRY] ${c.primary_contact_name} → ${newName}`)
         } else {
-          console.log(`  ✓ ${c.primary_contact_name} → ${newName}`)
+          const { error } = await supabase
+            .from('families')
+            .update({ primary_contact_name: newName })
+            .eq('id', c.id)
+
+          if (error) {
+            console.log(`  ✗ ${c.primary_contact_name} → Error: ${error.message}`)
+          } else {
+            console.log(`  ✓ ${c.primary_contact_name} → ${newName}`)
+          }
         }
       }
     }
@@ -131,15 +194,19 @@ async function main() {
     for (const s of students || []) {
       const newName = formatNameLastFirst(s.full_name!)
       if (newName !== s.full_name) {
-        const { error } = await supabase
-          .from('students')
-          .update({ full_name: newName })
-          .eq('id', s.id)
-
-        if (error) {
-          console.log(`  ✗ ${s.full_name} → Error: ${error.message}`)
+        if (DRY_RUN) {
+          console.log(`  [DRY] ${s.full_name} → ${newName}`)
         } else {
-          console.log(`  ✓ ${s.full_name} → ${newName}`)
+          const { error } = await supabase
+            .from('students')
+            .update({ full_name: newName })
+            .eq('id', s.id)
+
+          if (error) {
+            console.log(`  ✗ ${s.full_name} → Error: ${error.message}`)
+          } else {
+            console.log(`  ✓ ${s.full_name} → ${newName}`)
+          }
         }
       }
     }
@@ -161,22 +228,30 @@ async function main() {
     for (const t of teachers || []) {
       const newName = formatNameLastFirst(t.display_name!)
       if (newName !== t.display_name) {
-        const { error } = await supabase
-          .from('teachers')
-          .update({ display_name: newName })
-          .eq('id', t.id)
-
-        if (error) {
-          console.log(`  ✗ ${t.display_name} → Error: ${error.message}`)
+        if (DRY_RUN) {
+          console.log(`  [DRY] ${t.display_name} → ${newName}`)
         } else {
-          console.log(`  ✓ ${t.display_name} → ${newName}`)
+          const { error } = await supabase
+            .from('teachers')
+            .update({ display_name: newName })
+            .eq('id', t.id)
+
+          if (error) {
+            console.log(`  ✗ ${t.display_name} → Error: ${error.message}`)
+          } else {
+            console.log(`  ✓ ${t.display_name} → ${newName}`)
+          }
         }
       }
     }
   }
 
   console.log('\n' + '='.repeat(60))
-  console.log('Migration complete!')
+  if (DRY_RUN) {
+    console.log('DRY RUN complete! Run without --dry-run to apply changes.')
+  } else {
+    console.log('Migration complete!')
+  }
   console.log('='.repeat(60))
 }
 

@@ -34,12 +34,16 @@ interface WaitlistPayload {
 
 type LeadPayload = ExitIntentPayload | WaitlistPayload
 
-// Format name as "LastName Family" or use email prefix
+// Format name as "LastName, FirstName" or use email prefix
 function formatFamilyName(name: string | undefined, email: string): string {
   if (name) {
     const parts = name.trim().split(/\s+/)
+    if (parts.length === 1) {
+      return parts[0]
+    }
     const lastName = parts[parts.length - 1]
-    return `${lastName} Family`
+    const firstName = parts.slice(0, -1).join(' ')
+    return `${lastName}, ${firstName}`
   }
   // Use email prefix as fallback
   const emailPrefix = email.split('@')[0]

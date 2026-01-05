@@ -247,11 +247,15 @@ function determineEventType(slug: string): 'hub_dropoff' | '15min_call' {
   return '15min_call'
 }
 
-// Format name as "LastName Family"
+// Format name as "LastName, FirstName"
 function formatFamilyName(fullName: string): string {
   const parts = fullName.trim().split(/\s+/)
+  if (parts.length === 1) {
+    return parts[0]
+  }
   const lastName = parts[parts.length - 1]
-  return `${lastName} Family`
+  const firstName = parts.slice(0, -1).join(' ')
+  return `${lastName}, ${firstName}`
 }
 
 async function importEvent(event: CalendlyEvent, invitee: CalendlyInvitee) {
