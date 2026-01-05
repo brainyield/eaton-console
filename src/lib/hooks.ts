@@ -2872,7 +2872,7 @@ function extractServiceCodeFromDescription(description: string): string | null {
   if (lower.includes('learning pod')) return 'learning_pod'
   if (lower.includes('consulting')) return 'consulting'
   if (lower.includes('hub')) return 'eaton_hub'
-  if (lower.includes('online')) return 'eaton_online'
+  if (lower.includes('eaton online')) return 'eaton_online'
   if (lower.includes('elective')) return 'elective_classes'
   return null
 }
