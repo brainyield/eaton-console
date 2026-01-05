@@ -4,6 +4,7 @@ import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
 import { getTodayString } from './dateUtils'
 import { addMoney, centsToDollars } from './moneyUtils'
+import { formatNameLastFirst } from './utils'
 import type { GmailSearchParams } from '../types/gmail'
 
 // =============================================================================
@@ -491,8 +492,9 @@ export function useStudentMutations() {
   const createStudent = useMutation({
     mutationFn: async (data: Partial<Student>) => {
       // Check for duplicate student name within the same family
+      // Normalize both input and existing names to "Last, First" format for comparison
+      // This catches duplicates like "Celine Orellana" vs "Orellana, Celine"
       if (data.family_id && data.full_name) {
-        const normalizedName = data.full_name.trim().toLowerCase()
         const { data: existingStudents, error: checkError } = await supabase
           .from('students')
           .select('id, full_name')
@@ -500,9 +502,14 @@ export function useStudentMutations() {
 
         if (checkError) throw checkError
 
-        const duplicate = existingStudents?.find(
-          (s: any) => s.full_name.trim().toLowerCase() === normalizedName
-        )
+        // Normalize the input name to "Last, First" format for comparison
+        const inputNormalized = formatNameLastFirst(data.full_name).trim().toLowerCase()
+
+        const duplicate = existingStudents?.find((s: any) => {
+          // Normalize existing student names the same way
+          const existingNormalized = formatNameLastFirst(s.full_name).trim().toLowerCase()
+          return existingNormalized === inputNormalized
+        })
 
         if (duplicate) {
           throw new Error(`A student named "${duplicate.full_name}" already exists in this family. Please use a different name or edit the existing student.`)
