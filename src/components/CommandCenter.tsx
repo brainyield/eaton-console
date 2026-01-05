@@ -88,6 +88,9 @@ function useDashboardStats() {
       // For 30+ day overdue calculation
       const thirtyDaysAgo = formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000))
 
+      // For unbilled hub sessions (only count past sessions)
+      const today = formatDateLocal(now)
+
       // Fetch all stats in parallel
       const [
         studentsWithActiveEnrollmentsResult,
@@ -134,11 +137,12 @@ function useDashboardStats() {
           .select('balance_due, status, total_amount')
           .in('status', ['sent', 'partial', 'overdue']),
 
-        // Unbilled hub sessions
+        // Unbilled hub sessions (only past sessions that need billing)
         supabase
           .from('hub_sessions')
           .select('id', { count: 'exact', head: true })
-          .is('invoice_line_item_id', null),
+          .is('invoice_line_item_id', null)
+          .lte('session_date', today),
 
         // Active enrollments for MRR calculation
         supabase
