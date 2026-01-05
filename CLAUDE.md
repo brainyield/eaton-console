@@ -132,6 +132,7 @@ queryKeys.families.detail(id)
 - **DON'T** edit `src/types/supabase.ts` - it's auto-generated. Run `npm run db:types` to update.
 - **DON'T** create new hook files - add hooks to `src/lib/hooks.ts` following existing patterns.
 - **DON'T** use `console.log` in committed code - remove before committing.
+- **DON'T** forget `verify_jwt = false` for external webhooks - Supabase Edge Functions require JWT auth by default. External services (Stripe, Calendly, etc.) don't send Authorization headers. Create a `config.toml` in the function directory with `verify_jwt = false`.
 
 ---
 

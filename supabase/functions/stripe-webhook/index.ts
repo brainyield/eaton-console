@@ -70,11 +70,22 @@ Deno.serve(async (req) => {
       .single()
 
     if (existingEvent) {
-      console.log(`Event ${event.id} already processed (status: ${existingEvent.processing_status})`)
-      return new Response(
-        JSON.stringify({ received: true, status: 'already_processed' }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      // Only skip if already successfully processed
+      // Allow retries for failed or stuck 'processing' events
+      if (existingEvent.processing_status === 'processed') {
+        console.log(`Event ${event.id} already processed successfully, skipping`)
+        return new Response(
+          JSON.stringify({ received: true, status: 'already_processed' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // For failed or stuck events, delete the old record to allow retry
+      console.log(`Event ${event.id} has status '${existingEvent.processing_status}', allowing retry`)
+      await supabase
+        .from('stripe_invoice_webhooks')
+        .delete()
+        .eq('stripe_event_id', event.id)
     }
 
     // Handle checkout.session.completed

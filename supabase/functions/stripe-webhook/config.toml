@@ -1,0 +1,4 @@
+# Disable JWT verification for Stripe webhooks
+# Stripe authenticates via signature verification using the stripe-signature header
+# See: https://supabase.com/docs/guides/functions/auth
+verify_jwt = false
