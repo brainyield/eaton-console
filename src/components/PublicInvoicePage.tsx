@@ -124,6 +124,33 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
 
   useEffect(() => {
     fetchInvoice();
+
+    // Track invoice view (only for customers, not logged-in admins)
+    const trackView = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        // Only mark as viewed if NOT logged in (i.e., actual customer viewing)
+        if (!session) {
+          await fetch(
+            `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mark-invoice-viewed`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+              },
+              body: JSON.stringify({ public_id: publicId }),
+            }
+          );
+        }
+      } catch (err) {
+        // Non-blocking - don't affect user experience if tracking fails
+        console.error('Error tracking invoice view:', err);
+      }
+    };
+
+    trackView();
   }, [publicId]);
 
   async function fetchInvoice() {
