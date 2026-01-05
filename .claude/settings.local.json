@@ -4,10 +4,19 @@
       "Bash(npx tsx:*)",
       "Bash(cd:*)",
       "Bash(npm run build:*)",
+      "Bash(npm run lint:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run db:types:*)",
       "Bash(grep:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git status:*)",
+      "Bash(cat:*)",
+      "Bash(supabase --version:*)",
+      "Bash(supabase secrets:*)"
     ]
   }
 }
