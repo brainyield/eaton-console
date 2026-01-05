@@ -1722,6 +1722,33 @@ export function usePendingClassRegistrationFees() {
   })
 }
 
+// Hook to link unlinked event orders to a family (create family or link to existing)
+export function useEventOrderMutations() {
+  const queryClient = useQueryClient()
+
+  const linkOrdersToFamily = useMutation({
+    mutationFn: async ({
+      orderIds,
+      familyId,
+    }: {
+      orderIds: string[]
+      familyId: string
+    }) => {
+      const { error } = await (supabase.from('event_orders') as any)
+        .update({ family_id: familyId })
+        .in('id', orderIds)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+    },
+  })
+
+  return { linkOrdersToFamily }
+}
+
 // Hook to fetch email history for an invoice
 export function useInvoiceEmails(invoiceId: string) {
   return useQuery({

@@ -7,6 +7,7 @@ import {
   ChevronUp,
   ChevronDown,
   Edit2,
+  Link2,
 } from 'lucide-react'
 import {
   useBillableEnrollments,
@@ -20,6 +21,7 @@ import {
 import type { BillableEnrollment, PendingEventOrder, PendingClassRegistrationFee } from '../lib/hooks'
 import { multiplyMoney, sumMoney, centsToDollars } from '../lib/moneyUtils'
 import { useToast } from '../lib/toast'
+import { LinkEventOrdersModal } from './LinkEventOrdersModal'
 
 // ============================================================================
 // Types
@@ -169,6 +171,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
 
   // Events mode state
   const [selectedEventOrders, setSelectedEventOrders] = useState<Set<string>>(new Set())
+  const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
 
   // Initialize dates based on invoice type
   useEffect(() => {
@@ -494,6 +497,11 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       someSelected: orders.some(o => selectedEventOrders.has(o.id)),
     }))
   }, [pendingEventOrders, selectedEventOrders])
+
+  // Unlinked orders (no family_id)
+  const unlinkedOrders = useMemo(() => {
+    return pendingEventOrders.filter(o => !o.family_id)
+  }, [pendingEventOrders])
 
   // Event order counts
   const selectedEventCount = selectedEventOrders.size
@@ -979,6 +987,27 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 </div>
               ) : (
                 <div className="space-y-3">
+                  {/* Unlinked orders banner */}
+                  {unlinkedOrders.length > 0 && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400" />
+                          <span className="text-amber-200 text-sm">
+                            {unlinkedOrders.length} order{unlinkedOrders.length !== 1 ? 's' : ''} not linked to a family
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setIsLinkModalOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+                        >
+                          <Link2 className="w-4 h-4" />
+                          Link to Family
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
                   {eventOrdersByFamily.map(group => (
                     <div
                       key={group.familyId}
@@ -1286,6 +1315,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Link Event Orders Modal */}
+      <LinkEventOrdersModal
+        isOpen={isLinkModalOpen}
+        onClose={() => setIsLinkModalOpen(false)}
+        onSuccess={() => setIsLinkModalOpen(false)}
+        unlinkedOrders={unlinkedOrders}
+      />
     </div>
   )
 }
