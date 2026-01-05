@@ -101,7 +101,10 @@ function usePaginatedFamilies(
           .select(`*, students (*)`)
           .limit(SEARCH_LIMIT) as any
 
-        if (statusFilter !== 'all') {
+        if (statusFilter === 'all') {
+          // Exclude leads from Directory - they belong in Marketing view
+          familyQuery = familyQuery.in('status', ['trial', 'active', 'paused', 'churned'])
+        } else {
           familyQuery = familyQuery.eq('status', statusFilter)
         }
 
@@ -141,7 +144,10 @@ function usePaginatedFamilies(
               .select(`*, students (*)`)
               .in('id', limitedMissingIds) as any
 
-            if (statusFilter !== 'all') {
+            if (statusFilter === 'all') {
+              // Exclude leads from Directory - they belong in Marketing view
+              additionalQuery = additionalQuery.in('status', ['trial', 'active', 'paused', 'churned'])
+            } else {
               additionalQuery = additionalQuery.eq('status', statusFilter)
             }
 
@@ -219,7 +225,10 @@ function usePaginatedFamilies(
           .select('id', { count: 'exact' })
           .limit(BALANCE_SORT_LIMIT) as any
 
-        if (statusFilter !== 'all') {
+        if (statusFilter === 'all') {
+          // Exclude leads from Directory - they belong in Marketing view
+          familyQuery = familyQuery.in('status', ['trial', 'active', 'paused', 'churned'])
+        } else {
           familyQuery = familyQuery.eq('status', statusFilter)
         }
 
@@ -287,8 +296,10 @@ function usePaginatedFamilies(
           students (*)
         `, { count: 'exact' }) as any
 
-      // Apply status filter
-      if (statusFilter !== 'all') {
+      // Apply status filter - always exclude 'lead' status (leads belong in Marketing view)
+      if (statusFilter === 'all') {
+        query = query.in('status', ['trial', 'active', 'paused', 'churned'])
+      } else {
         query = query.eq('status', statusFilter)
       }
 

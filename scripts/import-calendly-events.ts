@@ -298,9 +298,25 @@ async function importEvent(event: CalendlyEvent, invitee: CalendlyInvitee) {
     .ilike('primary_email', inviteeEmail)
     .single()
 
+  // Track whether this family has active enrollments (meaning they're already a customer)
+  let hasActiveEnrollment = false
+
   if (existingFamily) {
     familyId = existingFamily.id
     console.log(`    Found existing family: ${familyId}`)
+
+    // Check if family has active/trial enrollments
+    const { data: activeEnrollments } = await supabase
+      .from('enrollments')
+      .select('id')
+      .eq('family_id', familyId)
+      .in('status', ['active', 'trial'])
+      .limit(1)
+
+    hasActiveEnrollment = activeEnrollments && activeEnrollments.length > 0
+    if (hasActiveEnrollment) {
+      console.log(`    Family has active enrollment - will skip lead creation`)
+    }
   }
 
   if (eventType === 'hub_dropoff') {
@@ -393,52 +409,57 @@ async function importEvent(event: CalendlyEvent, invitee: CalendlyInvitee) {
 
   } else if (eventType === '15min_call') {
     // 15MIN CALL: Create family (if needed) and lead
+    // Skip lead creation if family already has active enrollments (they're already a customer)
 
-    if (!familyId) {
-      const { data: newFamily, error: familyError } = await supabase
-        .from('families')
+    if (hasActiveEnrollment) {
+      console.log(`    Skipping lead creation for existing customer`)
+    } else {
+      if (!familyId) {
+        const { data: newFamily, error: familyError } = await supabase
+          .from('families')
+          .insert({
+            display_name: formatFamilyName(invitee.name),
+            primary_email: inviteeEmail,
+            primary_phone: formAnswers.phone || null,
+            primary_contact_name: invitee.name,
+            status: 'lead',
+            notes: 'Lead source: Calendly 15min call (imported)',
+          })
+          .select('id')
+          .single()
+
+        if (familyError) {
+          console.log(`    ERROR creating family: ${familyError.message}`)
+          return { error: familyError.message }
+        }
+        familyId = newFamily.id
+        console.log(`    Created family as lead: ${familyId}`)
+      }
+
+      // Create lead
+      const { data: lead, error: leadError } = await supabase
+        .from('leads')
         .insert({
-          display_name: formatFamilyName(invitee.name),
-          primary_email: inviteeEmail,
-          primary_phone: formAnswers.phone || null,
-          primary_contact_name: invitee.name,
-          status: 'lead',
-          notes: 'Lead source: Calendly 15min call (imported)',
+          email: inviteeEmail,
+          name: invitee.name,
+          phone: formAnswers.phone || null,
+          lead_type: 'calendly_call',
+          status: 'new',
+          calendly_event_uri: event.uri,
+          calendly_invitee_uri: invitee.uri,
+          scheduled_at: scheduledAt,
+          family_id: familyId,
         })
         .select('id')
         .single()
 
-      if (familyError) {
-        console.log(`    ERROR creating family: ${familyError.message}`)
-        return { error: familyError.message }
+      if (leadError) {
+        console.log(`    ERROR creating lead: ${leadError.message}`)
+        return { error: leadError.message }
       }
-      familyId = newFamily.id
-      console.log(`    Created family as lead: ${familyId}`)
+      leadId = lead.id
+      console.log(`    Created lead: ${leadId}`)
     }
-
-    // Create lead
-    const { data: lead, error: leadError } = await supabase
-      .from('leads')
-      .insert({
-        email: inviteeEmail,
-        name: invitee.name,
-        phone: formAnswers.phone || null,
-        lead_type: 'calendly_call',
-        status: 'new',
-        calendly_event_uri: event.uri,
-        calendly_invitee_uri: invitee.uri,
-        scheduled_at: scheduledAt,
-        family_id: familyId,
-      })
-      .select('id')
-      .single()
-
-    if (leadError) {
-      console.log(`    ERROR creating lead: ${leadError.message}`)
-      return { error: leadError.message }
-    }
-    leadId = lead.id
-    console.log(`    Created lead: ${leadId}`)
   }
 
   // Create calendly_booking record

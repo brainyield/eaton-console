@@ -132,6 +132,27 @@ Deno.serve(async (req) => {
     if (existingFamily) {
       familyId = existingFamily.id
       console.log(`Found existing family: ${familyId}`)
+
+      // Check if family has active/trial enrollments (meaning they're already a customer)
+      const { data: activeEnrollments } = await supabase
+        .from('enrollments')
+        .select('id')
+        .eq('family_id', familyId)
+        .in('status', ['active', 'trial'])
+        .limit(1)
+
+      if (activeEnrollments && activeEnrollments.length > 0) {
+        console.log(`Family ${familyId} has active enrollment - skipping lead creation`)
+        return new Response(
+          JSON.stringify({
+            success: true,
+            action: 'skipped',
+            familyId,
+            message: 'Family already has active enrollment - not creating lead',
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
     } else {
       // Create a new family with status='lead'
       const { data: newFamily, error: familyError } = await supabase

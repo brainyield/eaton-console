@@ -219,9 +219,25 @@ Deno.serve(async (req) => {
         .ilike('primary_email', inviteeEmail)
         .single()
 
+      // Track whether this family has active enrollments (meaning they're already a customer)
+      let hasActiveEnrollment = false
+
       if (existingFamily) {
         familyId = existingFamily.id
         console.log(`Found existing family: ${familyId}`)
+
+        // Check if family has active/trial enrollments
+        const { data: activeEnrollments } = await supabase
+          .from('enrollments')
+          .select('id')
+          .eq('family_id', familyId)
+          .in('status', ['active', 'trial'])
+          .limit(1)
+
+        hasActiveEnrollment = activeEnrollments && activeEnrollments.length > 0
+        if (hasActiveEnrollment) {
+          console.log(`Family ${familyId} has active enrollment - will skip lead creation`)
+        }
       }
 
       if (eventType === 'hub_dropoff') {
@@ -317,52 +333,57 @@ Deno.serve(async (req) => {
 
       } else if (eventType === '15min_call') {
         // 15MIN CALL: Create family (if needed) and lead for follow-up
+        // Skip lead creation if family already has active enrollments (they're already a customer)
 
-        // Create family with status='lead' if doesn't exist
-        if (!familyId) {
-          const { data: newFamily, error: familyError } = await supabase
-            .from('families')
+        if (hasActiveEnrollment) {
+          console.log(`Skipping lead creation for family ${familyId} - already has active enrollment`)
+        } else {
+          // Create family with status='lead' if doesn't exist
+          if (!familyId) {
+            const { data: newFamily, error: familyError } = await supabase
+              .from('families')
+              .insert({
+                display_name: formatFamilyName(data.invitee.name),
+                primary_email: inviteeEmail,
+                primary_phone: formAnswers.phone || null,
+                primary_contact_name: data.invitee.name,
+                status: 'lead',
+                notes: 'Lead source: Calendly 15min call',
+              })
+              .select('id')
+              .single()
+
+            if (familyError) {
+              console.error('Error creating family:', familyError)
+              throw familyError
+            }
+            familyId = newFamily.id
+            console.log(`Created new family as lead: ${familyId}`)
+          }
+
+          const { data: lead, error: leadError } = await supabase
+            .from('leads')
             .insert({
-              display_name: formatFamilyName(data.invitee.name),
-              primary_email: inviteeEmail,
-              primary_phone: formAnswers.phone || null,
-              primary_contact_name: data.invitee.name,
-              status: 'lead',
-              notes: 'Lead source: Calendly 15min call',
+              email: inviteeEmail,
+              name: data.invitee.name,
+              phone: formAnswers.phone || null,
+              lead_type: 'calendly_call',
+              status: 'new',
+              calendly_event_uri: data.event.uri,
+              calendly_invitee_uri: data.invitee.uri,
+              scheduled_at: scheduledAt,
+              family_id: familyId,
             })
             .select('id')
             .single()
 
-          if (familyError) {
-            console.error('Error creating family:', familyError)
-            throw familyError
+          if (leadError) {
+            console.error('Error creating lead:', leadError)
+            throw leadError
           }
-          familyId = newFamily.id
-          console.log(`Created new family as lead: ${familyId}`)
+          leadId = lead.id
+          console.log(`Created lead: ${leadId}`)
         }
-
-        const { data: lead, error: leadError } = await supabase
-          .from('leads')
-          .insert({
-            email: inviteeEmail,
-            name: data.invitee.name,
-            phone: formAnswers.phone || null,
-            lead_type: 'calendly_call',
-            status: 'new',
-            calendly_event_uri: data.event.uri,
-            calendly_invitee_uri: data.invitee.uri,
-            scheduled_at: scheduledAt,
-            family_id: familyId,
-          })
-          .select('id')
-          .single()
-
-        if (leadError) {
-          console.error('Error creating lead:', leadError)
-          throw leadError
-        }
-        leadId = lead.id
-        console.log(`Created lead: ${leadId}`)
       }
 
       // 5. Create calendly_booking record for tracking
@@ -401,6 +422,7 @@ Deno.serve(async (req) => {
           studentId,
           hubSessionId,
           leadId,
+          leadSkipped: hasActiveEnrollment,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
