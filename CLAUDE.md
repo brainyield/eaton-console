@@ -15,18 +15,9 @@ After making ANY code changes, ALWAYS run:
 
 1. `npm run build` - Must pass with no TypeScript errors
 2. `npm run lint` - Must pass with no ESLint errors
+3. **Check if CLAUDE.md needs updating** - If you discovered a non-obvious gotcha, bug pattern, or lesson learned during this task, add it to "Common Mistakes to Avoid"
 
-If either fails, fix the issues before considering the task complete.
-
-## Self-Improvement
-
-When you make a mistake that required fixing (caught by build/lint or discovered during work):
-
-1. Fix the issue
-2. Add a rule to the "Common Mistakes to Avoid" section below
-3. Commit the CLAUDE.md update with your other changes
-
-This ensures the same mistake is never repeated.
+If build/lint fails, fix the issues before considering the task complete.
 
 ---
 
