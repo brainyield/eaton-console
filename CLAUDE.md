@@ -125,6 +125,7 @@ queryKeys.families.detail(id)
 - **DON'T** use `console.log` in committed code - remove before committing.
 - **DON'T** forget `verify_jwt = false` for external webhooks - Supabase Edge Functions require JWT auth by default. External services (Stripe, Calendly, etc.) don't send Authorization headers. Create a `config.toml` in the function directory with `verify_jwt = false`.
 - **DON'T** compare names with simple string equality - "Celine Orellana" and "Orellana, Celine" are the same person. Use `formatNameLastFirst()` from `utils.ts` to normalize names before comparison.
+- **DON'T** hardcode age group values - use `AGE_GROUP_OPTIONS` from `utils.ts` for dropdowns and `getAgeGroup(dob)` to calculate from DOB. Age groups must match the format expected by ActiveRoster sorting ('3-5', '6-8', '9-11', '12-14', '15-17').
 
 ---
 

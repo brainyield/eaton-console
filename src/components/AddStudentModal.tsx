@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { AccessibleModal } from './ui/AccessibleModal'
 import { useStudentMutations } from '../lib/hooks'
-import { formatNameLastFirst } from '../lib/utils'
+import { formatNameLastFirst, getAgeGroup, AGE_GROUP_OPTIONS } from '../lib/utils'
 
 interface AddStudentModalProps {
   isOpen: boolean
@@ -149,9 +149,15 @@ export function AddStudentModal({
               id="dob"
               type="date"
               value={formData.dob}
-              onChange={(e) =>
-                setFormData({ ...formData, dob: e.target.value })
-              }
+              onChange={(e) => {
+                const newDob = e.target.value
+                const calculatedAgeGroup = getAgeGroup(newDob)
+                setFormData({
+                  ...formData,
+                  dob: newDob,
+                  age_group: calculatedAgeGroup || formData.age_group,
+                })
+              }}
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             />
           </div>
@@ -169,9 +175,11 @@ export function AddStudentModal({
               className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             >
               <option value="">Select...</option>
-              <option value="Elementary (K-5)">Elementary (K-5)</option>
-              <option value="Middle School (6-8)">Middle School (6-8)</option>
-              <option value="High School (9-12)">High School (9-12)</option>
+              {AGE_GROUP_OPTIONS.map((group) => (
+                <option key={group} value={group}>
+                  {group}
+                </option>
+              ))}
             </select>
           </div>
 

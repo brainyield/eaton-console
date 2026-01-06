@@ -4,7 +4,7 @@ import { Trash2 } from 'lucide-react'
 import { useStudentMutations } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import type { Student } from '../lib/hooks'
-import { formatNameLastFirst } from '../lib/utils'
+import { formatNameLastFirst, getAgeGroup, AGE_GROUP_OPTIONS } from '../lib/utils'
 import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
 
 // Extended Student type that includes homeschool_status which may exist in DB
@@ -65,11 +65,16 @@ export function EditStudentModal({
   // Populate form when student changes
   useEffect(() => {
     if (student) {
+      // Recalculate age_group from DOB if it's missing or in old format
+      const existingAgeGroup = student.age_group || ''
+      const isValidFormat = AGE_GROUP_OPTIONS.includes(existingAgeGroup as typeof AGE_GROUP_OPTIONS[number])
+      const calculatedAgeGroup = getAgeGroup(student.dob)
+
       setFormData({
         full_name: student.full_name || '',
         grade_level: student.grade_level || '',
         dob: student.dob || '',
-        age_group: student.age_group || '',
+        age_group: isValidFormat ? existingAgeGroup : (calculatedAgeGroup || ''),
         homeschool_status: student.homeschool_status || '',
         active: student.active,
         notes: student.notes || '',
@@ -249,9 +254,15 @@ export function EditStudentModal({
                 id="dob"
                 type="date"
                 value={formData.dob}
-                onChange={(e) =>
-                  setFormData({ ...formData, dob: e.target.value })
-                }
+                onChange={(e) => {
+                  const newDob = e.target.value
+                  const calculatedAgeGroup = getAgeGroup(newDob)
+                  setFormData({
+                    ...formData,
+                    dob: newDob,
+                    age_group: calculatedAgeGroup || formData.age_group,
+                  })
+                }}
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
               />
             </div>
@@ -269,9 +280,11 @@ export function EditStudentModal({
                 className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500"
               >
                 <option value="">Select...</option>
-                <option value="Elementary (K-5)">Elementary (K-5)</option>
-                <option value="Middle School (6-8)">Middle School (6-8)</option>
-                <option value="High School (9-12)">High School (9-12)</option>
+                {AGE_GROUP_OPTIONS.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
               </select>
             </div>
 

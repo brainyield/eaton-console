@@ -70,3 +70,30 @@ export function calculateAge(dob: string | null | undefined): number | null {
 
   return age >= 0 ? age : null;
 }
+
+/**
+ * Age group options that match the ActiveRoster sort order.
+ * These are the canonical values stored in the database.
+ */
+export const AGE_GROUP_OPTIONS = ['3-5', '6-8', '9-11', '12-14', '15-17'] as const;
+export type AgeGroup = (typeof AGE_GROUP_OPTIONS)[number];
+
+/**
+ * Determines the age group from a date of birth.
+ * Returns the appropriate age range string based on the student's current age.
+ *
+ * @param dob - Date of birth in ISO format (YYYY-MM-DD)
+ * @returns Age group string (e.g., '9-11'), or null if DOB is unavailable or age is out of range
+ */
+export function getAgeGroup(dob: string | null | undefined): AgeGroup | null {
+  const age = calculateAge(dob);
+  if (age === null) return null;
+
+  if (age >= 3 && age <= 5) return '3-5';
+  if (age >= 6 && age <= 8) return '6-8';
+  if (age >= 9 && age <= 11) return '9-11';
+  if (age >= 12 && age <= 14) return '12-14';
+  if (age >= 15 && age <= 17) return '15-17';
+
+  return null; // Age outside typical school range
+}
