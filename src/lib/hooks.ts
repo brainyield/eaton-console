@@ -1539,11 +1539,11 @@ export function useInvoicesWithDetails(filters?: { status?: string | string[] })
       const { data, error } = await query
       if (error) throw error
 
-      // Extract service codes from line items
+      // Extract service codes from line items (only from enrollment relationships)
       return (data || []).map((inv: any) => {
         const serviceCodes = new Set<string>()
         inv.line_items?.forEach((li: InvoiceLineItem) => {
-          const code = li.enrollment?.service?.code || extractServiceCodeFromDescription(li.description)
+          const code = li.enrollment?.service?.code
           if (code) serviceCodes.add(code)
         })
         return {
@@ -2872,17 +2872,6 @@ export function useInvoiceMutations() {
 // =============================================================================
 // INVOICE HELPER FUNCTIONS
 // =============================================================================
-
-function extractServiceCodeFromDescription(description: string): string | null {
-  const lower = description.toLowerCase()
-  if (lower.includes('academic coaching')) return 'academic_coaching'
-  if (lower.includes('learning pod')) return 'learning_pod'
-  if (lower.includes('consulting')) return 'consulting'
-  if (lower.includes('hub')) return 'eaton_hub'
-  if (lower.includes('eaton online')) return 'eaton_online'
-  if (lower.includes('elective')) return 'elective_classes'
-  return null
-}
 
 function calculateEnrollmentAmount(
   enrollment: BillableEnrollment,
