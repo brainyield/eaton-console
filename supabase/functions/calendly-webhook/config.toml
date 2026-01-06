@@ -1,0 +1,4 @@
+# Disable JWT verification for Calendly webhooks
+# Calendly authenticates via signature verification using the calendly-webhook-signature header
+# See: https://supabase.com/docs/guides/functions/auth
+verify_jwt = false

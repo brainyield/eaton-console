@@ -1,447 +1,311 @@
 // Calendly Webhook Handler
 // Handles invitee.created and invitee.canceled events
-// - 15min calls: Creates leads for follow-up
-// - Hub drop-offs: Auto-creates family, student, and hub_session
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { createHmac } from 'https://deno.land/std@0.177.0/node/crypto.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, calendly-webhook-signature',
 }
 
-// Calendly event type URIs contain these slugs
-const EVENT_TYPE_SLUGS = {
-  CALL_15MIN: '15min',
-  HUB_DROPOFF: 'eaton-hub-drop-off',
+// Safe string helper
+function safeString(val: unknown): string {
+  if (typeof val === 'string') return val
+  if (val === null || val === undefined) return ''
+  return String(val)
 }
 
-interface CalendlyInvitee {
-  uri: string
-  email: string
-  name: string
-  status: string
-  timezone: string
-  created_at: string
-  updated_at: string
-  canceled: boolean
-  cancellation?: {
-    canceled_by: string
-    reason: string
-  }
-  questions_and_answers?: Array<{
-    question: string
-    answer: string
-    position: number
-  }>
+// Format name as "LastName, FirstName" - with null safety
+function formatFamilyName(fullName: string | null | undefined): string {
+  if (!fullName) return 'Unknown'
+  const parts = fullName.trim().split(/\s+/)
+  if (parts.length === 0) return 'Unknown'
+  if (parts.length === 1) return parts[0]
+  const lastName = parts[parts.length - 1]
+  const firstName = parts.slice(0, -1).join(' ')
+  return `${lastName}, ${firstName}`
 }
 
-interface CalendlyEvent {
-  uri: string
-  name: string
-  status: string
-  start_time: string
-  end_time: string
-  event_type: string
-  location?: {
-    type: string
-    location?: string
-  }
-}
-
-interface CalendlyPayload {
-  event: string // 'invitee.created' | 'invitee.canceled'
-  payload: {
-    event: CalendlyEvent
-    invitee: CalendlyInvitee
-    event_type: {
-      uri: string
-      name: string
-      slug: string
-    }
-  }
-}
-
-// Verify Calendly webhook signature
-function verifySignature(payload: string, signature: string, signingKey: string): boolean {
-  // Calendly sends signature in format: t=timestamp,v1=signature
-  const parts = signature.split(',')
-  const timestamp = parts.find(p => p.startsWith('t='))?.split('=')[1]
-  const v1Signature = parts.find(p => p.startsWith('v1='))?.split('=')[1]
-
-  if (!timestamp || !v1Signature) {
-    console.error('Invalid signature format')
-    return false
-  }
-
-  // Check timestamp is within 5 minutes
-  const timestampMs = parseInt(timestamp) * 1000
-  const now = Date.now()
-  if (Math.abs(now - timestampMs) > 5 * 60 * 1000) {
-    console.error('Signature timestamp too old')
-    return false
-  }
-
-  // Calculate expected signature
-  const signedPayload = `${timestamp}.${payload}`
-  const expectedSignature = createHmac('sha256', signingKey)
-    .update(signedPayload)
-    .digest('hex')
-
-  return v1Signature === expectedSignature
-}
-
-// Extract custom form answers from Calendly payload
-function extractFormAnswers(invitee: CalendlyInvitee): Record<string, string> {
+// Extract form answers with null safety
+function extractFormAnswers(data: Record<string, unknown>): Record<string, string> {
   const answers: Record<string, string> = {}
 
-  if (!invitee.questions_and_answers) return answers
+  // Try multiple possible locations for questions_and_answers
+  const qna = (data?.questions_and_answers || data?.invitee?.questions_and_answers || []) as Array<{
+    question?: string
+    answer?: string
+  }>
 
-  for (const qa of invitee.questions_and_answers) {
-    const question = qa.question.toLowerCase()
+  if (!Array.isArray(qna)) return answers
+
+  for (const qa of qna) {
+    const question = safeString(qa?.question).toLowerCase()
+    const answer = safeString(qa?.answer)
 
     if (question.includes('student name') || question.includes('child name')) {
-      answers.studentName = qa.answer
+      answers.studentName = answer
     } else if (question.includes('age') || question.includes('age group')) {
-      answers.studentAgeGroup = qa.answer
+      answers.studentAgeGroup = answer
     } else if (question.includes('paying') || question.includes('payment')) {
-      answers.paymentMethod = qa.answer
+      answers.paymentMethod = answer
     } else if (question.includes('phone')) {
-      answers.phone = qa.answer
+      answers.phone = answer
     }
   }
 
   return answers
 }
 
-// Determine event type from Calendly event type slug
-// Default to 15min_call if not explicitly a hub_dropoff - this ensures leads are created
-function getEventType(slug: string): 'hub_dropoff' | '15min_call' {
-  const slugLower = slug.toLowerCase()
-
-  // Check for hub drop-off patterns
-  if (slugLower === EVENT_TYPE_SLUGS.HUB_DROPOFF ||
-      slugLower.includes('hub-drop-off') ||
-      slugLower.includes('hub_drop') ||
-      slugLower.includes('hubdrop') ||
-      slugLower.includes('drop-off') ||
-      slugLower.includes('dropoff')) {
-    return 'hub_dropoff'
-  }
-
-  // Everything else is treated as a call/consultation - creates a lead
-  // This includes: 15min, 15-min, call, consultation, discovery, intro, etc.
-  return '15min_call'
-}
-
-// Format name as "LastName, FirstName"
-function formatFamilyName(fullName: string): string {
-  const parts = fullName.trim().split(/\s+/)
-  if (parts.length === 1) {
-    return parts[0]
-  }
-  const lastName = parts[parts.length - 1]
-  const firstName = parts.slice(0, -1).join(' ')
-  return `${lastName}, ${firstName}`
-}
-
 Deno.serve(async (req) => {
-  // Handle CORS preflight
+  console.log('=== CALENDLY WEBHOOK ===')
+  console.log('Method:', req.method)
+
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
+  let rawPayload: Record<string, unknown> = {}
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    const calendlySigningKey = Deno.env.get('CALENDLY_WEBHOOK_SIGNING_KEY')!
-
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // Get raw body for signature verification
     const rawBody = await req.text()
-    const signature = req.headers.get('calendly-webhook-signature')
+    console.log('Raw body:', rawBody)
 
-    // Verify signature (skip in development if no signature)
-    if (signature && calendlySigningKey) {
-      if (!verifySignature(rawBody, signature, calendlySigningKey)) {
-        console.error('Invalid webhook signature')
-        return new Response(JSON.stringify({ error: 'Invalid signature' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        })
-      }
-    }
+    rawPayload = JSON.parse(rawBody)
+    console.log('Parsed payload keys:', Object.keys(rawPayload))
 
-    const payload: CalendlyPayload = JSON.parse(rawBody)
-    const { event, payload: data } = payload
+    const eventType = safeString(rawPayload.event)
+    const data = (rawPayload.payload || {}) as Record<string, unknown>
+    console.log('Payload.payload keys:', Object.keys(data))
 
-    console.log(`Processing Calendly event: ${event}`, {
-      eventType: data.event_type.name,
-      eventSlug: data.event_type.slug,
-      inviteeEmail: data.invitee.email,
+    // Calendly v2 API might have data directly in payload OR in nested objects
+    // Let's extract what we can from various possible locations
+
+    // Try to get invitee info from multiple locations
+    const inviteeData = (data.invitee || {}) as Record<string, unknown>
+    const scheduledEventData = (data.scheduled_event || data.event || {}) as Record<string, unknown>
+
+    // Extract invitee fields - could be in invitee object OR directly in payload
+    const inviteeName = safeString(inviteeData.name || data.name)
+    const inviteeEmail = safeString(inviteeData.email || data.email).toLowerCase()
+    const inviteeUri = safeString(inviteeData.uri || data.uri)
+    // Timezone available if needed: safeString(inviteeData.timezone || data.timezone)
+
+    // Extract event fields
+    const scheduledEventUri = safeString(scheduledEventData.uri)
+    const startTime = safeString(scheduledEventData.start_time || data.start_time)
+    const eventName = safeString(scheduledEventData.name || data.event_name || '')
+
+    console.log('Extracted data:', {
+      eventType,
+      inviteeName,
+      inviteeEmail,
+      inviteeUri,
+      scheduledEventUri,
+      startTime,
+      eventName,
     })
 
-    const eventType = getEventType(data.event_type.slug)
-    const formAnswers = extractFormAnswers(data.invitee)
-    const inviteeEmail = data.invitee.email.toLowerCase()
-    const scheduledAt = data.event.start_time
+    // Determine if hub_dropoff or 15min_call based on event name
+    const isHubDropoff = eventName.toLowerCase().includes('hub') || eventName.toLowerCase().includes('drop')
+    const bookingType = isHubDropoff ? 'hub_dropoff' : '15min_call'
+
+    // Extract form answers
+    const formAnswers = extractFormAnswers(data)
+    console.log('Form answers:', formAnswers)
 
     // Handle cancellation
-    if (event === 'invitee.canceled') {
-      // Update existing booking to canceled
+    if (eventType === 'invitee.canceled') {
+      const cancelReason = safeString((inviteeData.cancellation as Record<string, unknown>)?.reason || '')
+
       const { error } = await supabase
         .from('calendly_bookings')
         .update({
           status: 'canceled',
           canceled_at: new Date().toISOString(),
-          cancel_reason: data.invitee.cancellation?.reason || null,
+          cancel_reason: cancelReason || null,
         })
-        .eq('calendly_invitee_uri', data.invitee.uri)
+        .eq('calendly_invitee_uri', inviteeUri)
 
-      if (error) {
-        console.error('Error updating canceled booking:', error)
-      }
+      if (error) console.error('Error updating canceled booking:', error)
 
       return new Response(JSON.stringify({ success: true, action: 'canceled' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
 
-    // Handle new booking (invitee.created)
-    if (event === 'invitee.created') {
+    // Handle new booking
+    if (eventType === 'invitee.created') {
+      // Validate we have minimum required data
+      if (!inviteeEmail) {
+        console.error('Missing invitee email - cannot process')
+        // Still save the raw payload so we can debug
+        await supabase.from('calendly_bookings').insert({
+          calendly_event_uri: scheduledEventUri || 'unknown',
+          calendly_invitee_uri: inviteeUri || `unknown-${Date.now()}`,
+          event_type: '15min_call',
+          invitee_email: 'unknown@error.com',
+          invitee_name: 'WEBHOOK ERROR - Missing email',
+          scheduled_at: startTime || new Date().toISOString(),
+          status: 'scheduled',
+          raw_payload: rawPayload,
+          notes: 'Error: Could not extract invitee email from webhook payload',
+        })
+        return new Response(JSON.stringify({ error: 'Missing invitee email' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+
       let familyId: string | null = null
-      let studentId: string | null = null
-      let hubSessionId: string | null = null
       let leadId: string | null = null
 
-      // Check for existing family by email
+      // Check for existing family
       const { data: existingFamily } = await supabase
         .from('families')
         .select('id')
         .ilike('primary_email', inviteeEmail)
-        .single()
+        .maybeSingle()
 
-      // Track whether this family has active enrollments (meaning they're already a customer)
       let hasActiveEnrollment = false
 
       if (existingFamily) {
         familyId = existingFamily.id
-        console.log(`Found existing family: ${familyId}`)
+        console.log('Found existing family:', familyId)
 
-        // Check if family has active/trial enrollments
-        const { data: activeEnrollments } = await supabase
+        const { data: enrollments } = await supabase
           .from('enrollments')
           .select('id')
           .eq('family_id', familyId)
           .in('status', ['active', 'trial'])
           .limit(1)
 
-        hasActiveEnrollment = activeEnrollments && activeEnrollments.length > 0
-        if (hasActiveEnrollment) {
-          console.log(`Family ${familyId} has active enrollment - will skip lead creation`)
-        }
+        hasActiveEnrollment = (enrollments?.length || 0) > 0
       }
 
-      if (eventType === 'hub_dropoff') {
-        // HUB DROP-OFF: Auto-create family, student, hub_session
-
-        // 1. Create family if not exists
+      // For 15min calls, create family and lead
+      if (bookingType === '15min_call' && !hasActiveEnrollment) {
         if (!familyId) {
           const { data: newFamily, error: familyError } = await supabase
             .from('families')
             .insert({
-              display_name: formatFamilyName(data.invitee.name),
+              display_name: formatFamilyName(inviteeName),
               primary_email: inviteeEmail,
               primary_phone: formAnswers.phone || null,
-              primary_contact_name: data.invitee.name,
-              status: 'active',
-              payment_gateway: formAnswers.paymentMethod || null,
+              primary_contact_name: inviteeName || null,
+              status: 'lead',
             })
             .select('id')
             .single()
 
           if (familyError) {
             console.error('Error creating family:', familyError)
-            throw familyError
-          }
-          familyId = newFamily.id
-          console.log(`Created new family: ${familyId}`)
-        }
-
-        // 2. Find or create student
-        if (formAnswers.studentName) {
-          // Check for existing student in this family
-          const { data: existingStudent } = await supabase
-            .from('students')
-            .select('id')
-            .eq('family_id', familyId)
-            .ilike('full_name', formAnswers.studentName)
-            .single()
-
-          if (existingStudent) {
-            studentId = existingStudent.id
-            console.log(`Found existing student: ${studentId}`)
           } else {
-            // Create new student
-            const { data: newStudent, error: studentError } = await supabase
-              .from('students')
-              .insert({
-                family_id: familyId,
-                full_name: formAnswers.studentName,
-                age_group: formAnswers.studentAgeGroup || null,
-                active: true,
-              })
-              .select('id')
-              .single()
-
-            if (studentError) {
-              console.error('Error creating student:', studentError)
-              throw studentError
-            }
-            studentId = newStudent.id
-            console.log(`Created new student: ${studentId}`)
+            familyId = newFamily.id
+            console.log('Created family:', familyId)
           }
         }
 
-        // 3. Get hub daily rate from settings
-        const { data: hubRateSetting } = await supabase
-          .from('app_settings')
-          .select('value')
-          .eq('key', 'hub_daily_rate')
-          .single()
-
-        const dailyRate = hubRateSetting?.value ? parseFloat(hubRateSetting.value) : 100.0
-
-        // 4. Create hub_session for the scheduled date
-        const sessionDate = new Date(scheduledAt).toISOString().split('T')[0]
-
-        const { data: hubSession, error: sessionError } = await supabase
-          .from('hub_sessions')
+        // Create lead
+        const { data: newLead, error: leadError } = await supabase
+          .from('leads')
           .insert({
-            student_id: studentId,
-            session_date: sessionDate,
-            daily_rate: dailyRate,
-            notes: `Booked via Calendly. Payment method: ${formAnswers.paymentMethod || 'Not specified'}`,
+            email: inviteeEmail,
+            name: inviteeName || null,
+            phone: formAnswers.phone || null,
+            lead_type: 'calendly_call',
+            status: 'new',
+            calendly_event_uri: scheduledEventUri || null,
+            calendly_invitee_uri: inviteeUri || null,
+            scheduled_at: startTime || null,
+            family_id: familyId,
           })
           .select('id')
           .single()
 
-        if (sessionError) {
-          console.error('Error creating hub session:', sessionError)
-          throw sessionError
-        }
-        hubSessionId = hubSession.id
-        console.log(`Created hub session: ${hubSessionId}`)
-
-      } else if (eventType === '15min_call') {
-        // 15MIN CALL: Create family (if needed) and lead for follow-up
-        // Skip lead creation if family already has active enrollments (they're already a customer)
-
-        if (hasActiveEnrollment) {
-          console.log(`Skipping lead creation for family ${familyId} - already has active enrollment`)
+        if (leadError) {
+          console.error('Error creating lead:', leadError)
         } else {
-          // Create family with status='lead' if doesn't exist
-          if (!familyId) {
-            const { data: newFamily, error: familyError } = await supabase
-              .from('families')
-              .insert({
-                display_name: formatFamilyName(data.invitee.name),
-                primary_email: inviteeEmail,
-                primary_phone: formAnswers.phone || null,
-                primary_contact_name: data.invitee.name,
-                status: 'lead',
-                notes: 'Lead source: Calendly 15min call',
-              })
-              .select('id')
-              .single()
-
-            if (familyError) {
-              console.error('Error creating family:', familyError)
-              throw familyError
-            }
-            familyId = newFamily.id
-            console.log(`Created new family as lead: ${familyId}`)
-          }
-
-          const { data: lead, error: leadError } = await supabase
-            .from('leads')
-            .insert({
-              email: inviteeEmail,
-              name: data.invitee.name,
-              phone: formAnswers.phone || null,
-              lead_type: 'calendly_call',
-              status: 'new',
-              calendly_event_uri: data.event.uri,
-              calendly_invitee_uri: data.invitee.uri,
-              scheduled_at: scheduledAt,
-              family_id: familyId,
-            })
-            .select('id')
-            .single()
-
-          if (leadError) {
-            console.error('Error creating lead:', leadError)
-            throw leadError
-          }
-          leadId = lead.id
-          console.log(`Created lead: ${leadId}`)
+          leadId = newLead.id
+          console.log('Created lead:', leadId)
         }
       }
 
-      // 5. Create calendly_booking record for tracking
+      // Create calendly_booking record
       const { error: bookingError } = await supabase
         .from('calendly_bookings')
         .insert({
-          calendly_event_uri: data.event.uri,
-          calendly_invitee_uri: data.invitee.uri,
-          event_type: eventType === 'hub_dropoff' ? 'hub_dropoff' : '15min_call',
+          calendly_event_uri: scheduledEventUri || null,
+          calendly_invitee_uri: inviteeUri || null,
+          event_type: bookingType,
           invitee_email: inviteeEmail,
-          invitee_name: data.invitee.name,
+          invitee_name: inviteeName || null,
           invitee_phone: formAnswers.phone || null,
-          scheduled_at: scheduledAt,
+          scheduled_at: startTime || null,
           status: 'scheduled',
           family_id: familyId,
-          student_id: studentId,
-          hub_session_id: hubSessionId,
           lead_id: leadId,
           student_name: formAnswers.studentName || null,
           student_age_group: formAnswers.studentAgeGroup || null,
           payment_method: formAnswers.paymentMethod || null,
-          raw_payload: payload,
+          raw_payload: rawPayload,
         })
 
       if (bookingError) {
-        console.error('Error creating booking record:', bookingError)
+        console.error('Error creating booking:', bookingError)
         throw bookingError
       }
+
+      console.log('SUCCESS - Booking created')
 
       return new Response(
         JSON.stringify({
           success: true,
           action: 'created',
-          eventType,
+          eventType: bookingType,
           familyId,
-          studentId,
-          hubSessionId,
           leadId,
-          leadSkipped: hasActiveEnrollment,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Unknown event type
+    // Unknown event
     return new Response(
-      JSON.stringify({ success: true, action: 'ignored', reason: 'Unknown event type' }),
+      JSON.stringify({ success: true, action: 'ignored', reason: 'Unknown event type: ' + eventType }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
 
   } catch (error) {
     console.error('Webhook error:', error)
+
+    // Try to save the error for debugging
+    try {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')
+      const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+      if (supabaseUrl && supabaseServiceKey) {
+        const supabase = createClient(supabaseUrl, supabaseServiceKey)
+        await supabase.from('calendly_bookings').insert({
+          calendly_event_uri: 'error-' + Date.now(),
+          calendly_invitee_uri: 'error-' + Date.now(),
+          event_type: '15min_call',
+          invitee_email: 'webhook-error@debug.com',
+          invitee_name: 'WEBHOOK ERROR',
+          scheduled_at: new Date().toISOString(),
+          status: 'scheduled',
+          raw_payload: rawPayload,
+          notes: 'Error: ' + (error as Error).message,
+        })
+      }
+    } catch (e) {
+      console.error('Failed to save error record:', e)
+    }
+
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

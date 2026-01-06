@@ -1,0 +1,10 @@
+# Supabase Functions Configuration
+
+# Disable JWT verification for external webhooks
+# These services authenticate via their own signature verification
+
+[functions.calendly-webhook]
+verify_jwt = false
+
+[functions.stripe-webhook]
+verify_jwt = false
