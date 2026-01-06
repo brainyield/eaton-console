@@ -1,20 +1,29 @@
 import { parseLocalDate } from './dateUtils'
 
 /**
+ * Name suffixes that should not be treated as last names.
+ * These are preserved after the last name in the formatted output.
+ */
+const NAME_SUFFIXES = ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v', 'esq', 'esq.', 'phd', 'md', 'dds']
+
+/**
  * Formats a name to "Last Name, First Name" format.
  *
  * Rules:
  * - If the name already contains a comma, assume it's already formatted correctly
+ * - If the name ends with " Family", strip the suffix and return just the last name
  * - If the name has no spaces (single name/nickname), leave it as-is
  * - If the name has multiple parts, treat the last word as the last name
  *   and everything before it as the first name(s)
+ * - Handles name suffixes (Jr., Sr., III, etc.) by preserving them after the last name
  *
  * Examples:
  * - "John Smith" → "Smith, John"
  * - "Mary Jane Watson" → "Watson, Mary Jane"
  * - "Smith, John" → "Smith, John" (unchanged)
  * - "Noah" → "Noah" (unchanged)
- * - "Brussel Sprouts" → "Sprouts, Brussel" (will be formatted, user can manually fix nicknames)
+ * - "Smith Family" → "Smith" (strips " Family" suffix)
+ * - "John Smith Jr." → "Smith, John Jr." (preserves name suffix)
  */
 export function formatNameLastFirst(name: string | null | undefined): string {
   if (!name) return '';
@@ -29,6 +38,11 @@ export function formatNameLastFirst(name: string | null | undefined): string {
     return trimmed;
   }
 
+  // Handle "XYZ Family" format - strip " Family" suffix
+  if (trimmed.endsWith(' Family')) {
+    return trimmed.slice(0, -7); // Remove " Family" (7 chars)
+  }
+
   // If no spaces, it's a single name - leave as-is
   if (!trimmed.includes(' ')) {
     return trimmed;
@@ -36,10 +50,17 @@ export function formatNameLastFirst(name: string | null | undefined): string {
 
   // Split by spaces and rearrange to "Last, First Middle..."
   const parts = trimmed.split(/\s+/);
+
+  // Check if the last part is a name suffix (Jr., Sr., III, etc.)
+  let suffix = '';
+  if (parts.length > 2 && NAME_SUFFIXES.includes(parts[parts.length - 1].toLowerCase())) {
+    suffix = ' ' + parts.pop()!;
+  }
+
   const lastName = parts.pop()!; // Last word is the last name
   const firstNames = parts.join(' '); // Everything else is first/middle names
 
-  return `${lastName}, ${firstNames}`;
+  return `${lastName}, ${firstNames}${suffix}`;
 }
 
 /**

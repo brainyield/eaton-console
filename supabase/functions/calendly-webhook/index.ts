@@ -15,15 +15,42 @@ function safeString(val: unknown): string {
   return String(val)
 }
 
+// Name suffixes that should not be treated as last names
+const NAME_SUFFIXES = ['jr', 'jr.', 'sr', 'sr.', 'ii', 'iii', 'iv', 'v', 'esq', 'esq.', 'phd', 'md', 'dds']
+
 // Format name as "LastName, FirstName" - with null safety
+// Handles:
+// - Already comma-formatted names (returns as-is)
+// - "XYZ Family" format (strips " Family" suffix)
+// - Name suffixes like Jr., Sr., III (preserves them)
 function formatFamilyName(fullName: string | null | undefined): string {
   if (!fullName) return 'Unknown'
-  const parts = fullName.trim().split(/\s+/)
+  const trimmed = fullName.trim()
+  if (!trimmed) return 'Unknown'
+
+  // Already formatted with comma
+  if (trimmed.includes(',')) {
+    return trimmed
+  }
+
+  // Handle "XYZ Family" format - strip " Family" suffix
+  if (trimmed.endsWith(' Family')) {
+    return trimmed.slice(0, -7) // Remove " Family" (7 chars)
+  }
+
+  const parts = trimmed.split(/\s+/)
   if (parts.length === 0) return 'Unknown'
   if (parts.length === 1) return parts[0]
-  const lastName = parts[parts.length - 1]
-  const firstName = parts.slice(0, -1).join(' ')
-  return `${lastName}, ${firstName}`
+
+  // Check if the last part is a name suffix (Jr., Sr., III, etc.)
+  let suffix = ''
+  if (parts.length > 2 && NAME_SUFFIXES.includes(parts[parts.length - 1].toLowerCase())) {
+    suffix = ' ' + parts.pop()!
+  }
+
+  const lastName = parts.pop()!
+  const firstName = parts.join(' ')
+  return `${lastName}, ${firstName}${suffix}`
 }
 
 // Extract form answers with null safety
