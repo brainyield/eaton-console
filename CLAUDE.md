@@ -123,7 +123,8 @@ queryKeys.families.detail(id)
 - **DON'T** edit `src/types/supabase.ts` - it's auto-generated. Run `npm run db:types` to update.
 - **DON'T** create new hook files - add hooks to `src/lib/hooks.ts` following existing patterns.
 - **DON'T** use `console.log` in committed code - remove before committing.
-- **DON'T** forget `verify_jwt = false` for external webhooks - Supabase Edge Functions require JWT auth by default. External services (Stripe, Calendly, etc.) don't send Authorization headers. Create a `config.toml` in the function directory with `verify_jwt = false`.
+- **DON'T** forget `verify_jwt = false` for external webhooks - Supabase Edge Functions require JWT auth by default. External services (Stripe, Calendly, etc.) don't send Authorization headers. Add the config to `supabase/config.toml` with `[functions.function-name]` section (more reliable than per-function config.toml).
+- **DON'T** trust external webhook payload structures - APIs like Calendly may have payload variations not matching docs. Always use defensive null checks (optional chaining, fallback values) and log raw payloads for debugging.
 - **DON'T** compare names with simple string equality - "Celine Orellana" and "Orellana, Celine" are the same person. Use `formatNameLastFirst()` from `utils.ts` to normalize names before comparison.
 - **DON'T** hardcode age group values - use `AGE_GROUP_OPTIONS` from `utils.ts` for dropdowns and `getAgeGroup(dob)` to calculate from DOB. Age groups must match the format expected by ActiveRoster sorting ('3-5', '6-8', '9-11', '12-14', '15-17').
 - **DON'T** create custom modal wrappers with plain divs - use `AccessibleModal` from `components/ui/AccessibleModal.tsx` for proper focus trap, keyboard handling (Escape to close), and aria attributes.
