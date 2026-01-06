@@ -206,6 +206,39 @@ async function getCampaigns(config: MailchimpConfig, count: number = 10): Promis
   return response.json()
 }
 
+// Get campaign report (detailed stats)
+async function getCampaignReport(config: MailchimpConfig, campaignId: string): Promise<unknown> {
+  const endpoint = `/reports/${campaignId}`
+
+  const response = await mailchimpRequest(config, endpoint, 'GET')
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.title || 'Failed to get campaign report')
+  }
+
+  return response.json()
+}
+
+// Get campaign email activity (who opened/clicked)
+async function getCampaignEmailActivity(
+  config: MailchimpConfig,
+  campaignId: string,
+  count: number = 100,
+  offset: number = 0
+): Promise<{ emails: unknown[]; total_items: number }> {
+  const endpoint = `/reports/${campaignId}/email-activity?count=${count}&offset=${offset}`
+
+  const response = await mailchimpRequest(config, endpoint, 'GET')
+
+  if (!response.ok) {
+    const error = await response.json()
+    throw new Error(error.detail || error.title || 'Failed to get email activity')
+  }
+
+  return response.json()
+}
+
 // Get audience stats
 async function getAudienceStats(config: MailchimpConfig): Promise<unknown> {
   const endpoint = `/lists/${config.listId}`
@@ -380,19 +413,40 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           )
+
+          // Build update payload
+          const updatePayload: Record<string, unknown> = {
+            mailchimp_opens: engagement.opens,
+            mailchimp_clicks: engagement.clicks,
+            mailchimp_engagement_score: engagement.score,
+            mailchimp_engagement_updated_at: new Date().toISOString(),
+          }
+
+          // Auto-advance status from 'new' to 'contacted' if they engaged with emails
+          let statusAdvanced = false
+          if (engagement.opens > 0) {
+            // Check current status
+            const { data: currentLead } = await supabaseEngagement
+              .from('leads')
+              .select('status')
+              .eq('id', payload.leadId)
+              .single()
+
+            if (currentLead?.status === 'new') {
+              updatePayload.status = 'contacted'
+              statusAdvanced = true
+            }
+          }
+
           await supabaseEngagement
             .from('leads')
-            .update({
-              mailchimp_opens: engagement.opens,
-              mailchimp_clicks: engagement.clicks,
-              mailchimp_engagement_score: engagement.score,
-              mailchimp_engagement_updated_at: new Date().toISOString(),
-            })
+            .update(updatePayload)
             .eq('id', payload.leadId)
 
           result = {
             ...engagement,
             updated: true,
+            statusAdvanced,
           }
         }
         break
@@ -403,11 +457,23 @@ Deno.serve(async (req) => {
           throw new Error('leads array is required (each with email and id)')
         }
         {
-          const engagementResults: { leadId: string; email: string; opens: number; clicks: number; score: number; error?: string }[] = []
+          const engagementResults: { leadId: string; email: string; opens: number; clicks: number; score: number; statusAdvanced?: boolean; error?: string }[] = []
           const supabaseBulk = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           )
+
+          // Fetch current status for all leads to check for auto-advance
+          const leadIds = payload.leads.filter((l: { id?: string }) => l.id).map((l: { id: string }) => l.id)
+          const { data: currentLeads } = await supabaseBulk
+            .from('leads')
+            .select('id, status')
+            .in('id', leadIds)
+
+          const leadStatusMap = new Map<string, string>()
+          for (const lead of currentLeads || []) {
+            leadStatusMap.set(lead.id, lead.status)
+          }
 
           // Process in batches to avoid rate limits
           const ENG_BATCH_SIZE = 5
@@ -433,20 +499,31 @@ Deno.serve(async (req) => {
                 const actResult = await getSubscriberActivity(config, lead.email) as { activity: ActivityItem[] }
                 const eng = calculateEngagement(actResult.activity || [])
 
+                // Build update payload
+                const updatePayload: Record<string, unknown> = {
+                  mailchimp_opens: eng.opens,
+                  mailchimp_clicks: eng.clicks,
+                  mailchimp_engagement_score: eng.score,
+                  mailchimp_engagement_updated_at: new Date().toISOString(),
+                }
+
+                // Auto-advance status from 'new' to 'contacted' if they engaged
+                let statusAdvanced = false
+                if (eng.opens > 0 && leadStatusMap.get(lead.id) === 'new') {
+                  updatePayload.status = 'contacted'
+                  statusAdvanced = true
+                }
+
                 await supabaseBulk
                   .from('leads')
-                  .update({
-                    mailchimp_opens: eng.opens,
-                    mailchimp_clicks: eng.clicks,
-                    mailchimp_engagement_score: eng.score,
-                    mailchimp_engagement_updated_at: new Date().toISOString(),
-                  })
+                  .update(updatePayload)
                   .eq('id', lead.id)
 
                 engagementResults.push({
                   leadId: lead.id,
                   email: lead.email,
                   ...eng,
+                  statusAdvanced,
                 })
               } catch (err) {
                 engagementResults.push({
@@ -470,6 +547,7 @@ Deno.serve(async (req) => {
             total: payload.leads.length,
             success: engagementResults.filter(r => !r.error).length,
             failed: engagementResults.filter(r => r.error).length,
+            statusAdvanced: engagementResults.filter(r => r.statusAdvanced).length,
             results: engagementResults,
           }
         }
@@ -477,6 +555,250 @@ Deno.serve(async (req) => {
 
       case 'get_campaigns':
         result = await getCampaigns(config, payload?.count || 10)
+        break
+
+      case 'sync_campaigns':
+        // Fetch campaigns from Mailchimp and store in database
+        {
+          const count = payload?.count || 20
+          const campaignsData = await getCampaigns(config, count) as {
+            campaigns: Array<{
+              id: string
+              settings: { subject_line: string; title: string; preview_text?: string }
+              type: string
+              send_time: string
+              status: string
+            }>
+          }
+
+          const supabaseCampaigns = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          )
+
+          const syncedCampaigns: Array<{ id: string; campaign_name: string; status: string }> = []
+          const errors: Array<{ campaign_id: string; error: string }> = []
+
+          for (const campaign of campaignsData.campaigns) {
+            // Only sync sent campaigns
+            if (campaign.status !== 'sent') continue
+
+            try {
+              // Get detailed report for the campaign
+              const report = await getCampaignReport(config, campaign.id) as {
+                emails_sent: number
+                opens: { opens_total: number; unique_opens: number; open_rate: number }
+                clicks: { clicks_total: number; unique_clicks: number; click_rate: number }
+                unsubscribed: number
+                bounces: { hard_bounces: number; soft_bounces: number }
+              }
+
+              // Upsert campaign into database
+              const { data: upsertedCampaign, error: upsertError } = await supabaseCampaigns
+                .from('email_campaigns')
+                .upsert({
+                  mailchimp_campaign_id: campaign.id,
+                  campaign_name: campaign.settings.title,
+                  subject_line: campaign.settings.subject_line,
+                  preview_text: campaign.settings.preview_text || null,
+                  campaign_type: campaign.type,
+                  send_time: campaign.send_time,
+                  emails_sent: report.emails_sent,
+                  unique_opens: report.opens.unique_opens,
+                  total_opens: report.opens.opens_total,
+                  open_rate: report.opens.open_rate,
+                  unique_clicks: report.clicks.unique_clicks,
+                  total_clicks: report.clicks.clicks_total,
+                  click_rate: report.clicks.click_rate,
+                  unsubscribes: report.unsubscribed,
+                  bounces: report.bounces.hard_bounces + report.bounces.soft_bounces,
+                  is_ab_test: campaign.type === 'variate',
+                  status: 'sent',
+                  last_synced_at: new Date().toISOString(),
+                }, {
+                  onConflict: 'mailchimp_campaign_id',
+                })
+                .select('id, campaign_name')
+                .single()
+
+              if (upsertError) {
+                errors.push({ campaign_id: campaign.id, error: upsertError.message })
+              } else if (upsertedCampaign) {
+                syncedCampaigns.push({
+                  id: upsertedCampaign.id,
+                  campaign_name: upsertedCampaign.campaign_name,
+                  status: 'synced',
+                })
+              }
+
+              // Small delay to avoid rate limiting
+              await new Promise(resolve => setTimeout(resolve, 200))
+            } catch (err) {
+              errors.push({
+                campaign_id: campaign.id,
+                error: err instanceof Error ? err.message : String(err),
+              })
+            }
+          }
+
+          result = {
+            total: campaignsData.campaigns.filter(c => c.status === 'sent').length,
+            synced: syncedCampaigns.length,
+            failed: errors.length,
+            campaigns: syncedCampaigns,
+            errors,
+          }
+        }
+        break
+
+      case 'get_campaign_report':
+        // Get detailed report for a specific campaign
+        if (!payload?.campaignId) {
+          throw new Error('campaignId is required')
+        }
+        result = await getCampaignReport(config, payload.campaignId)
+        break
+
+      case 'sync_campaign_activity':
+        // Sync per-subscriber activity for a campaign to lead_campaign_engagement
+        if (!payload?.campaignId || !payload?.dbCampaignId) {
+          throw new Error('campaignId (Mailchimp) and dbCampaignId (database UUID) are required')
+        }
+        {
+          const supabaseActivity = createClient(
+            Deno.env.get('SUPABASE_URL')!,
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+          )
+
+          // Get all leads with their emails for matching
+          const { data: leads, error: leadsError } = await supabaseActivity
+            .from('leads')
+            .select('id, email')
+
+          if (leadsError) {
+            throw new Error(`Failed to fetch leads: ${leadsError.message}`)
+          }
+
+          // Create email -> lead_id map (lowercase for matching)
+          const emailToLeadId = new Map<string, string>()
+          for (const lead of leads || []) {
+            emailToLeadId.set(lead.email.toLowerCase(), lead.id)
+          }
+
+          // Fetch email activity from Mailchimp (paginated)
+          let offset = 0
+          const pageSize = 100
+          let totalProcessed = 0
+          let totalMatched = 0
+          const engagementRecords: Array<{
+            lead_id: string
+            campaign_id: string
+            was_sent: boolean
+            opened: boolean
+            first_opened_at: string | null
+            open_count: number
+            clicked: boolean
+            first_clicked_at: string | null
+            click_count: number
+          }> = []
+
+          while (true) {
+            const activityPage = await getCampaignEmailActivity(
+              config,
+              payload.campaignId,
+              pageSize,
+              offset
+            ) as {
+              emails: Array<{
+                email_address: string
+                activity: Array<{ action: string; timestamp: string; url?: string }>
+              }>
+              total_items: number
+            }
+
+            if (!activityPage.emails || activityPage.emails.length === 0) break
+
+            for (const subscriber of activityPage.emails) {
+              totalProcessed++
+              const leadId = emailToLeadId.get(subscriber.email_address.toLowerCase())
+
+              if (!leadId) continue // Not a lead in our system
+              totalMatched++
+
+              // Process activity
+              let opened = false
+              let firstOpenedAt: string | null = null
+              let openCount = 0
+              let clicked = false
+              let firstClickedAt: string | null = null
+              let clickCount = 0
+
+              for (const act of subscriber.activity || []) {
+                if (act.action === 'open') {
+                  openCount++
+                  opened = true
+                  if (!firstOpenedAt || act.timestamp < firstOpenedAt) {
+                    firstOpenedAt = act.timestamp
+                  }
+                } else if (act.action === 'click') {
+                  clickCount++
+                  clicked = true
+                  if (!firstClickedAt || act.timestamp < firstClickedAt) {
+                    firstClickedAt = act.timestamp
+                  }
+                }
+              }
+
+              engagementRecords.push({
+                lead_id: leadId,
+                campaign_id: payload.dbCampaignId,
+                was_sent: true,
+                opened,
+                first_opened_at: firstOpenedAt,
+                open_count: openCount,
+                clicked,
+                first_clicked_at: firstClickedAt,
+                click_count: clickCount,
+              })
+            }
+
+            offset += pageSize
+            if (offset >= activityPage.total_items) break
+
+            // Small delay between pages
+            await new Promise(resolve => setTimeout(resolve, 200))
+          }
+
+          // Upsert engagement records in batches
+          const batchSize = 50
+          let upsertedCount = 0
+          let upsertErrors = 0
+
+          for (let i = 0; i < engagementRecords.length; i += batchSize) {
+            const batch = engagementRecords.slice(i, i + batchSize)
+            const { error: upsertError } = await supabaseActivity
+              .from('lead_campaign_engagement')
+              .upsert(batch, {
+                onConflict: 'lead_id,campaign_id',
+              })
+
+            if (upsertError) {
+              console.error('Upsert error:', upsertError)
+              upsertErrors += batch.length
+            } else {
+              upsertedCount += batch.length
+            }
+          }
+
+          result = {
+            mailchimp_campaign_id: payload.campaignId,
+            db_campaign_id: payload.dbCampaignId,
+            total_subscribers_processed: totalProcessed,
+            leads_matched: totalMatched,
+            records_upserted: upsertedCount,
+            errors: upsertErrors,
+          }
+        }
         break
 
       case 'get_audience_stats':

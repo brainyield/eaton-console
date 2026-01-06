@@ -202,3 +202,74 @@ export function getEngagementLevel(score: number | null | undefined): 'cold' | '
   if (score <= 5) return 'warm'
   return 'hot'
 }
+
+// ============================================
+// Campaign Analytics Functions
+// ============================================
+
+interface SyncCampaignsResult {
+  total: number
+  synced: number
+  failed: number
+  campaigns: Array<{ id: string; campaign_name: string; status: string }>
+  errors: Array<{ campaign_id: string; error: string }>
+}
+
+interface SyncCampaignActivityResult {
+  mailchimp_campaign_id: string
+  db_campaign_id: string
+  total_subscribers_processed: number
+  leads_matched: number
+  records_upserted: number
+  errors: number
+}
+
+interface CampaignReport {
+  id: string
+  emails_sent: number
+  opens: {
+    opens_total: number
+    unique_opens: number
+    open_rate: number
+  }
+  clicks: {
+    clicks_total: number
+    unique_clicks: number
+    click_rate: number
+  }
+  unsubscribed: number
+  bounces: {
+    hard_bounces: number
+    soft_bounces: number
+  }
+}
+
+/**
+ * Sync campaigns from Mailchimp to database
+ * Fetches recent campaigns and stores them with their stats
+ */
+export async function syncCampaigns(count: number = 20): Promise<SyncCampaignsResult> {
+  return callMailchimpFunction<SyncCampaignsResult>('sync_campaigns', { count })
+}
+
+/**
+ * Get detailed report for a specific campaign
+ */
+export async function getCampaignReport(campaignId: string): Promise<CampaignReport> {
+  return callMailchimpFunction<CampaignReport>('get_campaign_report', { campaignId })
+}
+
+/**
+ * Sync per-lead campaign activity from Mailchimp
+ * @param campaignId - Mailchimp campaign ID
+ * @param dbCampaignId - Database UUID for the campaign
+ */
+export async function syncCampaignActivity(
+  campaignId: string,
+  dbCampaignId: string
+): Promise<SyncCampaignActivityResult> {
+  return callMailchimpFunction<SyncCampaignActivityResult>('sync_campaign_activity', {
+    campaignId,
+    dbCampaignId,
+  })
+}

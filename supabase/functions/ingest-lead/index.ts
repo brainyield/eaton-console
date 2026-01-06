@@ -100,27 +100,35 @@ Deno.serve(async (req) => {
 
     const email = payload.email.toLowerCase().trim()
 
-    // Check for existing lead with same email and type (avoid duplicates)
-    const { data: existingLead } = await supabase
+    // Check for existing lead with same email (any type, any status)
+    // This prevents duplicate leads for the same person
+    const { data: existingLeads } = await supabase
       .from('leads')
-      .select('id, status, family_id')
+      .select('id, status, family_id, lead_type')
       .eq('email', email)
-      .eq('lead_type', payload.lead_type)
-      .in('status', ['new', 'contacted'])
-      .single()
+      .order('created_at', { ascending: false })
 
-    if (existingLead) {
-      console.log(`Lead already exists: ${existingLead.id}`)
-      return new Response(
-        JSON.stringify({
-          success: true,
-          action: 'exists',
-          leadId: existingLead.id,
-          familyId: existingLead.family_id,
-          message: 'Lead already exists in pipeline',
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (existingLeads && existingLeads.length > 0) {
+      // Check if there's an active lead (new or contacted)
+      const activeLead = existingLeads.find(l => l.status === 'new' || l.status === 'contacted')
+
+      if (activeLead) {
+        console.log(`Active lead already exists for ${email}: ${activeLead.id} (${activeLead.lead_type})`)
+        return new Response(
+          JSON.stringify({
+            success: true,
+            action: 'exists',
+            leadId: activeLead.id,
+            familyId: activeLead.family_id,
+            message: `Lead already exists in pipeline (${activeLead.lead_type})`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // If only converted/closed leads exist, allow creating a new one
+      // This handles re-engagement of past leads
+      console.log(`Email ${email} has ${existingLeads.length} past lead(s), creating new lead`)
     }
 
     // Check if email matches existing family

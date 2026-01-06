@@ -28,13 +28,14 @@ import { LeadDetailPanel } from './LeadDetailPanel'
 import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
 import { ConversionAnalytics } from './ConversionAnalytics'
-import { bulkSyncLeadsToMailchimp, getEngagementLevel } from '../lib/mailchimp'
+import { CampaignAnalytics } from './CampaignAnalytics'
+import { bulkSyncLeadsToMailchimp, bulkSyncEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { formatNameLastFirst } from '../lib/utils'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
 type SortOption = 'created_desc' | 'created_asc' | 'score_desc' | 'score_asc'
-type TabType = 'leads' | 'event_leads' | 'analytics'
+type TabType = 'leads' | 'event_leads' | 'campaigns' | 'analytics'
 
 const LEADS_PAGE_SIZE = 50 // Number of leads per page
 
@@ -94,6 +95,9 @@ export default function Marketing() {
   const [showUpcomingFollowUps, setShowUpcomingFollowUps] = useState(true)
   const [showAllFollowUps, setShowAllFollowUps] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
+  const [isRefreshingEngagement, setIsRefreshingEngagement] = useState(false)
+  const [engagementRefreshResult, setEngagementRefreshResult] = useState<{ success: number; failed: number } | null>(null)
+  const [isAutoRefreshing, setIsAutoRefreshing] = useState(false)
 
   const { data: allLeads = [], isLoading, error } = useLeads({
     type: typeFilter || undefined,
@@ -324,6 +328,150 @@ export default function Marketing() {
     }
   }
 
+  // Get leads that are synced to Mailchimp (have mailchimp_id)
+  const syncedLeads = useMemo(() =>
+    allLeads.filter(l => l.mailchimp_id),
+    [allLeads]
+  )
+
+  // Calculate staleness - oldest engagement update time
+  const engagementStaleness = useMemo(() => {
+    if (syncedLeads.length === 0) return null
+
+    const now = Date.now()
+    const leadsWithEngagement = syncedLeads.filter(l => l.mailchimp_engagement_updated_at)
+
+    if (leadsWithEngagement.length === 0) {
+      // No leads have been refreshed yet - consider very stale
+      return { label: 'Never refreshed', color: 'text-red-400', hoursAgo: Infinity, staleCount: syncedLeads.length }
+    }
+
+    // Find the oldest engagement update
+    let oldestTime = now
+    let staleCount = 0
+    const staleThreshold = 24 * 60 * 60 * 1000 // 24 hours
+
+    for (const lead of syncedLeads) {
+      if (lead.mailchimp_engagement_updated_at) {
+        const updateTime = new Date(lead.mailchimp_engagement_updated_at).getTime()
+        if (updateTime < oldestTime) oldestTime = updateTime
+        if (now - updateTime > staleThreshold) staleCount++
+      } else {
+        staleCount++
+      }
+    }
+
+    const hoursAgo = Math.floor((now - oldestTime) / (1000 * 60 * 60))
+
+    let label: string
+    let color: string
+
+    if (hoursAgo < 1) {
+      label = 'Just now'
+      color = 'text-green-400'
+    } else if (hoursAgo < 24) {
+      label = `${hoursAgo}h ago`
+      color = 'text-green-400'
+    } else if (hoursAgo < 48) {
+      label = `${Math.floor(hoursAgo / 24)}d ago`
+      color = 'text-yellow-400'
+    } else {
+      label = `${Math.floor(hoursAgo / 24)}d ago`
+      color = 'text-red-400'
+    }
+
+    return { label, color, hoursAgo, staleCount }
+  }, [syncedLeads])
+
+  // Handle bulk engagement refresh
+  const handleRefreshAllEngagement = async () => {
+    if (syncedLeads.length === 0) {
+      showWarning('No leads are synced to Mailchimp yet')
+      return
+    }
+
+    setIsRefreshingEngagement(true)
+    setEngagementRefreshResult(null)
+
+    try {
+      // Batch in chunks of 50 to avoid rate limits
+      const batchSize = 50
+      let totalSuccess = 0
+      let totalFailed = 0
+
+      for (let i = 0; i < syncedLeads.length; i += batchSize) {
+        const batch = syncedLeads.slice(i, i + batchSize).map(l => ({
+          id: l.id,
+          email: l.email,
+        }))
+
+        const result = await bulkSyncEngagement(batch)
+        totalSuccess += result.success
+        totalFailed += result.failed
+      }
+
+      setEngagementRefreshResult({ success: totalSuccess, failed: totalFailed })
+
+      if (totalFailed > 0) {
+        showWarning(`Refreshed ${totalSuccess} leads. ${totalFailed} failed.`)
+      } else {
+        showSuccess(`Engagement data refreshed for ${totalSuccess} leads`)
+      }
+
+      // Refresh leads to show updated engagement scores
+      await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to refresh engagement data')
+      setEngagementRefreshResult({ success: 0, failed: syncedLeads.length })
+    } finally {
+      setIsRefreshingEngagement(false)
+    }
+  }
+
+  // Auto-refresh stale engagement data on mount (only once)
+  useEffect(() => {
+    const autoRefreshStaleEngagement = async () => {
+      // Only run if we have synced leads and they haven't been refreshed recently
+      if (!engagementStaleness || engagementStaleness.staleCount === 0) return
+      if (isRefreshingEngagement || isAutoRefreshing) return
+
+      // Only auto-refresh if there are stale leads (>24h old)
+      if (engagementStaleness.hoursAgo < 24 && engagementStaleness.staleCount === 0) return
+
+      const staleLeads = syncedLeads.filter(l => {
+        if (!l.mailchimp_engagement_updated_at) return true
+        const updateTime = new Date(l.mailchimp_engagement_updated_at).getTime()
+        return Date.now() - updateTime > 24 * 60 * 60 * 1000
+      })
+
+      if (staleLeads.length === 0) return
+
+      setIsAutoRefreshing(true)
+
+      try {
+        // Limit to 50 leads for auto-refresh to avoid long waits
+        const batch = staleLeads.slice(0, 50).map(l => ({
+          id: l.id,
+          email: l.email,
+        }))
+
+        await bulkSyncEngagement(batch)
+
+        // Quietly refresh the leads data
+        await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      } catch {
+        // Silent fail for auto-refresh
+      } finally {
+        setIsAutoRefreshing(false)
+      }
+    }
+
+    // Delay auto-refresh slightly to let the page load first
+    const timer = setTimeout(autoRefreshStaleEngagement, 2000)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Only run on mount
+
   return (
     <div className="flex h-full">
       {/* Main Content */}
@@ -359,6 +507,16 @@ export default function Marketing() {
                   Event Leads {(eventLeads.length + eventTypeLeads.length) > 0 && <span className="ml-1 px-1.5 py-0.5 text-xs bg-orange-500/20 text-orange-400 rounded">{eventLeads.length + eventTypeLeads.length}</span>}
                 </button>
                 <button
+                  onClick={() => setActiveTab('campaigns')}
+                  className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+                    activeTab === 'campaigns'
+                      ? 'bg-zinc-700 text-white'
+                      : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  Campaigns
+                </button>
+                <button
                   onClick={() => setActiveTab('analytics')}
                   className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                     activeTab === 'analytics'
@@ -370,13 +528,45 @@ export default function Marketing() {
                 </button>
               </div>
               {activeTab === 'leads' && (
-                <button
-                  onClick={() => setShowImportModal(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-                >
-                  <Upload className="w-4 h-4" />
-                  Import Leads
-                </button>
+                <>
+                  {/* Engagement Refresh Button and Indicator */}
+                  <div className="flex items-center gap-2">
+                    {engagementStaleness && (
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="text-zinc-500">Engagement:</span>
+                        <span className={engagementStaleness.color}>
+                          {isAutoRefreshing ? 'Refreshing...' : engagementStaleness.label}
+                        </span>
+                        {engagementStaleness.staleCount > 0 && !isAutoRefreshing && (
+                          <span className="text-zinc-500">
+                            ({engagementStaleness.staleCount} stale)
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <button
+                      onClick={handleRefreshAllEngagement}
+                      disabled={isRefreshingEngagement || syncedLeads.length === 0}
+                      className="flex items-center gap-2 px-3 py-2 bg-zinc-700 text-zinc-200 rounded-lg hover:bg-zinc-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title={syncedLeads.length === 0 ? 'No leads synced to Mailchimp' : `Refresh engagement for ${syncedLeads.length} leads`}
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isRefreshingEngagement ? 'animate-spin' : ''}`} />
+                      {isRefreshingEngagement ? 'Refreshing...' : 'Refresh Engagement'}
+                    </button>
+                    {engagementRefreshResult && (
+                      <span className={`text-xs ${engagementRefreshResult.failed > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                        {engagementRefreshResult.success} updated
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowImportModal(true)}
+                    className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Import Leads
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -883,6 +1073,11 @@ export default function Marketing() {
         {/* Analytics Tab Content */}
         {activeTab === 'analytics' && (
           <ConversionAnalytics />
+        )}
+
+        {/* Campaigns Tab Content */}
+        {activeTab === 'campaigns' && (
+          <CampaignAnalytics />
         )}
 
         {/* Event Leads Tab Content */}

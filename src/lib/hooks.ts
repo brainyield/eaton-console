@@ -4726,3 +4726,135 @@ export function getPriorityColor(priority: TaskPriority): string {
       return 'text-zinc-400'
   }
 }
+
+// ============================================
+// Email Campaign Hooks
+// ============================================
+
+export interface EmailCampaign {
+  id: string
+  mailchimp_campaign_id: string
+  campaign_name: string
+  subject_line: string | null
+  preview_text: string | null
+  campaign_type: string | null
+  send_time: string | null
+  emails_sent: number
+  unique_opens: number
+  total_opens: number
+  open_rate: number
+  unique_clicks: number
+  total_clicks: number
+  click_rate: number
+  unsubscribes: number
+  bounces: number
+  is_ab_test: boolean
+  winning_variant: string | null
+  ab_test_results: unknown | null
+  status: string
+  last_synced_at: string
+  created_at: string
+  updated_at: string
+}
+
+export interface LeadCampaignEngagement {
+  id: string
+  lead_id: string
+  campaign_id: string
+  was_sent: boolean
+  opened: boolean
+  first_opened_at: string | null
+  open_count: number
+  clicked: boolean
+  first_clicked_at: string | null
+  click_count: number
+  clicked_links: unknown | null
+  bounced: boolean
+  unsubscribed: boolean
+  created_at: string
+  updated_at: string
+  // Joined data
+  lead?: {
+    id: string
+    email: string
+    name: string | null
+    lead_type: string
+    status: string
+  }
+  campaign?: {
+    id: string
+    campaign_name: string
+    subject_line: string | null
+    send_time: string | null
+  }
+}
+
+/**
+ * Fetch all email campaigns from the database
+ * Note: Requires MIGRATION_CAMPAIGN_ANALYTICS.sql to be run first
+ */
+export function useEmailCampaigns() {
+  return useQuery({
+    queryKey: queryKeys.emailCampaigns.list(),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('email_campaigns')
+        .select('*')
+        .order('send_time', { ascending: false })
+
+      if (error) throw error
+      return (data || []) as EmailCampaign[]
+    },
+  })
+}
+
+/**
+ * Fetch campaign engagement for a specific campaign
+ * Note: Requires MIGRATION_CAMPAIGN_ANALYTICS.sql to be run first
+ */
+export function useCampaignEngagement(campaignId: string) {
+  return useQuery({
+    queryKey: queryKeys.leadCampaignEngagement.byCampaign(campaignId),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_campaign_engagement')
+        .select(`
+          *,
+          lead:leads(id, email, name, lead_type, status)
+        `)
+        .eq('campaign_id', campaignId)
+        .order('open_count', { ascending: false })
+
+      if (error) throw error
+      return (data || []) as LeadCampaignEngagement[]
+    },
+    enabled: !!campaignId,
+  })
+}
+
+/**
+ * Fetch campaign engagement for a specific lead
+ * Note: Requires MIGRATION_CAMPAIGN_ANALYTICS.sql to be run first
+ */
+export function useLeadCampaignEngagement(leadId: string) {
+  return useQuery({
+    queryKey: queryKeys.leadCampaignEngagement.byLead(leadId),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase as any)
+        .from('lead_campaign_engagement')
+        .select(`
+          *,
+          campaign:email_campaigns(id, campaign_name, subject_line, send_time)
+        `)
+        .eq('lead_id', leadId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return (data || []) as LeadCampaignEngagement[]
+    },
+    enabled: !!leadId,
+  })
+}

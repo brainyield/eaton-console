@@ -222,4 +222,18 @@ export const queryKeys = {
     all: ['invoice_payments'] as const,
     byInvoice: (invoiceId: string) => ['invoice_payments', invoiceId] as const,
   },
+
+  // Email Campaigns
+  emailCampaigns: {
+    all: ['email_campaigns'] as const,
+    list: () => ['email_campaigns', 'list'] as const,
+    detail: (id: string) => ['email_campaigns', 'detail', id] as const,
+  },
+
+  // Lead Campaign Engagement
+  leadCampaignEngagement: {
+    all: ['lead_campaign_engagement'] as const,
+    byCampaign: (campaignId: string) => ['lead_campaign_engagement', 'campaign', campaignId] as const,
+    byLead: (leadId: string) => ['lead_campaign_engagement', 'lead', leadId] as const,
+  },
 }

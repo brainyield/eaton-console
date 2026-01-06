@@ -307,6 +307,20 @@ export type Database = {
             foreignKeyName: "calendly_bookings_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -404,6 +418,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      email_campaigns: {
+        Row: {
+          ab_test_results: Json | null
+          bounces: number | null
+          campaign_name: string
+          campaign_type: string | null
+          click_rate: number | null
+          created_at: string | null
+          emails_sent: number | null
+          id: string
+          is_ab_test: boolean | null
+          last_synced_at: string | null
+          mailchimp_campaign_id: string
+          open_rate: number | null
+          preview_text: string | null
+          send_time: string | null
+          status: string | null
+          subject_line: string | null
+          total_clicks: number | null
+          total_opens: number | null
+          unique_clicks: number | null
+          unique_opens: number | null
+          unsubscribes: number | null
+          updated_at: string | null
+          winning_variant: string | null
+        }
+        Insert: {
+          ab_test_results?: Json | null
+          bounces?: number | null
+          campaign_name: string
+          campaign_type?: string | null
+          click_rate?: number | null
+          created_at?: string | null
+          emails_sent?: number | null
+          id?: string
+          is_ab_test?: boolean | null
+          last_synced_at?: string | null
+          mailchimp_campaign_id: string
+          open_rate?: number | null
+          preview_text?: string | null
+          send_time?: string | null
+          status?: string | null
+          subject_line?: string | null
+          total_clicks?: number | null
+          total_opens?: number | null
+          unique_clicks?: number | null
+          unique_opens?: number | null
+          unsubscribes?: number | null
+          updated_at?: string | null
+          winning_variant?: string | null
+        }
+        Update: {
+          ab_test_results?: Json | null
+          bounces?: number | null
+          campaign_name?: string
+          campaign_type?: string | null
+          click_rate?: number | null
+          created_at?: string | null
+          emails_sent?: number | null
+          id?: string
+          is_ab_test?: boolean | null
+          last_synced_at?: string | null
+          mailchimp_campaign_id?: string
+          open_rate?: number | null
+          preview_text?: string | null
+          send_time?: string | null
+          status?: string | null
+          subject_line?: string | null
+          total_clicks?: number | null
+          total_opens?: number | null
+          unique_clicks?: number | null
+          unique_opens?: number | null
+          unsubscribes?: number | null
+          updated_at?: string | null
+          winning_variant?: string | null
+        }
+        Relationships: []
       }
       email_templates: {
         Row: {
@@ -1424,6 +1516,20 @@ export type Database = {
             foreignKeyName: "lead_activities_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1443,6 +1549,117 @@ export type Database = {
           },
           {
             foreignKeyName: "lead_activities_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_campaign_engagement: {
+        Row: {
+          bounced: boolean | null
+          campaign_id: string
+          click_count: number | null
+          clicked: boolean | null
+          clicked_links: Json | null
+          created_at: string | null
+          first_clicked_at: string | null
+          first_opened_at: string | null
+          id: string
+          lead_id: string
+          open_count: number | null
+          opened: boolean | null
+          unsubscribed: boolean | null
+          updated_at: string | null
+          was_sent: boolean | null
+        }
+        Insert: {
+          bounced?: boolean | null
+          campaign_id: string
+          click_count?: number | null
+          clicked?: boolean | null
+          clicked_links?: Json | null
+          created_at?: string | null
+          first_clicked_at?: string | null
+          first_opened_at?: string | null
+          id?: string
+          lead_id: string
+          open_count?: number | null
+          opened?: boolean | null
+          unsubscribed?: boolean | null
+          updated_at?: string | null
+          was_sent?: boolean | null
+        }
+        Update: {
+          bounced?: boolean | null
+          campaign_id?: string
+          click_count?: number | null
+          clicked?: boolean | null
+          clicked_links?: Json | null
+          created_at?: string | null
+          first_clicked_at?: string | null
+          first_opened_at?: string | null
+          id?: string
+          lead_id?: string
+          open_count?: number | null
+          opened?: boolean | null
+          unsubscribed?: boolean | null
+          updated_at?: string | null
+          was_sent?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_campaign_engagement_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "campaign_performance_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "email_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads_with_scores"
@@ -1495,6 +1712,20 @@ export type Database = {
             foreignKeyName: "lead_follow_ups_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -1514,6 +1745,88 @@ export type Database = {
           },
           {
             foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_scores"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_score_history: {
+        Row: {
+          activity_score: number | null
+          change_reason: string | null
+          created_at: string | null
+          engagement_score: number | null
+          id: string
+          lead_id: string
+          previous_score: number | null
+          recency_score: number | null
+          score: number
+          source_score: number | null
+        }
+        Insert: {
+          activity_score?: number | null
+          change_reason?: string | null
+          created_at?: string | null
+          engagement_score?: number | null
+          id?: string
+          lead_id: string
+          previous_score?: number | null
+          recency_score?: number | null
+          score: number
+          source_score?: number | null
+        }
+        Update: {
+          activity_score?: number | null
+          change_reason?: string | null
+          created_at?: string | null
+          engagement_score?: number | null
+          id?: string
+          lead_id?: string
+          previous_score?: number | null
+          recency_score?: number | null
+          score?: number
+          source_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_score_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_pipeline"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads_with_activity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
             referencedRelation: "leads_with_scores"
@@ -2609,6 +2922,27 @@ export type Database = {
       }
     }
     Views: {
+      campaign_performance_summary: {
+        Row: {
+          campaign_name: string | null
+          click_rate: number | null
+          emails_sent: number | null
+          id: string | null
+          is_ab_test: boolean | null
+          last_synced_at: string | null
+          leads_clicked: number | null
+          leads_opened: number | null
+          leads_sent: number | null
+          mailchimp_campaign_id: string | null
+          open_rate: number | null
+          send_time: string | null
+          subject_line: string | null
+          unique_clicks: number | null
+          unique_opens: number | null
+          winning_variant: string | null
+        }
+        Relationships: []
+      }
       event_attendee_list: {
         Row: {
           attendee_age: number | null
@@ -2835,6 +3169,62 @@ export type Database = {
           status: Database["public"]["Enums"]["customer_status"] | null
           student_count: number | null
           total_balance: number | null
+        }
+        Relationships: []
+      }
+      lead_campaign_summary: {
+        Row: {
+          campaigns_clicked: number | null
+          campaigns_opened: number | null
+          campaigns_received: number | null
+          email: string | null
+          last_clicked_at: string | null
+          last_opened_at: string | null
+          lead_id: string | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          name: string | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+          total_clicks: number | null
+          total_opens: number | null
+        }
+        Relationships: []
+      }
+      lead_score_trends: {
+        Row: {
+          current_score: number | null
+          email: string | null
+          history_count: number | null
+          last_score_change: string | null
+          lead_id: string | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
+          name: string | null
+          previous_score: number | null
+          score_change: number | null
+          status: Database["public"]["Enums"]["lead_status"] | null
+        }
+        Insert: {
+          current_score?: number | null
+          email?: string | null
+          history_count?: never
+          last_score_change?: never
+          lead_id?: string | null
+          lead_type?: Database["public"]["Enums"]["lead_type"] | null
+          name?: string | null
+          previous_score?: never
+          score_change?: never
+          status?: Database["public"]["Enums"]["lead_status"] | null
+        }
+        Update: {
+          current_score?: number | null
+          email?: string | null
+          history_count?: never
+          last_score_change?: never
+          lead_id?: string | null
+          lead_type?: Database["public"]["Enums"]["lead_type"] | null
+          name?: string | null
+          previous_score?: never
+          score_change?: never
+          status?: Database["public"]["Enums"]["lead_status"] | null
         }
         Relationships: []
       }
@@ -3201,6 +3591,20 @@ export type Database = {
             foreignKeyName: "calendly_bookings_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
             referencedRelation: "leads"
             referencedColumns: ["id"]
           },
@@ -3248,6 +3652,20 @@ export type Database = {
           urgency: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_campaign_summary"
+            referencedColumns: ["lead_id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "lead_score_trends"
+            referencedColumns: ["lead_id"]
+          },
           {
             foreignKeyName: "lead_follow_ups_lead_id_fkey"
             columns: ["lead_id"]
