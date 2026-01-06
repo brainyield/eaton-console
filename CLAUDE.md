@@ -128,6 +128,7 @@ queryKeys.families.detail(id)
 - **DON'T** compare names with simple string equality - "Celine Orellana" and "Orellana, Celine" are the same person. Use `formatNameLastFirst()` from `utils.ts` to normalize names before comparison.
 - **DON'T** hardcode age group values - use `AGE_GROUP_OPTIONS` from `utils.ts` for dropdowns and `getAgeGroup(dob)` to calculate from DOB. Age groups must match the format expected by ActiveRoster sorting ('3-5', '6-8', '9-11', '12-14', '15-17').
 - **DON'T** create custom modal wrappers with plain divs - use `AccessibleModal` from `components/ui/AccessibleModal.tsx` for proper focus trap, keyboard handling (Escape to close), and aria attributes.
+- **DON'T** forget eslint-disable for Supabase insert/update with `Partial<T>` - mutations accept partial data but Supabase's typed client expects complete types for required fields. Add `// eslint-disable-next-line @typescript-eslint/no-explicit-any` above `.insert(data as any)` calls.
 
 ---
 
