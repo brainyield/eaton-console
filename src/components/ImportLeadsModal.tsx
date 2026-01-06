@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
 import {
-  X,
   AlertCircle,
   CheckCircle,
   RefreshCw,
@@ -11,6 +10,7 @@ import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type Lead } f
 import { supabase } from '../lib/supabase'
 import { isValidEmail } from '../lib/validation'
 import { formatNameLastFirst } from '../lib/utils'
+import { AccessibleModal } from './ui/AccessibleModal'
 
 interface ImportLeadsModalProps {
   onClose: () => void
@@ -332,20 +332,22 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
     }
   }
 
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800 w-full max-w-3xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-lg font-semibold text-white">Import Leads</h2>
-          <button
-            onClick={onClose}
-            className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+  const stepTitles: Record<typeof step, string> = {
+    source: 'Import Leads - Select Source',
+    paste: 'Import Leads - Paste Data',
+    preview: 'Import Leads - Preview',
+    importing: 'Import Leads - Importing',
+    complete: 'Import Leads - Complete',
+  }
 
+  return (
+    <AccessibleModal
+      isOpen={true}
+      onClose={onClose}
+      title={stepTitles[step]}
+      size="2xl"
+    >
+      <div className="flex flex-col max-h-[70vh]">
         {/* Content */}
         <div className="flex-1 overflow-auto p-6">
           {step === 'source' && (
@@ -465,9 +467,17 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
               </div>
 
               {error && (
-                <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                  {error}
+                <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 text-red-400 mt-0.5" />
+                    <div>
+                      <p className="text-red-400 font-medium">Import Failed</p>
+                      <p className="text-red-400/80 text-sm mt-1">{error}</p>
+                      <p className="text-zinc-500 text-xs mt-2">
+                        Go back to edit your data, or try importing again. If the problem persists, check the data format.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -566,6 +576,6 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
           )}
         </div>
       </div>
-    </div>
+    </AccessibleModal>
   )
 }

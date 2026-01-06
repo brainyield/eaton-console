@@ -152,7 +152,6 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       // Refresh lead data
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
-      console.error('Failed to convert lead:', err)
       showError(err instanceof Error ? err.message : 'Failed to convert lead')
     }
   }
@@ -180,7 +179,6 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       setShowActivityForm(false)
       showSuccess('Activity logged')
     } catch (err) {
-      console.error('Failed to log activity:', err)
       if (activityCreated) {
         // Activity was logged but status update failed - still close form since activity is saved
         setActivityNotes('')
@@ -212,7 +210,6 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       setShowFollowUpForm(false)
       showSuccess('Follow-up created')
     } catch (err) {
-      console.error('Failed to create follow-up:', err)
       showError(err instanceof Error ? err.message : 'Failed to create follow-up')
     } finally {
       setIsCreatingFollowUp(false)
@@ -224,7 +221,6 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       await completeFollowUp.mutateAsync(id)
       showSuccess('Follow-up completed')
     } catch (err) {
-      console.error('Failed to complete follow-up:', err)
       showError(err instanceof Error ? err.message : 'Failed to complete follow-up')
     }
   }
@@ -235,7 +231,6 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       await deleteFollowUp.mutateAsync({ id, leadId: lead.id })
       showSuccess('Follow-up deleted')
     } catch (err) {
-      console.error('Failed to delete follow-up:', err)
       showError(err instanceof Error ? err.message : 'Failed to delete follow-up')
     }
   }

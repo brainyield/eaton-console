@@ -154,27 +154,27 @@ export function ConversionAnalytics() {
         {/* Monthly Trend */}
         <div className="bg-zinc-800/50 rounded-lg p-4">
           <h3 className="text-sm font-medium text-zinc-400 mb-4">Monthly Trend (Last 6 Months)</h3>
-          <div className="flex items-end gap-2 h-32">
+          <div className="flex items-end gap-3 h-32">
             {(stats.monthlyTrend || []).map((month) => (
               <div key={month.month} className="flex-1 flex flex-col items-center gap-1">
-                <div className="w-full flex flex-col items-center gap-0.5" style={{ height: '100px' }}>
+                <div className="w-full flex items-end justify-center gap-1" style={{ height: '100px' }}>
+                  {/* Total leads bar */}
+                  <div
+                    className="w-2/5 bg-blue-500/60 rounded-t"
+                    style={{
+                      height: `${maxBarValue > 0 ? (month.leads / maxBarValue) * 100 : 0}%`,
+                      minHeight: month.leads > 0 ? '4px' : '0',
+                    }}
+                    title={`${month.leads} leads`}
+                  />
                   {/* Conversions bar */}
                   <div
-                    className="w-full bg-green-500/80 rounded-t"
+                    className="w-2/5 bg-green-500/80 rounded-t"
                     style={{
                       height: `${maxBarValue > 0 ? (month.conversions / maxBarValue) * 100 : 0}%`,
                       minHeight: month.conversions > 0 ? '4px' : '0',
                     }}
                     title={`${month.conversions} conversions`}
-                  />
-                  {/* Leads bar (remaining) */}
-                  <div
-                    className="w-full bg-blue-500/50 rounded-b"
-                    style={{
-                      height: `${maxBarValue > 0 ? ((month.leads - month.conversions) / maxBarValue) * 100 : 0}%`,
-                      minHeight: (month.leads - month.conversions) > 0 ? '4px' : '0',
-                    }}
-                    title={`${month.leads} total leads`}
                   />
                 </div>
                 <span className="text-[10px] text-zinc-500">{month.month}</span>
@@ -183,10 +183,10 @@ export function ConversionAnalytics() {
           </div>
           <div className="flex justify-center gap-4 mt-3 text-xs text-zinc-500">
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-500/80 rounded" /> Conversions
+              <span className="w-2 h-2 bg-blue-500/60 rounded" /> Leads
             </span>
             <span className="flex items-center gap-1">
-              <span className="w-2 h-2 bg-blue-500/50 rounded" /> New Leads
+              <span className="w-2 h-2 bg-green-500/80 rounded" /> Conversions
             </span>
           </div>
         </div>

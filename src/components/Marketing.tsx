@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Search,
   Upload,
   Mail,
-  MoreHorizontal,
   RefreshCw,
   X,
   Users,
@@ -17,7 +17,9 @@ import {
   Bell,
   ChevronRight,
   Calendar,
-  Circle
+  Circle,
+  ExternalLink,
+  Edit
 } from 'lucide-react'
 import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, useEventLeads, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { dateAtMidnight, daysBetween, parseLocalDate } from '../lib/dateUtils'
@@ -72,6 +74,7 @@ const statusColors: Record<LeadStatus, string> = {
 
 export default function Marketing() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { showError, showSuccess, showWarning } = useToast()
   const [activeTab, setActiveTab] = useState<TabType>('leads')
   const [search, setSearch] = useState('')
@@ -89,6 +92,7 @@ export default function Marketing() {
   const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
   const [showUpcomingFollowUps, setShowUpcomingFollowUps] = useState(true)
+  const [showAllFollowUps, setShowAllFollowUps] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
 
   const { data: allLeads = [], isLoading, error } = useLeads({
@@ -106,8 +110,11 @@ export default function Marketing() {
 
   // Filter and sort leads (client-side)
   const { leads, totalCount, totalPages } = useMemo(() => {
-    // Exclude 'event' type leads - they are shown in the Event Leads tab
-    let filtered = allLeads.filter(lead => lead.lead_type !== 'event')
+    // Exclude 'event' type leads by default - they have their own tab
+    // But show them if the user explicitly filters by 'event' type
+    let filtered = typeFilter === 'event'
+      ? allLeads
+      : allLeads.filter(lead => lead.lead_type !== 'event')
 
     // Filter by engagement
     if (engagementFilter) {
@@ -141,18 +148,26 @@ export default function Marketing() {
   // Reset page when filters change
   const resetPage = () => setCurrentPage(1)
 
-  // Stats
+  // Auto-adjust page when filtered results decrease
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages > 0) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  // Stats - exclude event leads to match the table display
   const stats = useMemo(() => {
-    const all = allLeads || []
+    const nonEventLeads = (allLeads || []).filter(l => l.lead_type !== 'event')
     return {
-      total: all.length,
-      new: all.filter(l => l.status === 'new').length,
-      contacted: all.filter(l => l.status === 'contacted').length,
-      converted: all.filter(l => l.status === 'converted').length,
+      total: nonEventLeads.length,
+      new: nonEventLeads.filter(l => l.status === 'new').length,
+      contacted: nonEventLeads.filter(l => l.status === 'contacted').length,
+      converted: nonEventLeads.filter(l => l.status === 'converted').length,
     }
   }, [allLeads])
 
-  const selectedLead = leads?.find(l => l.id === selectedLeadId)
+  // Search in allLeads to find selected lead even if on different page
+  const selectedLead = allLeads?.find(l => l.id === selectedLeadId)
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -218,7 +233,6 @@ export default function Marketing() {
         showSuccess(`${succeeded} leads updated to ${newStatus}`)
       }
     } catch (err) {
-      console.error('Failed to update leads:', err)
       showError(err instanceof Error ? err.message : 'Failed to update leads')
     } finally {
       setIsBulkUpdating(false)
@@ -254,7 +268,6 @@ export default function Marketing() {
         showSuccess(`${succeeded} leads deleted`)
       }
     } catch (err) {
-      console.error('Failed to delete leads:', err)
       showError(err instanceof Error ? err.message : 'Failed to delete leads')
     } finally {
       setIsBulkDeleting(false)
@@ -265,6 +278,10 @@ export default function Marketing() {
   const handleBulkSync = async () => {
     const selectedLeads = leads.filter(l => selectedIds.has(l.id))
     if (selectedLeads.length === 0) return
+
+    if (!confirm(`Sync ${selectedLeads.length} lead(s) to Mailchimp? This will add/update them in your Mailchimp audience.`)) {
+      return
+    }
 
     setIsBulkSyncing(true)
     setBulkSyncResult(null)
@@ -300,7 +317,6 @@ export default function Marketing() {
       // Refresh leads to show updated mailchimp status
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
-      console.error('Failed to sync leads:', err)
       showError(err instanceof Error ? err.message : 'Failed to sync leads to Mailchimp')
       setBulkSyncResult({ success: 0, failed: selectedLeads.length })
     } finally {
@@ -439,7 +455,7 @@ export default function Marketing() {
             </button>
             {showUpcomingFollowUps && (
               <div className="px-4 pb-3 space-y-2">
-                {upcomingFollowUps.slice(0, 5).map((followUp) => (
+                {(showAllFollowUps ? upcomingFollowUps : upcomingFollowUps.slice(0, 5)).map((followUp) => (
                   <div
                     key={followUp.id}
                     className="flex items-center gap-3 p-2 bg-zinc-800/50 rounded-lg group"
@@ -472,8 +488,17 @@ export default function Marketing() {
                     </div>
                     <button
                       onClick={() => {
-                        const lead = leads.find(l => l.id === followUp.lead_id)
-                        if (lead) setSelectedLeadId(lead.id)
+                        // Search in allLeads (may be filtered) to check if lead is visible
+                        const lead = allLeads.find(l => l.id === followUp.lead_id)
+                        if (lead) {
+                          setSelectedLeadId(lead.id)
+                        } else {
+                          // Lead exists but may be filtered out - select it anyway and notify user
+                          setSelectedLeadId(followUp.lead_id)
+                          if (typeFilter || statusFilter || engagementFilter || search) {
+                            showWarning('Lead may be hidden by current filters. Clear filters to see full details.')
+                          }
+                        }
                       }}
                       className="flex-shrink-0 p-1 text-zinc-500 hover:text-white"
                     >
@@ -482,9 +507,14 @@ export default function Marketing() {
                   </div>
                 ))}
                 {upcomingFollowUps.length > 5 && (
-                  <p className="text-xs text-zinc-500 text-center py-1">
-                    +{upcomingFollowUps.length - 5} more follow-ups
-                  </p>
+                  <button
+                    onClick={() => setShowAllFollowUps(!showAllFollowUps)}
+                    className="w-full text-xs text-blue-400 hover:text-blue-300 text-center py-1"
+                  >
+                    {showAllFollowUps
+                      ? 'Show less'
+                      : `Show all ${upcomingFollowUps.length} follow-ups`}
+                  </button>
                 )}
               </div>
             )}
@@ -513,6 +543,7 @@ export default function Marketing() {
             <option value="exit_intent">Exit Intent</option>
             <option value="waitlist">Waitlist</option>
             <option value="calendly_call">Calendly</option>
+            <option value="event">Event</option>
           </select>
 
           <select
@@ -700,7 +731,7 @@ export default function Marketing() {
                     Last Contact
                   </th>
                   <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    #
+                    Contacts
                   </th>
                   <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
                     Days
@@ -727,10 +758,16 @@ export default function Marketing() {
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        <p className="text-sm font-medium text-white">
-                          {lead.name ? formatNameLastFirst(lead.name) : 'No name'}
-                        </p>
-                        <p className="text-sm text-zinc-400">{lead.email}</p>
+                        {lead.name ? (
+                          <>
+                            <p className="text-sm font-medium text-white">
+                              {formatNameLastFirst(lead.name)}
+                            </p>
+                            <p className="text-sm text-zinc-400">{lead.email}</p>
+                          </>
+                        ) : (
+                          <p className="text-sm font-medium text-white">{lead.email}</p>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -744,12 +781,12 @@ export default function Marketing() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <div className="flex flex-col items-center gap-0.5">
-                        <span className="text-sm font-medium text-white">{lead.computed_score ?? 0}</span>
-                        <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-medium rounded ${scoreLabelColors[getScoreLabel(lead.computed_score ?? 0)]}`}>
-                          {getScoreLabel(lead.computed_score ?? 0).toUpperCase()}
-                        </span>
-                      </div>
+                      <span
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded ${scoreLabelColors[getScoreLabel(lead.computed_score ?? 0)]}`}
+                        title={`Score: ${lead.computed_score ?? 0}`}
+                      >
+                        {getScoreLabel(lead.computed_score ?? 0).toUpperCase()}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
                       {lead.phone || '-'}
@@ -764,7 +801,7 @@ export default function Marketing() {
                       {lead.contact_count || 0}
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
-                      {getDaysInPipeline(lead.created_at)}d
+                      {getDaysInPipeline(lead.created_at)}
                     </td>
                     <td className="px-4 py-3">
                       <button
@@ -773,8 +810,9 @@ export default function Marketing() {
                           setEditingLead(lead)
                         }}
                         className="p-1 text-zinc-500 hover:text-white rounded"
+                        title="Edit lead"
                       >
-                        <MoreHorizontal className="w-4 h-4" />
+                        <Edit className="w-4 h-4" />
                       </button>
                     </td>
                   </tr>
@@ -849,16 +887,28 @@ export default function Marketing() {
 
         {/* Event Leads Tab Content */}
         {activeTab === 'event_leads' && (
-          <div className="space-y-6">
+          <div className="p-6 space-y-6 overflow-auto">
+            {/* Tab description */}
+            <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+              <p className="text-sm text-blue-300">
+                <strong>Event Leads</strong> shows two types of potential customers from events:
+                imported leads from event forms, and existing families who purchased event tickets but don't have active enrollments.
+              </p>
+            </div>
+
             {/* Event Type Leads from leads table */}
-            {eventTypeLeads.length > 0 && (
-              <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50">
-                <div className="p-4 border-b border-zinc-700/50">
-                  <h3 className="text-lg font-semibold text-white">Event Leads</h3>
-                  <p className="text-sm text-zinc-400 mt-1">
-                    Leads captured from events that need follow-up.
-                  </p>
+            <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50">
+              <div className="p-4 border-b border-zinc-700/50">
+                <h3 className="text-lg font-semibold text-white">Imported Event Leads</h3>
+                <p className="text-sm text-zinc-400 mt-1">
+                  Leads captured from event sign-up forms that need follow-up to convert to enrollments.
+                </p>
+              </div>
+              {eventTypeLeads.length === 0 ? (
+                <div className="p-8 text-center text-zinc-400">
+                  No imported event leads. Use "Import Leads" with the Event Orders source to add them.
                 </div>
+              ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -880,12 +930,18 @@ export default function Marketing() {
                             onClick={() => setSelectedLeadId(lead.id)}
                           >
                             <td className="px-4 py-3">
-                              <span className="font-medium text-white">{lead.name || 'Unknown'}</span>
+                              {lead.name ? (
+                                <span className="font-medium text-white">{formatNameLastFirst(lead.name)}</span>
+                              ) : (
+                                <span className="font-medium text-white">{lead.email}</span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
-                              <a href={`mailto:${lead.email}`} className="text-blue-400 hover:text-blue-300" onClick={(e) => e.stopPropagation()}>
-                                {lead.email}
-                              </a>
+                              {lead.name && (
+                                <a href={`mailto:${lead.email}`} className="text-blue-400 hover:text-blue-300" onClick={(e) => e.stopPropagation()}>
+                                  {lead.email}
+                                </a>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 text-xs font-medium rounded ${statusColors[lead.status]}`}>
@@ -906,8 +962,8 @@ export default function Marketing() {
                     </tbody>
                   </table>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             {/* Event Purchasers from event_leads view */}
             <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50">
@@ -934,6 +990,7 @@ export default function Marketing() {
                         <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Event Orders</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Total Spend</th>
                         <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Last Event Order</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-700/50">
@@ -972,6 +1029,15 @@ export default function Marketing() {
                             {eventLead.last_event_order_at
                               ? new Date(eventLead.last_event_order_at).toLocaleDateString()
                               : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => navigate(`/directory?family=${eventLead.family_id}`)}
+                              className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-zinc-700 text-zinc-300 rounded hover:bg-zinc-600 transition-colors"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              View Family
+                            </button>
                           </td>
                         </tr>
                       ))}

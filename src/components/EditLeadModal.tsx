@@ -76,7 +76,6 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
       })
       onClose()
     } catch (err) {
-      console.error('Failed to update lead:', err)
       setError(err instanceof Error ? err.message : 'Failed to update lead. Please try again.')
     } finally {
       setIsSubmitting(false)
