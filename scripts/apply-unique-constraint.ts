@@ -46,11 +46,11 @@ async function main() {
   }
 
   // Find duplicates
-  const duplicates = [...groups.entries()].filter(([_, records]) => records.length > 1)
+  const duplicates = [...groups.entries()].filter(([, records]) => records.length > 1)
 
   if (duplicates.length > 0) {
     console.log('ERROR: Found duplicates that must be resolved first:\n')
-    for (const [key, records] of duplicates) {
+    for (const [, records] of duplicates) {
       console.log(`  ${records[0].full_name}:`)
       for (const r of records) {
         console.log(`    - ID: ${r.id}`)

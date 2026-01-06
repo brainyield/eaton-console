@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { Mail, RefreshCw, AlertCircle, PenSquare, Search, X, ChevronDown } from 'lucide-react'
-import { useGmailSearch, useInvoiceEmailsByFamily } from '../../lib/hooks'
+import { useGmailSearch, useInvoiceEmailsByFamily, type InvoiceEmail } from '../../lib/hooks'
 import { EmailItem } from './EmailItem'
 import { EmailThreadModal } from './EmailThreadModal'
 import { EmailComposeModal } from './EmailComposeModal'
@@ -73,7 +73,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
 
     // Create a set of console email subjects+timestamps for deduplication
     const consoleSentKeys = new Set(
-      consoleEmails.map((ce: any) => {
+      consoleEmails.map((ce: InvoiceEmail) => {
         const timestamp = new Date(ce.sent_at).getTime()
         // Round to nearest minute for fuzzy matching
         const roundedTime = Math.floor(timestamp / 60000) * 60000
@@ -277,7 +277,7 @@ export function EmailHistory({ email, familyId }: EmailHistoryProps) {
               email={message}
               onView={() => handleView(message)}
               onReply={() => handleReply(message)}
-              isConsoleSent={(message as any).isConsoleSent}
+              isConsoleSent={'isConsoleSent' in message && message.isConsoleSent}
             />
           ))}
         </div>

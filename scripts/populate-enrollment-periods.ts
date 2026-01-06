@@ -63,7 +63,8 @@ async function main() {
   const updates: { id: string; period: string; serviceCode: string }[] = []
 
   for (const enrollment of enrollments) {
-    const serviceCode = (enrollment.service as any)?.code
+    const service = enrollment.service as { code: string } | null
+    const serviceCode = service?.code
     if (!serviceCode) {
       console.log(`  Skipping enrollment ${enrollment.id.slice(0, 8)}... - no service code`)
       continue

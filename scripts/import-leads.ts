@@ -179,14 +179,18 @@ function processCalendlyRouting(rows: Record<string, string>[]): LeadToInsert[] 
       let notes = row['Routing Status'] ? `Routing: ${row['Routing Status']}` : null
       // Parse answers for additional info
       try {
-        const answers = JSON.parse(row['Answers (JSON)'] || '[]')
-        const age = answers.find((a: any) => a.question?.includes('old is your child'))?.answer
-        const timing = answers.find((a: any) => a.question?.includes('start homeschooling'))?.answer
+        interface CalendlyAnswer {
+          question?: string
+          answer?: string
+        }
+        const answers = JSON.parse(row['Answers (JSON)'] || '[]') as CalendlyAnswer[]
+        const age = answers.find(a => a.question?.includes('old is your child'))?.answer
+        const timing = answers.find(a => a.question?.includes('start homeschooling'))?.answer
         if (age || timing) {
           notes = [notes, age ? `Child age: ${age}` : null, timing ? `Timing: ${timing}` : null]
             .filter(Boolean).join(' | ')
         }
-      } catch (err) {
+      } catch (err: unknown) {
         // JSON parse failed - answers field may be malformed, continue without enrichment
         console.warn(`Failed to parse answers JSON for ${row.emailAddress}:`, err)
       }

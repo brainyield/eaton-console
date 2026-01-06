@@ -53,9 +53,9 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
 
   // React Query - fetch enrollments for this family
- const { 
-  data: enrollments = [] as any[], 
-  isLoading: loadingEnrollments 
+ const {
+  data: enrollments = [],
+  isLoading: loadingEnrollments
 } = useEnrollmentsByFamily(family.id)
 
   // React Query - fetch invoices for this family
@@ -99,11 +99,11 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
   // Filter enrollments for display (hide ended by default)
   const visibleEnrollments = showEndedEnrollments
     ? enrollments
-    : enrollments.filter((e: any) => e.status !== 'ended')
+    : enrollments.filter(e => e.status !== 'ended')
 
   // Build a map of student_id -> enrollment info for display
   const studentEnrollmentMap = new Map<string, { total: number; active: number; services: string[] }>()
-  enrollments.forEach((enrollment: any) => {
+  enrollments.forEach(enrollment => {
     const studentId = enrollment.student_id
     if (!studentId) return
     
@@ -334,7 +334,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                   {visibleEnrollments.length === 0 ? (
                     <p className="text-sm text-zinc-400 text-center py-8">No active enrollments</p>
                   ) : (
-                    visibleEnrollments.map((enrollment: any) => (
+                    visibleEnrollments.map(enrollment => (
                       <div
                         key={enrollment.id}
                         className={`p-4 bg-zinc-800 rounded-lg ${enrollment.status === 'ended' ? 'opacity-60' : ''}`}
@@ -396,7 +396,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
               ) : invoices.length === 0 ? (
                 <div className="text-sm text-zinc-400 text-center py-8">No invoices found</div>
               ) : (
-                invoices.map((invoice: any) => (
+                invoices.map(invoice => (
                   <div
                     key={invoice.id}
                     className="p-4 bg-zinc-800 rounded-lg hover:bg-zinc-750 transition-colors"

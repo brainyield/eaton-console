@@ -23,6 +23,8 @@ import {
   getServiceShortName,
   type TeacherAssignmentWithDetails,
   type TeacherPayrollLineItem,
+  type TeacherWithLoad,
+  type TeacherPayment,
 } from '../lib/hooks'
 import { EditTeacherModal } from './EditTeacherModal'
 import { parseLocalDate } from '../lib/dateUtils'
@@ -206,7 +208,7 @@ export default function TeacherDetailPanel({ teacherId, onClose }: TeacherDetail
 // OVERVIEW TAB
 // ============================================================================
 
-function OverviewTab({ teacher }: { teacher: any }) {
+function OverviewTab({ teacher }: { teacher: TeacherWithLoad }) {
   const maxHours = teacher.max_hours_per_week ?? 30
 
   return (
@@ -574,7 +576,7 @@ function PayrollTab({
   isLoading,
   onRecordPayment,
 }: {
-  payments: any[]
+  payments: TeacherPayment[]
   payrollLineItems: TeacherPayrollLineItem[]
   isLoading: boolean
   onRecordPayment: () => void
@@ -593,7 +595,7 @@ function PayrollTab({
         pay_date: payment.pay_date,
         pay_period_start: payment.pay_period_start,
         pay_period_end: payment.pay_period_end,
-        total_amount: parseFloat(payment.total_amount) || 0,
+        total_amount: payment.total_amount || 0,
         payment_method: payment.payment_method || 'Manual',
         source: 'manual',
       })

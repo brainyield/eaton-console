@@ -49,18 +49,18 @@ export function EditStudentModal({
     queryKey: ['enrollments', 'byStudent', student?.id],
     queryFn: async () => {
       if (!student?.id) return []
-      const { data, error } = await (supabase
+      const { data, error } = await supabase
         .from('enrollments')
         .select('id, status, service:services(name), class_title')
-        .eq('student_id', student.id) as any)
+        .eq('student_id', student.id)
       if (error) throw error
       return data || []
     },
     enabled: !!student?.id && isOpen,
   })
 
-  const activeEnrollments = studentEnrollments.filter((e: any) => e.status === 'active' || e.status === 'trial')
-  const historicalEnrollments = studentEnrollments.filter((e: any) => e.status === 'ended' || e.status === 'paused')
+  const activeEnrollments = studentEnrollments.filter((e) => e.status === 'active' || e.status === 'trial')
+  const historicalEnrollments = studentEnrollments.filter((e) => e.status === 'ended' || e.status === 'paused')
 
   // Populate form when student changes
   useEffect(() => {

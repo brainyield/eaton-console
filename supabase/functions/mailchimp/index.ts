@@ -318,7 +318,7 @@ Deno.serve(async (req) => {
         }
         break
 
-      case 'bulk_sync':
+      case 'bulk_sync': {
         // Sync multiple leads with rate limiting to avoid Mailchimp API limits
         if (!Array.isArray(payload?.leads)) {
           throw new Error('leads array is required')
@@ -377,6 +377,7 @@ Deno.serve(async (req) => {
           })),
         }
         break
+      }
 
       case 'add_tags':
         if (!payload?.email || !Array.isArray(payload?.tags)) {

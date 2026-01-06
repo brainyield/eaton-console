@@ -93,7 +93,8 @@ async function main() {
   // Build set of enrolled student names (try both formats)
   const enrolledNames = new Set<string>()
   for (const e of enrollments || []) {
-    const name = (e.student as any)?.full_name || ''
+    const student = e.student as { full_name: string } | null
+    const name = student?.full_name || ''
     enrolledNames.add(normalizeName(name))
     enrolledNames.add(normalizeName(toDisplayName(name)))
   }

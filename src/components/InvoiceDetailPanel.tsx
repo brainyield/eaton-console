@@ -216,9 +216,9 @@ export default function InvoiceDetailPanel({
     try {
       await recalculateInvoiceBalance.mutateAsync(invoice.id)
       showSuccess('Invoice balance has been corrected!')
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to fix balance:', error)
-      showError(error?.message || 'Failed to fix balance')
+      showError(error instanceof Error ? error.message : 'Failed to fix balance')
     } finally {
       setFixingBalance(false)
     }
@@ -257,9 +257,9 @@ export default function InvoiceDetailPanel({
       setPaymentNotes('')
       const newStatus = amount >= balanceDue ? 'paid' : 'partial'
       showSuccess(`Payment of ${formatCurrency(amount)} recorded! Invoice is now ${newStatus}.`)
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to record payment:', error)
-      showError(error?.message || 'Failed to record payment')
+      showError(error instanceof Error ? error.message : 'Failed to record payment')
     } finally {
       setRecordingPayment(false)
     }

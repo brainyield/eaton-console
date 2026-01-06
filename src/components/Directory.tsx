@@ -99,7 +99,7 @@ function usePaginatedFamilies(
         let familyQuery = supabase
           .from('families')
           .select(`*, students (*)`)
-          .limit(SEARCH_LIMIT) as any
+          .limit(SEARCH_LIMIT)
 
         if (statusFilter === 'all') {
           // Exclude leads from Directory - they belong in Marketing view
@@ -119,20 +119,20 @@ function usePaginatedFamilies(
         // Also search for families by student name (separate query since Supabase
         // doesn't support filtering parent by child fields easily)
         // Limited to prevent unbounded fetching
-        let studentQuery = supabase
+        const studentQuery = supabase
           .from('students')
           .select('family_id')
           .ilike('full_name', `%${query}%`)
-          .limit(SEARCH_LIMIT) as any
+          .limit(SEARCH_LIMIT)
 
         const { data: studentMatches } = await studentQuery
-        const studentFamilyIds = new Set<string>((studentMatches || []).map((s: any) => s.family_id))
+        const studentFamilyIds = new Set<string>((studentMatches || []).map((s) => s.family_id))
 
         // If we have student matches, fetch those families too
-        let additionalFamilies: any[] = []
+        let additionalFamilies: typeof familyMatches = []
         if (studentFamilyIds.size > 0) {
           // Filter out families we already have
-          const existingIds = new Set((familyMatches || []).map((f: any) => f.id))
+          const existingIds = new Set((familyMatches || []).map((f) => f.id))
           const missingIds = [...studentFamilyIds].filter(id => !existingIds.has(id))
 
           // Limit to prevent fetching too many additional families
@@ -142,7 +142,7 @@ function usePaginatedFamilies(
             let additionalQuery = supabase
               .from('families')
               .select(`*, students (*)`)
-              .in('id', limitedMissingIds) as any
+              .in('id', limitedMissingIds)
 
             if (statusFilter === 'all') {
               // Exclude leads from Directory - they belong in Marketing view
@@ -157,20 +157,20 @@ function usePaginatedFamilies(
         }
 
         // Combine results
-        let allMatches = [...(familyMatches || []), ...additionalFamilies] as any[]
+        const allMatches = [...(familyMatches || []), ...additionalFamilies]
 
         // Get balances for all matching families
         const familyIds = allMatches.map(f => f.id)
-        let balanceMap: Map<string, number> = new Map()
+        const balanceMap: Map<string, number> = new Map()
         if (familyIds.length > 0) {
-          const { data: invoices } = await (supabase
+          const { data: invoices } = await supabase
             .from('invoices')
             .select('family_id, balance_due')
             .in('family_id', familyIds)
-            .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
+            .or('status.eq.sent,status.eq.partial,status.eq.overdue')
 
           if (invoices) {
-            (invoices as any[]).forEach(inv => {
+            invoices.forEach(inv => {
               const current = balanceMap.get(inv.family_id) || 0
               balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
             })
@@ -223,7 +223,7 @@ function usePaginatedFamilies(
         let familyQuery = supabase
           .from('families')
           .select('id', { count: 'exact' })
-          .limit(BALANCE_SORT_LIMIT) as any
+          .limit(BALANCE_SORT_LIMIT)
 
         if (statusFilter === 'all') {
           // Exclude leads from Directory - they belong in Marketing view
@@ -233,19 +233,19 @@ function usePaginatedFamilies(
         }
 
         const { data: allFamilyIds, count } = await familyQuery
-        const familyIds = (allFamilyIds || []).map((f: any) => f.id)
+        const familyIds = (allFamilyIds || []).map((f) => f.id)
 
         // Get balances from invoices directly (no Cartesian product issue)
-        let balanceMap: Map<string, number> = new Map()
+        const balanceMap: Map<string, number> = new Map()
         if (familyIds.length > 0) {
-          const { data: invoices } = await (supabase
+          const { data: invoices } = await supabase
             .from('invoices')
             .select('family_id, balance_due')
             .in('family_id', familyIds)
-            .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
+            .or('status.eq.sent,status.eq.partial,status.eq.overdue')
 
           if (invoices) {
-            (invoices as any[]).forEach(inv => {
+            invoices.forEach(inv => {
               const current = balanceMap.get(inv.family_id) || 0
               balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
             })
@@ -269,16 +269,16 @@ function usePaginatedFamilies(
         }
 
         // Fetch full family data for paginated IDs
-        const { data: familyData, error } = await (supabase
+        const { data: familyData, error } = await supabase
           .from('families')
           .select(`*, students (*)`)
-          .in('id', paginatedIds) as any)
+          .in('id', paginatedIds)
 
         if (error) throw error
 
         // Merge balance and maintain sort order
-        let familiesWithBalance = paginatedIds.map((id: string) => {
-          const family = (familyData || []).find((f: any) => f.id === id)
+        const familiesWithBalance = paginatedIds.map((id) => {
+          const family = (familyData || []).find((f) => f.id === id)
           return family ? {
             ...family,
             total_balance: balanceMap.get(id) || 0
@@ -294,7 +294,7 @@ function usePaginatedFamilies(
         .select(`
           *,
           students (*)
-        `, { count: 'exact' }) as any
+        `, { count: 'exact' })
 
       // Apply status filter - always exclude 'lead' status (leads belong in Marketing view)
       if (statusFilter === 'all') {
@@ -322,21 +322,21 @@ function usePaginatedFamilies(
 
       if (error) throw error
 
-      const familyData = (data || []) as any[]
+      const familyData = data || []
       const familyIds = familyData.map(f => f.id)
 
       // Query invoices directly - NOT the family_overview VIEW
       // The VIEW has a Cartesian product bug that multiplies balances
-      let balanceMap: Map<string, number> = new Map()
+      const balanceMap: Map<string, number> = new Map()
       if (familyIds.length > 0) {
-        const { data: invoices } = await (supabase
+        const { data: invoices } = await supabase
           .from('invoices')
           .select('family_id, balance_due')
           .in('family_id', familyIds)
-          .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
+          .or('status.eq.sent,status.eq.partial,status.eq.overdue')
 
         if (invoices) {
-          (invoices as any[]).forEach(inv => {
+          invoices.forEach(inv => {
             const current = balanceMap.get(inv.family_id) || 0
             balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
           })
@@ -371,28 +371,28 @@ function useFamilyById(id: string | null) {
     queryKey: queryKeys.families.detail(id || 'none'),
     queryFn: async () => {
       if (!id) return null
-      const { data, error } = await (supabase
+      const { data, error } = await supabase
         .from('families')
         .select(`*, students (*)`)
         .eq('id', id)
-        .single() as any)
+        .single()
 
       if (error) throw error
       
       // Query invoices directly - NOT the family_overview VIEW
       // The VIEW has a Cartesian product bug that multiplies balances
-      const { data: invoices } = await (supabase
+      const { data: invoices } = await supabase
         .from('invoices')
         .select('balance_due')
         .eq('family_id', id)
-        .or('status.eq.sent,status.eq.partial,status.eq.overdue') as any)
+        .or('status.eq.sent,status.eq.partial,status.eq.overdue')
 
-      const total_balance = (invoices as any[] | null)?.reduce(
-        (sum, inv) => sum + (Number(inv.balance_due) || 0), 
+      const total_balance = invoices?.reduce(
+        (sum, inv) => sum + (Number(inv.balance_due) || 0),
         0
       ) || 0
 
-      return { ...(data as any), total_balance } as FamilyWithStudents
+      return { ...data, total_balance } as FamilyWithStudents
     },
     enabled: !!id,
   })
@@ -447,11 +447,11 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   // Bulk update status mutation
   const bulkUpdateStatus = useMutation({
     mutationFn: async ({ ids, status }: { ids: string[], status: CustomerStatus }) => {
-      const table = supabase.from('families') as any
-      const { error } = await table
+      const { error } = await supabase
+        .from('families')
         .update({ status, updated_at: new Date().toISOString() })
         .in('id', ids)
-      
+
       if (error) throw error
     },
     onSuccess: () => {
@@ -465,31 +465,31 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const bulkDelete = useMutation({
     mutationFn: async (ids: string[]) => {
       // Check if any families have enrollments or invoices
-      const { data: enrollments } = await (supabase
+      const { data: enrollments } = await supabase
         .from('enrollments')
         .select('family_id')
         .in('family_id', ids)
-        .limit(1) as any)
+        .limit(1)
 
       if (enrollments && enrollments.length > 0) {
         throw new Error('Cannot delete families with enrollments. End enrollments first.')
       }
 
-      const { data: invoices } = await (supabase
+      const { data: invoices } = await supabase
         .from('invoices')
         .select('family_id')
         .in('family_id', ids)
-        .limit(1) as any)
+        .limit(1)
 
       if (invoices && invoices.length > 0) {
         throw new Error('Cannot delete families with invoices.')
       }
 
-      const { error } = await (supabase
+      const { error } = await supabase
         .from('families')
         .delete()
-        .in('id', ids) as any)
-      
+        .in('id', ids)
+
       if (error) throw error
     },
     onSuccess: () => {
@@ -953,7 +953,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
 
       {selectedFamily && (
         <FamilyDetailPanel
-          family={selectedFamily as any}
+          family={selectedFamily}
           onClose={handleClosePanel}
           onFamilyUpdated={handleFamilyUpdated}
         />

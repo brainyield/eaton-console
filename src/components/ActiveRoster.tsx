@@ -480,9 +480,8 @@ export default function ActiveRoster() {
     setShowEditModal(true)
   }
 
-  function handleTransferTeacher(assignment: any) {
-    if (!assignment) return
-    setCurrentAssignment(assignment as TeacherAssignment)
+  function handleTransferTeacher(assignment: TeacherAssignment) {
+    setCurrentAssignment(assignment)
     setShowDetailPanel(false)
     setShowTransferModal(true)
   }
@@ -884,13 +883,13 @@ export default function ActiveRoster() {
       {/* Detail Panel */}
       {showDetailPanel && selectedEnrollment && (
         <EnrollmentDetailPanel
-          enrollment={selectedEnrollment as any}
+          enrollment={selectedEnrollment}
           onClose={() => {
             setShowDetailPanel(false)
             setSelectedEnrollment(null)
           }}
           onEdit={handleEditEnrollment}
-          onTransferTeacher={handleTransferTeacher}
+          onTransferTeacher={(assignment) => handleTransferTeacher(assignment as unknown as TeacherAssignment)}
           onEndEnrollment={handleEndEnrollment}
         />
       )}
@@ -905,7 +904,7 @@ export default function ActiveRoster() {
       {/* Edit Enrollment Modal */}
       <EditEnrollmentModal
         isOpen={showEditModal}
-        enrollment={selectedEnrollment as any}
+        enrollment={selectedEnrollment}
         onClose={() => {
           setShowEditModal(false)
           setSelectedEnrollment(null)
@@ -931,7 +930,7 @@ export default function ActiveRoster() {
       {/* End Enrollment Modal */}
       <EndEnrollmentModal
         isOpen={showEndModal}
-        enrollment={selectedEnrollment as any}
+        enrollment={selectedEnrollment}
         onClose={() => {
           setShowEndModal(false)
           setSelectedEnrollment(null)

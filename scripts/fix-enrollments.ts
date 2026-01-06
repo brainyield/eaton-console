@@ -56,7 +56,7 @@ async function main() {
       continue
     }
 
-    const { data: enrollment, error: fetchError } = await supabase
+    const { data: enrollment } = await supabase
       .from('enrollments')
       .select('id, status')
       .eq('student_id', student.id)

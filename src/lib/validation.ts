@@ -99,7 +99,7 @@ export function isValidDateRange(startDate: string, endDate: string): boolean {
 export function isValidPhone(phone: string): boolean {
   if (!phone || phone.trim() === '') return true // Phone is often optional
   // Allow digits, spaces, dashes, parentheses, plus sign
-  const cleaned = phone.replace(/[\s\-\(\)\+]/g, '')
+  const cleaned = phone.replace(/[\s\-()+]/g, '')
   return /^\d{7,15}$/.test(cleaned)
 }
 

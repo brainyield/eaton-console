@@ -21,10 +21,12 @@ const ToastContext = createContext<ToastContextValue | null>(null)
 // Global toast function for use outside React components (e.g., in queryClient)
 let globalShowToast: ((message: string, type?: ToastType) => void) | null = null
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getGlobalToast() {
   return globalShowToast
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToast() {
   const context = useContext(ToastContext)
   if (!context) {

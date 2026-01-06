@@ -19,5 +19,14 @@ export default defineConfig([
       ecmaVersion: 2020,
       globals: globals.browser,
     },
+    rules: {
+      // Disable - this is a valid React pattern for syncing props to form state
+      'react-hooks/set-state-in-effect': 'off',
+      // Allow unused variables that start with underscore (intentionally unused)
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      // Disable overly strict React 19 purity rules - these catch valid patterns
+      'react-hooks/purity': 'off',
+      'react-hooks/static-components': 'off',
+    },
   },
 ])

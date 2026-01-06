@@ -228,7 +228,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
     }
 
     result.sort((a, b) => {
-      let aVal: any, bVal: any
+      let aVal: string | number, bVal: string | number
       switch (eventSortConfig.field) {
         case 'title':
           aVal = a.title.toLowerCase()
@@ -283,7 +283,7 @@ export default function Events({ onSelectFamily }: EventsProps) {
 
     // Sort
     result.sort((a, b) => {
-      let aVal: any, bVal: any
+      let aVal: string, bVal: string
       switch (attendeeSortConfig.field) {
         case 'attendee_name':
           aVal = formatNameLastFirst(a.attendee_name).toLowerCase()

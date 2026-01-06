@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 
 export interface RecentItem {
   id: string
@@ -33,12 +33,7 @@ function saveItems(items: RecentItem[]): void {
 }
 
 export function useRecentlyViewed() {
-  const [items, setItems] = useState<RecentItem[]>([])
-
-  // Load from localStorage on mount
-  useEffect(() => {
-    setItems(getStoredItems())
-  }, [])
+  const [items, setItems] = useState<RecentItem[]>(getStoredItems)
 
   const addItem = useCallback((item: Omit<RecentItem, 'timestamp'>) => {
     setItems(current => {

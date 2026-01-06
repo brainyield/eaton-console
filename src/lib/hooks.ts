@@ -422,8 +422,9 @@ export function useFamilyMutations() {
 
   const createFamily = useMutation({
     mutationFn: async (data: Partial<Family>) => {
-      const { data: family, error } = await (supabase.from('families') as any)
-        .insert(data)
+      const { data: family, error } = await supabase.from('families')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(data as any)
         .select()
         .single()
       if (error) throw error
@@ -437,7 +438,7 @@ export function useFamilyMutations() {
 
   const updateFamily = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Family> }) => {
-      const { data: family, error } = await (supabase.from('families') as any)
+      const { data: family, error } = await supabase.from('families')
         .update(data)
         .eq('id', id)
         .select()
@@ -505,7 +506,7 @@ export function useStudentMutations() {
         // Normalize the input name to "Last, First" format for comparison
         const inputNormalized = formatNameLastFirst(data.full_name).trim().toLowerCase()
 
-        const duplicate = existingStudents?.find((s: any) => {
+        const duplicate = existingStudents?.find(s => {
           // Normalize existing student names the same way
           const existingNormalized = formatNameLastFirst(s.full_name).trim().toLowerCase()
           return existingNormalized === inputNormalized
@@ -516,8 +517,9 @@ export function useStudentMutations() {
         }
       }
 
-      const { data: student, error } = await (supabase.from('students') as any)
-        .insert(data)
+      const { data: student, error } = await supabase.from('students')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(data as any)
         .select()
         .single()
       if (error) throw error
@@ -534,7 +536,7 @@ export function useStudentMutations() {
 
   const updateStudent = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Student> }) => {
-      const { data: student, error } = await (supabase.from('students') as any)
+      const { data: student, error } = await supabase.from('students')
         .update(data)
         .eq('id', id)
         .select()
@@ -557,16 +559,16 @@ export function useStudentMutations() {
     mutationFn: async (id: string) => {
       // Check for active enrollments BEFORE deleting
       // The database has ON DELETE CASCADE which would silently delete enrollments!
-      const { data: enrollments, error: checkError } = await (supabase
+      const { data: enrollments, error: checkError } = await supabase
         .from('enrollments')
         .select('id, status')
-        .eq('student_id', id) as any)
-      
+        .eq('student_id', id)
+
       if (checkError) throw checkError
-      
+
       if (enrollments && enrollments.length > 0) {
-        const activeCount = enrollments.filter((e: any) => e.status === 'active' || e.status === 'trial').length
-        const endedCount = enrollments.filter((e: any) => e.status === 'ended' || e.status === 'paused').length
+        const activeCount = enrollments.filter(e => e.status === 'active' || e.status === 'trial').length
+        const endedCount = enrollments.filter(e => e.status === 'ended' || e.status === 'paused').length
         
         if (activeCount > 0) {
           throw new Error(`Cannot delete student with ${activeCount} active enrollment${activeCount !== 1 ? 's' : ''}. End the enrollments first.`)
@@ -592,11 +594,11 @@ export function useStudentMutations() {
   const forceDeleteStudent = useMutation({
     mutationFn: async (id: string) => {
       // Only check for ACTIVE enrollments - block those
-      const { data: activeEnrollments, error: checkError } = await (supabase
+      const { data: activeEnrollments, error: checkError } = await supabase
         .from('enrollments')
         .select('id')
         .eq('student_id', id)
-        .in('status', ['active', 'trial']) as any)
+        .in('status', ['active', 'trial'])
       
       if (checkError) throw checkError
       
@@ -680,8 +682,9 @@ export function useTeacherMutations() {
 
   const createTeacher = useMutation({
     mutationFn: async (data: Partial<Teacher>) => {
-      const { data: teacher, error } = await (supabase.from('teachers') as any)
-        .insert(data)
+      const { data: teacher, error } = await supabase.from('teachers')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(data as any)
         .select()
         .single()
       if (error) throw error
@@ -696,7 +699,7 @@ export function useTeacherMutations() {
 
   const updateTeacher = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Teacher> }) => {
-      const { data: teacher, error } = await (supabase.from('teachers') as any)
+      const { data: teacher, error } = await supabase.from('teachers')
         .update(data)
         .eq('id', id)
         .select()
@@ -752,8 +755,8 @@ export function useTeacherAssignments(teacherId: string | undefined) {
       if (!teacherId) return []
       
       // Fetch enrollment-level assignments
-      const { data: enrollmentAssignments, error: error1 } = await (supabase
-        .from('teacher_assignments') as any)
+      const { data: enrollmentAssignments, error: error1 } = await supabase
+        .from('teacher_assignments')
         .select(`
           id,
           teacher_id,
@@ -784,8 +787,8 @@ export function useTeacherAssignments(teacherId: string | undefined) {
       if (error1) throw error1
       
       // Fetch service-level assignments
-      const { data: serviceAssignments, error: error2 } = await (supabase
-        .from('teacher_assignments') as any)
+      const { data: serviceAssignments, error: error2 } = await supabase
+        .from('teacher_assignments')
         .select(`
           id,
           teacher_id,
@@ -834,8 +837,8 @@ export function useTeachersWithLoad(filters?: { status?: string }) {
       if (!teachers || teachers.length === 0) return []
       
       // Fetch ALL active assignments in one query
-      const { data: allEnrollmentAssignments, error: error1 } = await (supabase
-        .from('teacher_assignments') as any)
+      const { data: allEnrollmentAssignments, error: error1 } = await supabase
+        .from('teacher_assignments')
         .select(`
           id,
           teacher_id,
@@ -863,8 +866,8 @@ export function useTeachersWithLoad(filters?: { status?: string }) {
       
       if (error1) throw error1
       
-      const { data: allServiceAssignments, error: error2 } = await (supabase
-        .from('teacher_assignments') as any)
+      const { data: allServiceAssignments, error: error2 } = await supabase
+        .from('teacher_assignments')
         .select(`
           id,
           teacher_id,
@@ -987,7 +990,7 @@ export function useEnrollments(filters?: { status?: string; serviceId?: string; 
   return useQuery({
     queryKey: queryKeys.enrollments.list(filters),
     queryFn: async () => {
-      let query = (supabase.from('enrollments') as any)
+      let query = supabase.from('enrollments')
         .select(`
           *,
           student:students(*),
@@ -1002,7 +1005,8 @@ export function useEnrollments(filters?: { status?: string; serviceId?: string; 
         .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        query = query.eq('status', filters.status as any)
       }
 
       if (filters?.serviceId) {
@@ -1024,7 +1028,7 @@ export function useEnrollmentsByFamily(familyId: string) {
   return useQuery({
     queryKey: queryKeys.enrollments.byFamily(familyId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('enrollments') as any)
+      const { data, error } = await supabase.from('enrollments')
         .select(`
           *,
           student:students(*),
@@ -1038,7 +1042,7 @@ export function useEnrollmentsByFamily(familyId: string) {
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      return data as EnrollmentWithDetails[]
+      return data as unknown as EnrollmentWithDetails[]
     },
     enabled: !!familyId,
   })
@@ -1048,7 +1052,7 @@ export function useEnrollment(id: string) {
   return useQuery({
     queryKey: queryKeys.enrollments.detail(id),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('enrollments') as any)
+      const { data, error } = await supabase.from('enrollments')
         .select(`
           *,
           student:students(*),
@@ -1077,15 +1081,16 @@ export function useEnrollmentMutations() {
       const { teacher_id, hourly_rate_teacher, ...enrollmentData } = data
 
       // Create enrollment
-      const { data: enrollment, error } = await (supabase.from('enrollments') as any)
-        .insert(enrollmentData)
+      const { data: enrollment, error } = await supabase.from('enrollments')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(enrollmentData as any)
         .select()
         .single()
       if (error) throw error
 
       // Create teacher assignment if provided
       if (teacher_id) {
-        const { error: assignError } = await (supabase.from('teacher_assignments') as any)
+        const { error: assignError } = await supabase.from('teacher_assignments')
           .insert({
             enrollment_id: enrollment.id,
             teacher_id,
@@ -1116,7 +1121,7 @@ export function useEnrollmentMutations() {
 
   const updateEnrollment = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Enrollment> }) => {
-      const { data: enrollment, error } = await (supabase.from('enrollments') as any)
+      const { data: enrollment, error } = await supabase.from('enrollments')
         .update(data)
         .eq('id', id)
         .select()
@@ -1141,7 +1146,7 @@ export function useEnrollmentMutations() {
   const deleteEnrollment = useMutation({
     mutationFn: async (id: string) => {
       // Fetch the enrollment first to get family_id and student_id for invalidation
-      const { data: enrollment, error: fetchError } = await (supabase.from('enrollments') as any)
+      const { data: enrollment, error: fetchError } = await supabase.from('enrollments')
         .select('family_id, student_id')
         .eq('id', id)
         .single()
@@ -1177,7 +1182,7 @@ export function useTeacherAssignmentsByEnrollment(enrollmentId: string) {
   return useQuery({
     queryKey: queryKeys.teacherAssignments.byEnrollment(enrollmentId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('teacher_assignments') as any)
+      const { data, error } = await supabase.from('teacher_assignments')
         .select(`
           *,
           teacher:teachers(id, display_name, email, status)
@@ -1200,7 +1205,7 @@ export function useTeacherAssignmentsByTeacher(
   return useQuery({
     queryKey: queryKeys.teacherAssignments.byTeacher(teacherId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('teacher_assignments') as any)
+      const { data, error } = await supabase.from('teacher_assignments')
         .select(`
           *,
           enrollment:enrollments(
@@ -1215,7 +1220,7 @@ export function useTeacherAssignmentsByTeacher(
         .order('created_at', { ascending: false })
 
       if (error) throw error
-      return data as (TeacherAssignment & { enrollment: EnrollmentWithDetails })[]
+      return data as unknown as (TeacherAssignment & { enrollment: EnrollmentWithDetails })[]
     },
     enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
   })
@@ -1226,8 +1231,9 @@ export function useTeacherAssignmentMutations() {
 
   const createAssignment = useMutation({
     mutationFn: async (data: Partial<TeacherAssignment>) => {
-      const { data: assignment, error } = await (supabase.from('teacher_assignments') as any)
-        .insert(data)
+      const { data: assignment, error } = await supabase.from('teacher_assignments')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .insert(data as any)
         .select()
         .single()
       if (error) throw error
@@ -1242,7 +1248,7 @@ export function useTeacherAssignmentMutations() {
 
   const updateAssignment = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<TeacherAssignment> }) => {
-      const { data: assignment, error } = await (supabase.from('teacher_assignments') as any)
+      const { data: assignment, error } = await supabase.from('teacher_assignments')
         .update(data)
         .eq('id', id)
         .select()
@@ -1280,7 +1286,7 @@ export function useTeacherAssignmentMutations() {
       
       // End old assignment if exists and endPrevious is true
       if (oldTeacherId && endPrevious) {
-        await (supabase.from('teacher_assignments') as any)
+        await supabase.from('teacher_assignments')
           .update({ is_active: false, end_date: today })
           .eq('enrollment_id', enrollmentId)
           .eq('teacher_id', oldTeacherId)
@@ -1288,7 +1294,7 @@ export function useTeacherAssignmentMutations() {
       }
 
       // Create new assignment
-      const { data, error } = await (supabase.from('teacher_assignments') as any)
+      const { data, error } = await supabase.from('teacher_assignments')
         .insert({
           enrollment_id: enrollmentId,
           teacher_id: newTeacherId,
@@ -1321,7 +1327,7 @@ export function useTeacherAssignmentMutations() {
         ? getTodayString()
         : params.endDate || getTodayString()
 
-      const { error } = await (supabase.from('teacher_assignments') as any)
+      const { error } = await supabase.from('teacher_assignments')
         .update({ is_active: false, end_date: endDate })
         .eq('enrollment_id', enrollmentId)
         .eq('is_active', true)
@@ -1338,7 +1344,7 @@ export function useTeacherAssignmentMutations() {
   // Delete assignment permanently (use with caution - prefer deactivation)
   const deleteAssignment = useMutation({
     mutationFn: async (assignmentId: string) => {
-      const { error } = await (supabase.from('teacher_assignments') as any)
+      const { error } = await supabase.from('teacher_assignments')
         .delete()
         .eq('id', assignmentId)
 
@@ -1366,7 +1372,7 @@ export function useTeacherPaymentsByTeacher(
   return useQuery({
     queryKey: queryKeys.teacherPayments.byTeacher(teacherId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('teacher_payments') as any)
+      const { data, error } = await supabase.from('teacher_payments')
         .select(`
           *,
           line_items:teacher_payment_line_items(*)
@@ -1375,7 +1381,7 @@ export function useTeacherPaymentsByTeacher(
         .order('pay_date', { ascending: false })
 
       if (error) throw error
-      return data as (TeacherPayment & { line_items: any[] })[]
+      return data as (TeacherPayment & { line_items: unknown[] })[]
     },
     enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
   })
@@ -1414,7 +1420,7 @@ export function useTeacherPaymentMutations() {
       }
 
       // Create payment
-      const { data: payment, error } = await (supabase.from('teacher_payments') as any)
+      const { data: payment, error } = await supabase.from('teacher_payments')
         .insert(cleanedPaymentData)
         .select()
         .single()
@@ -1422,7 +1428,7 @@ export function useTeacherPaymentMutations() {
 
       // Create line items
       if (line_items.length > 0) {
-        const { error: itemsError } = await (supabase.from('teacher_payment_line_items') as any)
+        const { error: itemsError } = await supabase.from('teacher_payment_line_items')
           .insert(line_items.map(li => ({
             ...li,
             teacher_payment_id: payment.id,
@@ -1469,7 +1475,7 @@ export function useInvoices(filters?: { status?: string | string[]; limit?: numb
   return useQuery({
     queryKey: queryKeys.invoices.list(filters),
     queryFn: async () => {
-      let query = (supabase.from('invoices') as any)
+      let query = supabase.from('invoices')
         .select(`
           *,
           family:families(*)
@@ -1479,9 +1485,11 @@ export function useInvoices(filters?: { status?: string | string[]; limit?: numb
 
       if (filters?.status) {
         if (Array.isArray(filters.status)) {
-          query = query.in('status', filters.status)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          query = query.in('status', filters.status as any)
         } else if (filters.status !== 'all') {
-          query = query.eq('status', filters.status)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          query = query.eq('status', filters.status as any)
         }
       }
 
@@ -1496,7 +1504,7 @@ export function useInvoicesByFamily(familyId: string) {
   return useQuery({
     queryKey: queryKeys.invoices.byFamily(familyId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('invoices') as any)
+      const { data, error } = await supabase.from('invoices')
         .select(`
           *,
           line_items:invoice_line_items(*)
@@ -1515,7 +1523,7 @@ export function useInvoicesWithDetails(filters?: { status?: string | string[] })
   return useQuery({
     queryKey: queryKeys.invoices.withDetails(filters),
     queryFn: async () => {
-      let query = (supabase.from('invoices') as any)
+      let query = supabase.from('invoices')
         .select(`
           *,
           family:families(*),
@@ -1530,9 +1538,11 @@ export function useInvoicesWithDetails(filters?: { status?: string | string[] })
 
       if (filters?.status) {
         if (Array.isArray(filters.status)) {
-          query = query.in('status', filters.status)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          query = query.in('status', filters.status as any)
         } else if (filters.status !== 'all') {
-          query = query.eq('status', filters.status)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          query = query.eq('status', filters.status as any)
         }
       }
 
@@ -1540,9 +1550,10 @@ export function useInvoicesWithDetails(filters?: { status?: string | string[] })
       if (error) throw error
 
       // Extract service codes from line items (only from enrollment relationships)
-      return (data || []).map((inv: any) => {
+      return (data || []).map(inv => {
         const serviceCodes = new Set<string>()
-        inv.line_items?.forEach((li: InvoiceLineItem) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        inv.line_items?.forEach((li: any) => {
           const code = li.enrollment?.service?.code
           if (code) serviceCodes.add(code)
         })
@@ -1559,7 +1570,7 @@ export function useBillableEnrollments(serviceFilter?: string) {
   return useQuery({
     queryKey: queryKeys.enrollments.billable(serviceFilter),
     queryFn: async () => {
-      let query = (supabase.from('enrollments') as any)
+      let query = supabase.from('enrollments')
         .select(`
           *,
           student:students(*),
@@ -1588,7 +1599,7 @@ export function useExistingInvoicesForPeriod(periodStart: string, periodEnd: str
   return useQuery({
     queryKey: queryKeys.invoices.byPeriod(periodStart, periodEnd),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('invoices') as any)
+      const { data, error } = await supabase.from('invoices')
         .select(`
           *,
           line_items:invoice_line_items(enrollment_id)
@@ -1664,7 +1675,7 @@ export function usePendingEventOrders(familyId?: string) {
       if (error) throw error
 
       // Transform to flat structure
-      return (data || []).map((order: any) => ({
+      return (data || []).map(order => ({
         id: order.id,
         event_id: order.event_id,
         family_id: order.family_id,
@@ -1719,7 +1730,7 @@ export function usePendingClassRegistrationFees() {
       if (error) throw error
 
       // Transform to flat structure
-      return (data || []).map((order: any) => ({
+      return (data || []).map(order => ({
         id: order.id,
         family_id: order.family_id,
         total_cents: order.total_cents,
@@ -1741,7 +1752,7 @@ export function useEventOrderMutations() {
       orderIds: string[]
       familyId: string
     }) => {
-      const { error } = await (supabase.from('event_orders') as any)
+      const { error } = await supabase.from('event_orders')
         .update({ family_id: familyId })
         .in('id', orderIds)
 
@@ -1761,7 +1772,7 @@ export function useInvoiceEmails(invoiceId: string) {
   return useQuery({
     queryKey: queryKeys.invoiceEmails.byInvoice(invoiceId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('invoice_emails') as any)
+      const { data, error } = await supabase.from('invoice_emails')
         .select('*')
         .eq('invoice_id', invoiceId)
         .order('sent_at', { ascending: false })
@@ -1789,7 +1800,7 @@ export function useInvoicePayments(invoiceId: string) {
   return useQuery({
     queryKey: queryKeys.invoicePayments.byInvoice(invoiceId),
     queryFn: async () => {
-      const { data, error } = await (supabase.from('payments') as any)
+      const { data, error } = await supabase.from('payments')
         .select('*')
         .eq('invoice_id', invoiceId)
         .order('payment_date', { ascending: false })
@@ -1807,10 +1818,10 @@ export function useInvoiceEmailsByFamily(familyId: string) {
     queryKey: queryKeys.invoiceEmails.byFamily(familyId),
     queryFn: async () => {
       // First get all invoice IDs for this family
-      const { data: invoices, error: invoicesError } = await (supabase
+      const { data: invoices, error: invoicesError } = await supabase
         .from('invoices')
         .select('id, invoice_number')
-        .eq('family_id', familyId) as any)
+        .eq('family_id', familyId)
 
       if (invoicesError) throw invoicesError
       if (!invoices || invoices.length === 0) return []
@@ -1819,7 +1830,7 @@ export function useInvoiceEmailsByFamily(familyId: string) {
       const invoiceMap = new Map((invoices as { id: string; invoice_number: string }[]).map(inv => [inv.id, inv.invoice_number]))
 
       // Then get all emails for those invoices
-      const { data: emails, error: emailsError } = await (supabase.from('invoice_emails') as any)
+      const { data: emails, error: emailsError } = await supabase.from('invoice_emails')
         .select('*')
         .in('invoice_id', invoiceIds)
         .order('sent_at', { ascending: false })
@@ -1896,7 +1907,7 @@ export function useInvoiceMutations() {
       for (const [familyId, group] of Object.entries(byFamily)) {
         try {
         // Create invoice
-        const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
+        const { data: invoice, error: invError } = await supabase.from('invoices')
           .insert({
             family_id: familyId,
             invoice_date: getTodayString(),
@@ -1987,7 +1998,7 @@ export function useInvoiceMutations() {
 
             if (pendingOrders && pendingOrders.length > 0) {
               // Match pending orders to enrollments by class title
-              for (const order of pendingOrders as any[]) {
+              for (const order of pendingOrders) {
                 const eventTitle = order.event?.title || ''
                 // Find matching enrollment by class_title
                 const matchingEnrollment = electiveEnrollments.find(e =>
@@ -2015,9 +2026,10 @@ export function useInvoiceMutations() {
         for (const regFee of pendingRegistrationFees) {
           const amount = centsToDollars(regFee.total_cents)
           subtotal = addMoney(subtotal, amount)
-          lineItems.push({
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ;(lineItems as any[]).push({
             invoice_id: invoice.id,
-            enrollment_id: null as any, // Registration fees don't link to enrollments
+            enrollment_id: null, // Registration fees don't link to enrollments
             description: `${regFee.student_name} - Registration Fee: ${regFee.event_title}`,
             quantity: 1,
             unit_price: amount,
@@ -2026,8 +2038,9 @@ export function useInvoiceMutations() {
           })
         }
 
-        const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
-          .insert(lineItems)
+        const { error: itemsError } = await supabase.from('invoice_line_items')
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .insert(lineItems as any)
 
         if (itemsError) {
           // Clean up the created invoice since line items failed
@@ -2040,7 +2053,7 @@ export function useInvoiceMutations() {
         }
 
         // Update invoice totals
-        const { error: updateError } = await (supabase.from('invoices') as any)
+        const { error: updateError } = await supabase.from('invoices')
           .update({
             subtotal,
             total_amount: subtotal,
@@ -2061,12 +2074,12 @@ export function useInvoiceMutations() {
         // Link registration fee event_orders to this invoice
         if (pendingRegistrationFees.length > 0) {
           const orderIds = pendingRegistrationFees.map(f => f.id)
-          await (supabase.from('event_orders') as any)
+          await supabase.from('event_orders')
             .update({ invoice_id: invoice.id })
             .in('id', orderIds)
         }
 
-        createdInvoices.push(invoice)
+        createdInvoices.push(invoice as unknown as Invoice)
         } catch (err) {
           // Catch any unexpected errors in the family processing
           failedFamilies.push({
@@ -2083,9 +2096,9 @@ export function useInvoiceMutations() {
 
       // If some families failed, throw an error with partial success info
       if (failedFamilies.length > 0) {
-        const error = new Error(`Generated ${createdInvoices.length} invoices, but ${failedFamilies.length} failed: ${failedFamilies.map(f => f.familyName).join(', ')}`)
+        const error = new Error(`Generated ${createdInvoices.length} invoices, but ${failedFamilies.length} failed: ${failedFamilies.map(f => f.familyName).join(', ')}`) as Error & { createdInvoices?: Invoice[] }
         // Attach the created invoices to the error so they can still be used
-        ;(error as any).createdInvoices = createdInvoices
+        error.createdInvoices = createdInvoices
         throw error
       }
 
@@ -2112,7 +2125,7 @@ export function useInvoiceMutations() {
       dueDate: string
     }) => {
       // Create invoice
-      const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
+      const { data: invoice, error: invError } = await supabase.from('invoices')
         .insert({
           family_id: familyId,
           invoice_date: getTodayString(),
@@ -2151,13 +2164,13 @@ export function useInvoiceMutations() {
         }
       })
 
-      const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
+      const { error: itemsError } = await supabase.from('invoice_line_items')
         .insert(lineItems)
 
       if (itemsError) throw itemsError
 
       // Update invoice totals
-      const { error: updateError } = await (supabase.from('invoices') as any)
+      const { error: updateError } = await supabase.from('invoices')
         .update({
           subtotal,
           total_amount: subtotal,
@@ -2167,7 +2180,7 @@ export function useInvoiceMutations() {
       if (updateError) throw updateError
 
       // Link event_orders to this invoice
-      const { error: linkError } = await (supabase.from('event_orders') as any)
+      const { error: linkError } = await supabase.from('event_orders')
         .update({ invoice_id: invoice.id })
         .in('id', orderIds)
 
@@ -2183,7 +2196,7 @@ export function useInvoiceMutations() {
 
   const updateInvoice = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Invoice> }) => {
-      const { data: invoice, error } = await (supabase.from('invoices') as any)
+      const { data: invoice, error } = await supabase.from('invoices')
         .update(data)
         .eq('id', id)
         .select()
@@ -2193,7 +2206,7 @@ export function useInvoiceMutations() {
       // Sync event_orders when invoice is marked as paid
       // This updates Step Up event registrations linked to this invoice
       if (data.status === 'paid') {
-        const { error: syncError } = await (supabase.from('event_orders') as any)
+        const { error: syncError } = await supabase.from('event_orders')
           .update({
             payment_status: 'paid',
             paid_at: new Date().toISOString(),
@@ -2219,7 +2232,7 @@ export function useInvoiceMutations() {
 
   const updateLineItem = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<InvoiceLineItem> }) => {
-      const { data: lineItem, error } = await (supabase.from('invoice_line_items') as any)
+      const { data: lineItem, error } = await supabase.from('invoice_line_items')
         .update(data)
         .eq('id', id)
         .select()
@@ -2252,7 +2265,7 @@ export function useInvoiceMutations() {
         sort_order?: number
       }
     }) => {
-      const { data: lineItem, error } = await (supabase.from('invoice_line_items') as any)
+      const { data: lineItem, error } = await supabase.from('invoice_line_items')
         .insert({
           ...data,
           invoice_id: invoiceId,
@@ -2293,7 +2306,7 @@ export function useInvoiceMutations() {
   const deleteInvoice = useMutation({
     mutationFn: async (id: string) => {
       // Unlink any event_orders referencing this invoice first
-      await (supabase.from('event_orders') as any)
+      await supabase.from('event_orders')
         .update({ invoice_id: null, payment_status: 'stepup_pending' })
         .eq('invoice_id', id)
 
@@ -2309,7 +2322,7 @@ export function useInvoiceMutations() {
   const bulkDeleteInvoices = useMutation({
     mutationFn: async (ids: string[]) => {
       // Unlink any event_orders referencing these invoices first
-      await (supabase.from('event_orders') as any)
+      await supabase.from('event_orders')
         .update({ invoice_id: null, payment_status: 'stepup_pending' })
         .in('invoice_id', ids)
 
@@ -2324,7 +2337,7 @@ export function useInvoiceMutations() {
 
   const voidInvoice = useMutation({
     mutationFn: async (id: string) => {
-      const { data: invoice, error } = await (supabase.from('invoices') as any)
+      const { data: invoice, error } = await supabase.from('invoices')
         .update({ status: 'void' })
         .eq('id', id)
         .select()
@@ -2340,7 +2353,7 @@ export function useInvoiceMutations() {
 
   const bulkVoidInvoices = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await (supabase.from('invoices') as any)
+      const { error } = await supabase.from('invoices')
         .update({ status: 'void' })
         .in('id', ids)
       if (error) throw error
@@ -2369,7 +2382,7 @@ export function useInvoiceMutations() {
       notes?: string
     }) => {
       // First, get the invoice to know the current amounts
-      const { data: invoice, error: fetchError } = await (supabase.from('invoices') as any)
+      const { data: invoice, error: fetchError } = await supabase.from('invoices')
         .select('id, total_amount, amount_paid, balance_due, status')
         .eq('id', invoiceId)
         .single()
@@ -2393,7 +2406,7 @@ export function useInvoiceMutations() {
       }
 
       // Create a payment record
-      const { error: paymentError } = await (supabase.from('payments') as any)
+      const { error: paymentError } = await supabase.from('payments')
         .insert({
           invoice_id: invoiceId,
           amount: actualPaymentAmount,
@@ -2412,7 +2425,7 @@ export function useInvoiceMutations() {
       const newStatus = newBalanceDue <= 0 ? 'paid' : 'partial'
 
       // Update the invoice status and amount_paid (balance_due is a computed column)
-      const { data: updatedInvoice, error: updateError } = await (supabase.from('invoices') as any)
+      const { data: updatedInvoice, error: updateError } = await supabase.from('invoices')
         .update({
           status: newStatus,
           amount_paid: newAmountPaid,
@@ -2425,7 +2438,7 @@ export function useInvoiceMutations() {
 
       // Sync event_orders when invoice is fully paid
       if (newStatus === 'paid') {
-        const { error: syncError } = await (supabase.from('event_orders') as any)
+        const { error: syncError } = await supabase.from('event_orders')
           .update({
             payment_status: 'paid',
             paid_at: new Date().toISOString(),
@@ -2453,7 +2466,7 @@ export function useInvoiceMutations() {
   const recalculateInvoiceBalance = useMutation({
     mutationFn: async (invoiceId: string) => {
       // Get the invoice
-      const { data: invoice, error: invoiceError } = await (supabase.from('invoices') as any)
+      const { data: invoice, error: invoiceError } = await supabase.from('invoices')
         .select('id, total_amount, status')
         .eq('id', invoiceId)
         .single()
@@ -2462,7 +2475,7 @@ export function useInvoiceMutations() {
       if (!invoice) throw new Error('Invoice not found')
 
       // Get total of all payments for this invoice
-      const { data: payments, error: paymentsError } = await (supabase.from('payments') as any)
+      const { data: payments, error: paymentsError } = await supabase.from('payments')
         .select('amount')
         .eq('invoice_id', invoiceId)
 
@@ -2484,7 +2497,7 @@ export function useInvoiceMutations() {
       }
 
       // Update the invoice with correct amounts (balance_due is a computed column)
-      const { data: updatedInvoice, error: updateError } = await (supabase.from('invoices') as any)
+      const { data: updatedInvoice, error: updateError } = await supabase.from('invoices')
         .update({
           amount_paid: Math.min(actualAmountPaid, totalAmount), // Cap at total amount
           status: correctStatus,
@@ -2507,7 +2520,7 @@ export function useInvoiceMutations() {
   const sendInvoice = useMutation({
     mutationFn: async (invoiceId: string) => {
       // First, get the full invoice with family and line items
-      const { data: invoice, error: fetchError } = await (supabase.from('invoices') as any)
+      const { data: invoice, error: fetchError } = await supabase.from('invoices')
         .select(`
           *,
           family:families(*),
@@ -2546,7 +2559,8 @@ export function useInvoiceMutations() {
           period_start: invoice.period_start,
           period_end: invoice.period_end,
         },
-        line_items: (invoice.line_items || []).map((li: InvoiceLineItem) => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        line_items: (invoice.line_items || []).map((li: any) => ({
           description: li.description,
           amount: li.amount,
         })),
@@ -2564,7 +2578,7 @@ export function useInvoiceMutations() {
       }
 
       // Update invoice status
-      const { error: updateError } = await (supabase.from('invoices') as any)
+      const { error: updateError } = await supabase.from('invoices')
         .update({
           status: 'sent',
           sent_at: new Date().toISOString(),
@@ -2575,7 +2589,7 @@ export function useInvoiceMutations() {
       if (updateError) throw updateError
 
       // Log to invoice_emails
-      await (supabase.from('invoice_emails') as any).insert({
+      await supabase.from('invoice_emails').insert({
         invoice_id: invoiceId,
         email_type: 'invoice',
         sent_to: invoice.family.primary_email,
@@ -2670,7 +2684,7 @@ export function useInvoiceMutations() {
       }
 
       // Log to invoice_emails
-      await (supabase.from('invoice_emails') as any).insert({
+      await supabase.from('invoice_emails').insert({
         invoice_id: invoice.id,
         email_type: emailTypeMap[reminderType],
         sent_to: invoice.family.primary_email,
@@ -2772,7 +2786,7 @@ export function useInvoiceMutations() {
       notes: string | null
     }) => {
       // 1. Create the invoice
-      const { data: invoice, error: invError } = await (supabase.from('invoices') as any)
+      const { data: invoice, error: invError } = await supabase.from('invoices')
         .insert({
           family_id: familyId,
           invoice_number: invoiceNumber,
@@ -2805,7 +2819,7 @@ export function useInvoiceMutations() {
           sort_order: idx,
         }))
 
-        const { error: itemsError } = await (supabase.from('invoice_line_items') as any)
+        const { error: itemsError } = await supabase.from('invoice_line_items')
           .insert(lineItemsToInsert)
 
         if (itemsError) throw itemsError
@@ -2813,7 +2827,7 @@ export function useInvoiceMutations() {
 
       // 3. Create payment record if there was a payment
       if (payment && payment.amount > 0) {
-        const { error: paymentError } = await (supabase.from('payments') as any)
+        const { error: paymentError } = await supabase.from('payments')
           .insert({
             invoice_id: invoice.id,
             amount: payment.amount,
@@ -2828,7 +2842,7 @@ export function useInvoiceMutations() {
 
       // 4. Log email record if it was sent (for email history tracking)
       if (sentAt && sentTo) {
-        await (supabase.from('invoice_emails') as any).insert({
+        await supabase.from('invoice_emails').insert({
           invoice_id: invoice.id,
           email_type: 'invoice',
           sent_to: sentTo,
@@ -2955,8 +2969,8 @@ export function useSettings() {
       if (error) throw error
 
       // Convert array to key-value map
-      const settings: Record<string, any> = {}
-      ;(data || []).forEach((s: any) => {
+      const settings: Record<string, unknown> = {}
+      ;(data || []).forEach(s => {
         settings[s.key] = s.value
       })
       return settings
@@ -2969,11 +2983,12 @@ export function useSettingMutations() {
   const queryClient = useQueryClient()
 
   const updateSetting = useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: any }) => {
-      const { error } = await (supabase.from('app_settings') as any)
+    mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
+      const { error } = await supabase.from('app_settings')
         .upsert({
           key,
-          value,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          value: value as any,
           updated_at: new Date().toISOString(),
         })
 
@@ -3390,8 +3405,8 @@ export function downloadPayrollCSV(content: string, filename: string) {
 /**
  * Fetch all payroll runs with optional status filter
  */
-// Helper to access payroll tables (not yet in generated types)
-const payrollDb = supabase as any
+// Helper to access payroll tables
+const payrollDb = supabase
 
 export function usePayrollRuns(filters?: { status?: string }) {
   return useQuery({
@@ -3498,7 +3513,7 @@ export function usePayrollLineItemsByTeacher(teacherId: string, options?: { enab
       if (error) throw error
 
       // Transform the data to flatten the nested structure
-      return (data || []).map((item: any) => ({
+      return (data || []).map(item => ({
         id: item.id,
         payroll_run_id: item.payroll_run_id,
         period_start: item.payroll_run?.period_start,
@@ -3572,7 +3587,7 @@ export function usePayrollMutations() {
       if (runError) throw runError
 
       // 2. Fetch all active teacher assignments with related data
-      const { data: assignments, error: assignError } = await (supabase.from('teacher_assignments') as any)
+      const { data: assignments, error: assignError } = await supabase.from('teacher_assignments')
         .select(`
           *,
           teacher:teachers(*),
@@ -3636,7 +3651,8 @@ export function usePayrollMutations() {
       // 4. Insert all line items
       if (lineItems.length > 0) {
         const { error: itemsError } = await payrollDb.from('payroll_line_item')
-          .insert(lineItems)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          .insert(lineItems as any)
 
         if (itemsError) throw itemsError
       }
@@ -3930,10 +3946,10 @@ async function recalculateRunTotals(runId: string) {
 
   if (!items) return
 
-  const totalCalculated = items.reduce((sum: number, li: any) => sum + (li.calculated_amount || 0), 0)
-  const totalAdjusted = items.reduce((sum: number, li: any) => sum + (li.final_amount || 0), 0)
-  const totalHours = items.reduce((sum: number, li: any) => sum + (li.actual_hours || 0), 0)
-  const teacherIds = new Set(items.map((li: any) => li.teacher_id))
+  const totalCalculated = items.reduce((sum, li) => sum + (li.calculated_amount || 0), 0)
+  const totalAdjusted = items.reduce((sum, li) => sum + (li.final_amount || 0), 0)
+  const totalHours = items.reduce((sum, li) => sum + (li.actual_hours || 0), 0)
+  const teacherIds = new Set(items.map(li => li.teacher_id))
 
   await payrollDb.from('payroll_run')
     .update({
@@ -4084,8 +4100,8 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
         return [] as LeadWithFamily[]
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data: activityStats, error: statsError } = await (supabase as any)
+       
+      const { data: activityStats, error: statsError } = await supabase
         .from('lead_activities')
         .select('lead_id, contacted_at')
         .in('lead_id', leadIds)
@@ -4327,11 +4343,11 @@ export function useLeadActivities(leadId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.leadActivities.byLead(leadId || ''),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_activities')
         .select('*')
-        .eq('lead_id', leadId)
+        .eq('lead_id', leadId!)
         .order('contacted_at', { ascending: false })
       if (error) throw error
       return data as LeadActivity[]
@@ -4348,8 +4364,8 @@ export function useLeadActivityMutations() {
 
   const createActivity = useMutation({
     mutationFn: async (activity: Omit<LeadActivity, 'id' | 'created_at'>) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_activities')
         .insert(activity)
         .select()
@@ -4365,8 +4381,8 @@ export function useLeadActivityMutations() {
 
   const deleteActivity = useMutation({
     mutationFn: async ({ id }: { id: string; leadId: string }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
+       
+      const { error } = await supabase
         .from('lead_activities')
         .delete()
         .eq('id', id)
@@ -4579,11 +4595,11 @@ export function useLeadFollowUps(leadId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.leadFollowUps.byLead(leadId || ''),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_follow_ups')
         .select('*')
-        .eq('lead_id', leadId)
+        .eq('lead_id', leadId!)
         .order('due_date', { ascending: true })
         .order('due_time', { ascending: true, nullsFirst: false })
       if (error) throw error
@@ -4600,8 +4616,8 @@ export function useUpcomingFollowUps() {
   return useQuery({
     queryKey: queryKeys.leadFollowUps.upcoming(),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('upcoming_follow_ups')
         .select('*')
         .limit(50)
@@ -4619,8 +4635,8 @@ export function useFollowUpMutations() {
 
   const createFollowUp = useMutation({
     mutationFn: async (followUp: Omit<LeadFollowUp, 'id' | 'created_at' | 'updated_at' | 'completed' | 'completed_at'>) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_follow_ups')
         .insert(followUp)
         .select()
@@ -4636,8 +4652,8 @@ export function useFollowUpMutations() {
 
   const updateFollowUp = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<LeadFollowUp> & { id: string }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_follow_ups')
         .update(updates)
         .eq('id', id)
@@ -4655,8 +4671,8 @@ export function useFollowUpMutations() {
 
   const completeFollowUp = useMutation({
     mutationFn: async (id: string) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_follow_ups')
         .update({ completed: true, completed_at: new Date().toISOString() })
         .eq('id', id)
@@ -4674,8 +4690,8 @@ export function useFollowUpMutations() {
 
   const deleteFollowUp = useMutation({
     mutationFn: async ({ id }: { id: string; leadId: string }) => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { error } = await (supabase as any)
+       
+      const { error } = await supabase
         .from('lead_follow_ups')
         .delete()
         .eq('id', id)
@@ -4797,8 +4813,8 @@ export function useEmailCampaigns() {
   return useQuery({
     queryKey: queryKeys.emailCampaigns.list(),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('email_campaigns')
         .select('*')
         .order('send_time', { ascending: false })
@@ -4817,8 +4833,8 @@ export function useCampaignEngagement(campaignId: string) {
   return useQuery({
     queryKey: queryKeys.leadCampaignEngagement.byCampaign(campaignId),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_campaign_engagement')
         .select(`
           *,
@@ -4842,8 +4858,8 @@ export function useLeadCampaignEngagement(leadId: string) {
   return useQuery({
     queryKey: queryKeys.leadCampaignEngagement.byLead(leadId),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase as any)
+       
+      const { data, error } = await supabase
         .from('lead_campaign_engagement')
         .select(`
           *,

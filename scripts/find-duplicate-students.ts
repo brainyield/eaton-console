@@ -37,10 +37,6 @@ interface Enrollment {
   service: { name: string } | null
 }
 
-interface Family {
-  id: string
-  display_name: string
-}
 
 async function main() {
   console.log('Finding duplicate students...\n')
@@ -85,7 +81,7 @@ async function main() {
   }
 
   // Find duplicates (groups with more than 1 student)
-  const duplicates = Array.from(groups.entries()).filter(([_, students]) => students.length > 1)
+  const duplicates = Array.from(groups.entries()).filter(([, students]) => students.length > 1)
 
   if (duplicates.length === 0) {
     console.log('No duplicate students found!')
@@ -134,7 +130,7 @@ async function main() {
 
       if (studentEnrollments.length > 0) {
         for (const e of studentEnrollments) {
-          const serviceName = (e.service as any)?.name || 'Unknown Service'
+          const serviceName = e.service?.name || 'Unknown Service'
           console.log(`    - ${serviceName}: ${e.status}`)
         }
       }
@@ -144,7 +140,7 @@ async function main() {
 
   console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
   console.log(`Summary: ${duplicates.length} families have duplicate students`)
-  console.log(`Total duplicate records: ${duplicates.reduce((sum, [_, d]) => sum + d.length, 0)}`)
+  console.log(`Total duplicate records: ${duplicates.reduce((sum, [, d]) => sum + d.length, 0)}`)
 }
 
 main().catch(console.error)

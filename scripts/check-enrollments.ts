@@ -44,8 +44,8 @@ async function main() {
   console.log('\nStudents with missing/invalid age_group:')
   const validAgeGroups = ['3-5', '6-8', '9-11', '12-14', '15-17']
   for (const e of enrollments || []) {
-    const s = e.student as any
-    if (!s.age_group || !validAgeGroups.includes(s.age_group)) {
+    const s = e.student as { id: string; full_name: string; age_group: string | null } | null
+    if (s && (!s.age_group || !validAgeGroups.includes(s.age_group))) {
       console.log(`  - ${s.full_name} | age_group: "${s.age_group || '(none)'}"`)
     }
   }
@@ -56,7 +56,8 @@ async function main() {
     .select('id, full_name, age_group, family_id')
     .order('full_name')
 
-  const nameCount = new Map<string, any[]>()
+  type StudentRecord = { id: string; full_name: string; age_group: string | null; family_id: string }
+  const nameCount = new Map<string, StudentRecord[]>()
   for (const s of allStudents || []) {
     const name = s.full_name.toLowerCase()
     if (!nameCount.has(name)) nameCount.set(name, [])
@@ -64,7 +65,7 @@ async function main() {
   }
 
   console.log('\nDuplicate students (same name):')
-  for (const [name, students] of nameCount) {
+  for (const [, students] of nameCount) {
     if (students.length > 1) {
       console.log(`  "${students[0].full_name}":`)
       for (const s of students) {

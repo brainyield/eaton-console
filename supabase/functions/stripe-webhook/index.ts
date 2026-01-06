@@ -93,7 +93,6 @@ Deno.serve(async (req) => {
       const session = event.data.object as Stripe.Checkout.Session
 
       const invoiceId = session.metadata?.invoice_id
-      const invoicePublicId = session.metadata?.invoice_public_id
 
       if (!invoiceId) {
         console.error('No invoice_id in session metadata')

@@ -75,7 +75,9 @@ async function findDuplicates(studentName?: string) {
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`)
       console.log(`DUPLICATE: ${name} (${records.length} records)`)
       for (const record of records) {
-        const services = record.enrollments?.map((e: any) => e.service?.name).filter(Boolean).join(', ') || 'No enrollments'
+        type EnrollmentWithService = { id: string; service: { name: string } | null }
+        const enrollments = record.enrollments as EnrollmentWithService[] | null
+        const services = enrollments?.map(e => e.service?.name).filter(Boolean).join(', ') || 'No enrollments'
         console.log(`  ID: ${record.id}`)
         console.log(`     Family: ${record.family_id}`)
         console.log(`     Services: ${services}`)

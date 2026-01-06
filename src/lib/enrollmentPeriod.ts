@@ -65,7 +65,7 @@ export function getPeriodOptions(serviceCode: ServiceCode, date: Date = new Date
   if (periodType === 'semester') {
     // Determine current semester
     let currentSemester: 'fall' | 'spring' | 'summer'
-    let currentYear = year
+    const currentYear = year
 
     if (month >= 7 && month <= 11) {
       currentSemester = 'fall'

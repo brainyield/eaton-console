@@ -70,6 +70,7 @@ export function SortableTableHeader({
 /**
  * Hook to manage sort state for tables
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useSortState<T extends string>(initialField: T, initialDirection: SortDirection = 'asc') {
   const [sort, setSort] = useState({ field: initialField, direction: initialDirection })
 

@@ -5,7 +5,7 @@ import type { Teacher } from '../lib/hooks'
 import { multiplyMoney } from '../lib/moneyUtils'
 
 interface LineItem {
-  enrollment_id: string
+  enrollment_id: string | null
   service_id: string
   description: string
   hours: number
@@ -52,7 +52,7 @@ export function RecordTeacherPaymentModal({
   // Transform assignments data for display
   const assignments = useMemo(() => {
     if (!assignmentsData) return []
-    return assignmentsData.map((a: any) => ({
+    return assignmentsData.map(a => ({
       id: a.id,
       enrollment_id: a.enrollment_id,
       hourly_rate_teacher: a.hourly_rate_teacher,
