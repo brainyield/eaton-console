@@ -247,7 +247,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         // Filter by invoice type (billing frequency)
         const billingFreq = e.service?.billing_frequency
         if (invoiceType === 'weekly' && billingFreq !== 'weekly') return false
-        if (invoiceType === 'monthly' && billingFreq !== 'monthly') return false
+        if (invoiceType === 'monthly' && billingFreq !== 'monthly' && billingFreq !== 'per_session') return false
         
         // Filter by specific service if selected
         if (serviceFilter && e.service?.code !== serviceFilter) return false
@@ -270,8 +270,8 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           quantity = globalWeeks
         }
         
-        // For Learning Pod, apply global sessions multiplier  
-        if (serviceCode === 'learning_pod') {
+        // For Learning Pod and Hub, apply global sessions multiplier
+        if (serviceCode === 'learning_pod' || serviceCode === 'eaton_hub') {
           quantity = globalSessions
         }
         
@@ -734,6 +734,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     : [
         { value: '', label: 'All Monthly Services' },
         { value: 'learning_pod', label: 'Learning Pod' },
+        { value: 'eaton_hub', label: 'Eaton Hub' },
         { value: 'consulting', label: 'Consulting' },
         { value: 'elective_classes', label: 'Elective Classes' },
       ]
@@ -743,8 +744,13 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   // Show multiplier controls based on service filter or if those services exist in list
   const hasEatonOnline = sortedPreviewItems.some(i => i.enrollment.service?.code === 'eaton_online')
   const hasLearningPod = sortedPreviewItems.some(i => i.enrollment.service?.code === 'learning_pod')
+  const hasHub = sortedPreviewItems.some(i => i.enrollment.service?.code === 'eaton_hub')
   const showWeeksControl = invoiceType === 'weekly' && (serviceFilter === 'eaton_online' || (!serviceFilter && hasEatonOnline))
-  const showSessionsControl = invoiceType === 'monthly' && (serviceFilter === 'learning_pod' || (!serviceFilter && hasLearningPod))
+  const showSessionsControl = invoiceType === 'monthly' && (
+    serviceFilter === 'learning_pod' ||
+    serviceFilter === 'eaton_hub' ||
+    (!serviceFilter && (hasLearningPod || hasHub))
+  )
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -888,7 +894,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                   {showSessionsControl && (
                     <div className="flex items-center gap-2">
                       <label className="text-sm text-zinc-400">
-                        Sessions this month (Learning Pod):
+                        Sessions this month (Pod/Hub):
                       </label>
                       <select
                         value={globalSessions}
@@ -1342,6 +1348,7 @@ function buildDescription(enrollment: BillableEnrollment, quantity: number, unit
       }
       return `${studentName} - ${serviceName}: ${quantity} weeks × $${unitPrice.toFixed(2)}`
     case 'learning_pod':
+    case 'eaton_hub':
       if (quantity === 1) {
         return `${studentName} - ${serviceName}`
       }
