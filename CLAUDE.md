@@ -132,6 +132,7 @@ queryKeys.families.detail(id)
 - **DON'T** forget eslint-disable for Supabase insert/update with `Partial<T>` - mutations accept partial data but Supabase's typed client expects complete types for required fields. Add `// eslint-disable-next-line @typescript-eslint/no-explicit-any` above `.insert(data as any)` calls.
 - **DON'T** create families with `status: 'lead'` for paying customers - families with 'lead' status are excluded from Directory search and cannot be invoiced. Event purchases (Step Up, Stripe) should always create families with `status: 'active'`.
 - **DON'T** use `.eq()` for email lookups - emails may have case variations. Use `.ilike()` for case-insensitive matching: `.ilike('primary_email', email.toLowerCase())`.
+- **DON'T** create leads in webhooks without checking for duplicates - always check for existing active leads (status 'new' or 'contacted') with the same email before creating. If exists, log as activity instead. See `ingest-lead` and `calendly-webhook` for the pattern.
 
 ---
 

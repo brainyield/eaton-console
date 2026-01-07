@@ -213,51 +213,99 @@ Deno.serve(async (req) => {
         hasActiveEnrollment = (enrollments?.length || 0) > 0
       }
 
-      // For 15min calls, create family and lead
+      // For 15min calls, create family and lead (or update existing lead)
       if (bookingType === '15min_call' && !hasActiveEnrollment) {
-        if (!familyId) {
-          const { data: newFamily, error: familyError } = await supabase
-            .from('families')
+        // Check for existing active lead with same email (case-insensitive)
+        const { data: existingLeads } = await supabase
+          .from('leads')
+          .select('id, status, family_id, lead_type')
+          .ilike('email', inviteeEmail)
+          .order('created_at', { ascending: false })
+
+        const activeLead = existingLeads?.find(l => l.status === 'new' || l.status === 'contacted')
+
+        if (activeLead) {
+          // Existing active lead found - update it and log activity
+          console.log(`Found existing active lead for ${inviteeEmail}: ${activeLead.id} (${activeLead.lead_type})`)
+          leadId = activeLead.id
+          familyId = activeLead.family_id || familyId
+
+          // Update lead with new calendly info
+          const { error: updateError } = await supabase
+            .from('leads')
+            .update({
+              calendly_event_uri: scheduledEventUri || null,
+              calendly_invitee_uri: inviteeUri || null,
+              scheduled_at: startTime || null,
+              phone: formAnswers.phone || undefined, // Only update if provided
+            })
+            .eq('id', leadId)
+
+          if (updateError) {
+            console.error('Error updating existing lead:', updateError)
+          }
+
+          // Log this touchpoint as activity
+          const { error: activityError } = await supabase
+            .from('lead_activities')
             .insert({
-              display_name: formatFamilyName(inviteeName),
-              primary_email: inviteeEmail,
-              primary_phone: formAnswers.phone || null,
-              primary_contact_name: inviteeName || null,
-              status: 'lead',
+              lead_id: leadId,
+              contact_type: 'other',
+              notes: `Repeat Calendly booking (${bookingType}): scheduled for ${startTime || 'unknown time'}`,
+              contacted_at: new Date().toISOString(),
+            })
+
+          if (activityError) {
+            console.error('Error logging activity for existing lead:', activityError)
+          } else {
+            console.log('Logged activity for existing lead:', leadId)
+          }
+        } else {
+          // No active lead found - create new family and lead
+          if (!familyId) {
+            const { data: newFamily, error: familyError } = await supabase
+              .from('families')
+              .insert({
+                display_name: formatFamilyName(inviteeName),
+                primary_email: inviteeEmail,
+                primary_phone: formAnswers.phone || null,
+                primary_contact_name: inviteeName || null,
+                status: 'lead',
+              })
+              .select('id')
+              .single()
+
+            if (familyError) {
+              console.error('Error creating family:', familyError)
+            } else {
+              familyId = newFamily.id
+              console.log('Created family:', familyId)
+            }
+          }
+
+          // Create new lead
+          const { data: newLead, error: leadError } = await supabase
+            .from('leads')
+            .insert({
+              email: inviteeEmail,
+              name: inviteeName || null,
+              phone: formAnswers.phone || null,
+              lead_type: 'calendly_call',
+              status: 'new',
+              calendly_event_uri: scheduledEventUri || null,
+              calendly_invitee_uri: inviteeUri || null,
+              scheduled_at: startTime || null,
+              family_id: familyId,
             })
             .select('id')
             .single()
 
-          if (familyError) {
-            console.error('Error creating family:', familyError)
+          if (leadError) {
+            console.error('Error creating lead:', leadError)
           } else {
-            familyId = newFamily.id
-            console.log('Created family:', familyId)
+            leadId = newLead.id
+            console.log('Created lead:', leadId)
           }
-        }
-
-        // Create lead
-        const { data: newLead, error: leadError } = await supabase
-          .from('leads')
-          .insert({
-            email: inviteeEmail,
-            name: inviteeName || null,
-            phone: formAnswers.phone || null,
-            lead_type: 'calendly_call',
-            status: 'new',
-            calendly_event_uri: scheduledEventUri || null,
-            calendly_invitee_uri: inviteeUri || null,
-            scheduled_at: startTime || null,
-            family_id: familyId,
-          })
-          .select('id')
-          .single()
-
-        if (leadError) {
-          console.error('Error creating lead:', leadError)
-        } else {
-          leadId = newLead.id
-          console.log('Created lead:', leadId)
         }
       }
 

@@ -140,13 +140,30 @@ Deno.serve(async (req) => {
 
       if (activeLead) {
         console.log(`Active lead already exists for ${email}: ${activeLead.id} (${activeLead.lead_type})`)
+
+        // Log this repeat touchpoint as activity (so we track all interactions)
+        const { error: activityError } = await supabase
+          .from('lead_activities')
+          .insert({
+            lead_id: activeLead.id,
+            contact_type: 'other',
+            notes: `Repeat ${payload.lead_type} form submission${payload.source_url ? ` from ${payload.source_url}` : ''}`,
+            contacted_at: new Date().toISOString(),
+          })
+
+        if (activityError) {
+          console.error('Error logging activity for existing lead:', activityError)
+        } else {
+          console.log('Logged repeat touchpoint activity for lead:', activeLead.id)
+        }
+
         return new Response(
           JSON.stringify({
             success: true,
             action: 'exists',
             leadId: activeLead.id,
             familyId: activeLead.family_id,
-            message: `Lead already exists in pipeline (${activeLead.lead_type})`,
+            message: `Lead already exists in pipeline (${activeLead.lead_type}). Activity logged.`,
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
