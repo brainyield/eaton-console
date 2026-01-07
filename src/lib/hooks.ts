@@ -1740,6 +1740,87 @@ export function usePendingClassRegistrationFees() {
   })
 }
 
+// Type for pending hub sessions (from Calendly bookings)
+export interface PendingHubSession {
+  id: string
+  student_name: string
+  family_id: string | null
+  family_name: string
+  session_date: string
+  daily_rate: number
+  invitee_email: string
+}
+
+// Default Hub daily rate
+const DEFAULT_HUB_DAILY_RATE = 100
+
+// Hook to fetch pending Hub drop-off bookings from Calendly
+export function usePendingHubSessions() {
+  return useQuery({
+    queryKey: queryKeys.hubSessions.pending(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('calendly_bookings')
+        .select(`
+          id,
+          scheduled_at,
+          student_name,
+          invitee_name,
+          invitee_email,
+          family_id,
+          family:families(
+            display_name
+          )
+        `)
+        .eq('event_type', 'hub_dropoff')
+        .eq('status', 'scheduled')
+        .is('hub_session_id', null)
+        .gte('scheduled_at', new Date().toISOString().split('T')[0])
+        .order('scheduled_at', { ascending: true })
+
+      if (error) throw error
+
+      // Transform to flat structure
+      return (data || []).map(booking => ({
+        id: booking.id,
+        student_name: booking.student_name || booking.invitee_name || 'Unknown Student',
+        family_id: booking.family_id,
+        family_name: booking.family?.display_name || booking.invitee_name || 'Unknown Family',
+        session_date: booking.scheduled_at.split('T')[0],
+        daily_rate: DEFAULT_HUB_DAILY_RATE,
+        invitee_email: booking.invitee_email,
+      })) as PendingHubSession[]
+    },
+  })
+}
+
+// Hook to link unlinked hub bookings to a family (similar to useEventOrderMutations)
+export function useHubBookingMutations() {
+  const queryClient = useQueryClient()
+
+  const linkBookingsToFamily = useMutation({
+    mutationFn: async ({
+      bookingIds,
+      familyId,
+    }: {
+      bookingIds: string[]
+      familyId: string
+    }) => {
+      const { error } = await supabase.from('calendly_bookings')
+        .update({ family_id: familyId })
+        .in('id', bookingIds)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.hubSessions.pending() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+    },
+  })
+
+  return { linkBookingsToFamily }
+}
+
 // Hook to link unlinked event orders to a family (create family or link to existing)
 export function useEventOrderMutations() {
   const queryClient = useQueryClient()
@@ -2194,6 +2275,85 @@ export function useInvoiceMutations() {
     },
   })
 
+  // Generate invoice for Hub sessions (from Calendly bookings)
+  const generateHubInvoice = useMutation({
+    mutationFn: async ({
+      familyId,
+      bookings,
+      dueDate,
+    }: {
+      familyId: string
+      bookings: { id: string; student_name: string; session_date: string; daily_rate: number }[]
+      dueDate: string
+    }) => {
+      // Create invoice
+      const { data: invoice, error: invError } = await supabase.from('invoices')
+        .insert({
+          family_id: familyId,
+          invoice_date: getTodayString(),
+          due_date: dueDate,
+          status: 'draft',
+          notes: null,
+        })
+        .select()
+        .single()
+
+      if (invError) throw invError
+
+      // Create line items for each booking
+      let subtotal = 0
+      const lineItemsToInsert = bookings.map((booking, idx) => {
+        subtotal = addMoney(subtotal, booking.daily_rate)
+
+        // Format session date
+        const sessionDate = new Date(booking.session_date).toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+        })
+
+        return {
+          invoice_id: invoice.id,
+          enrollment_id: null as string | null,
+          description: `${booking.student_name} - Eaton Hub (${sessionDate})`,
+          quantity: 1,
+          unit_price: booking.daily_rate,
+          amount: booking.daily_rate,
+          sort_order: idx,
+        }
+      })
+
+      const { error: itemsError } = await supabase.from('invoice_line_items')
+        .insert(lineItemsToInsert)
+
+      if (itemsError) throw itemsError
+
+      // Update invoice totals
+      const { error: updateError } = await supabase.from('invoices')
+        .update({
+          subtotal,
+          total_amount: subtotal,
+        })
+        .eq('id', invoice.id)
+
+      if (updateError) throw updateError
+
+      // Link calendly_bookings to this invoice and mark as completed
+      // This allows syncing payment status when invoice is paid
+      const bookingIds = bookings.map(b => b.id)
+      await supabase.from('calendly_bookings')
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .update({ status: 'completed', invoice_id: invoice.id } as any)
+        .in('id', bookingIds)
+
+      return invoice
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.hubSessions.pending() })
+    },
+  })
+
   const updateInvoice = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Invoice> }) => {
       const { data: invoice, error } = await supabase.from('invoices')
@@ -2217,6 +2377,9 @@ export function useInvoiceMutations() {
           console.error('Failed to sync event_orders payment status:', syncError)
           // Don't throw - the invoice update succeeded, this is a secondary operation
         }
+
+        // Note: calendly_bookings (Hub) are linked via invoice_id for reporting,
+        // but their status stays 'completed'. The invoice is the source of truth for payment.
       }
 
       return invoice
@@ -2863,6 +3026,7 @@ export function useInvoiceMutations() {
   return {
     generateDrafts,
     generateEventInvoice,
+    generateHubInvoice,
     updateInvoice,
     updateLineItem,
     createLineItem,

@@ -217,6 +217,12 @@ export const queryKeys = {
     pendingClasses: () => ['event_orders', 'pending', 'classes'] as const,
   },
 
+  // Hub Sessions
+  hubSessions: {
+    all: ['hub_sessions'] as const,
+    pending: () => ['hub_sessions', 'pending'] as const,
+  },
+
   // Invoice Payments
   invoicePayments: {
     all: ['invoice_payments'] as const,

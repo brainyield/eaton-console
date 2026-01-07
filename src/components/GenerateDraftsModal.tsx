@@ -15,19 +15,21 @@ import {
   useInvoiceMutations,
   usePendingEventOrders,
   usePendingClassRegistrationFees,
+  usePendingHubSessions,
   getWeekBounds,
   getNextMonday,
 } from '../lib/hooks'
-import type { BillableEnrollment, PendingEventOrder, PendingClassRegistrationFee } from '../lib/hooks'
+import type { BillableEnrollment, PendingEventOrder, PendingClassRegistrationFee, PendingHubSession } from '../lib/hooks'
 import { multiplyMoney, sumMoney, centsToDollars } from '../lib/moneyUtils'
 import { useToast } from '../lib/toast'
 import { LinkEventOrdersModal } from './LinkEventOrdersModal'
+import { LinkHubBookingsModal } from './LinkHubBookingsModal'
 
 // ============================================================================
 // Types
 // ============================================================================
 
-type InvoiceType = 'weekly' | 'monthly' | 'events'
+type InvoiceType = 'weekly' | 'monthly' | 'events' | 'hub'
 type SortField = 'family' | 'amount'
 type SortDirection = 'asc' | 'desc'
 
@@ -173,6 +175,10 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   const [selectedEventOrders, setSelectedEventOrders] = useState<Set<string>>(new Set())
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
 
+  // Hub mode state
+  const [selectedHubSessions, setSelectedHubSessions] = useState<Set<string>>(new Set())
+  const [isHubLinkModalOpen, setIsHubLinkModalOpen] = useState(false)
+
   // Initialize dates based on invoice type
   useEffect(() => {
     const today = new Date()
@@ -211,18 +217,26 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
 
       // Reset global sessions
       setGlobalSessions(4)
-    } else {
+    } else if (invoiceType === 'events') {
       // Events: no period, just due date
       setPeriodStart('')
       setPeriodEnd('')
       const nextMon = getNextMonday(today)
       setDueDate(formatDate(nextMon))
       setPeriodNote('Step Up Event Registrations')
+    } else if (invoiceType === 'hub') {
+      // Hub: no period, just due date
+      setPeriodStart('')
+      setPeriodEnd('')
+      const nextMon = getNextMonday(today)
+      setDueDate(formatDate(nextMon))
+      setPeriodNote('Eaton Hub Sessions')
     }
 
     // Clear overrides and selections when switching type
     setOverrides({})
     setSelectedEventOrders(new Set())
+    setSelectedHubSessions(new Set())
   }, [invoiceType])
 
   // Data fetching - fetch all active enrollments, filter by billing frequency below
@@ -236,7 +250,10 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   // Fetch pending class registration fees for monthly mode (Step Up elective class fees)
   const { data: pendingClassFees = [] } = usePendingClassRegistrationFees()
 
-  const { generateDrafts, generateEventInvoice } = useInvoiceMutations()
+  // Fetch pending hub sessions for hub mode (from Calendly bookings)
+  const { data: pendingHubSessions = [], isLoading: hubSessionsLoading } = usePendingHubSessions()
+
+  const { generateDrafts, generateEventInvoice, generateHubInvoice } = useInvoiceMutations()
 
   // Build preview items with overrides applied
   const previewItems = useMemo(() => {
@@ -247,7 +264,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         // Filter by invoice type (billing frequency)
         const billingFreq = e.service?.billing_frequency
         if (invoiceType === 'weekly' && billingFreq !== 'weekly') return false
-        if (invoiceType === 'monthly' && billingFreq !== 'monthly' && billingFreq !== 'per_session') return false
+        if (invoiceType === 'monthly' && billingFreq !== 'monthly') return false
         
         // Filter by specific service if selected
         if (serviceFilter && e.service?.code !== serviceFilter) return false
@@ -270,8 +287,8 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           quantity = globalWeeks
         }
         
-        // For Learning Pod and Hub, apply global sessions multiplier
-        if (serviceCode === 'learning_pod' || serviceCode === 'eaton_hub') {
+        // For Learning Pod, apply global sessions multiplier
+        if (serviceCode === 'learning_pod') {
           quantity = globalSessions
         }
         
@@ -555,6 +572,89 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     }
   }, [pendingEventOrders, selectedEventCount])
 
+  // ===========================================================================
+  // Hub Mode - Group pending hub sessions by family
+  // ===========================================================================
+  const hubSessionsByFamily = useMemo(() => {
+    const grouped = new Map<string, PendingHubSession[]>()
+
+    pendingHubSessions.forEach(session => {
+      const familyId = session.family_id || 'unlinked'
+      if (!grouped.has(familyId)) {
+        grouped.set(familyId, [])
+      }
+      grouped.get(familyId)!.push(session)
+    })
+
+    return Array.from(grouped.entries()).map(([familyId, sessions]) => ({
+      familyId,
+      familyName: sessions[0].family_name,
+      sessions,
+      totalAmount: sessions
+        .filter(s => selectedHubSessions.has(s.id))
+        .reduce((sum, s) => sum + s.daily_rate, 0),
+      allSelected: sessions.every(s => selectedHubSessions.has(s.id)),
+      someSelected: sessions.some(s => selectedHubSessions.has(s.id)),
+    }))
+  }, [pendingHubSessions, selectedHubSessions])
+
+  // Unlinked hub bookings (no family_id)
+  const unlinkedHubBookings = useMemo(() => {
+    return pendingHubSessions.filter(s => !s.family_id)
+  }, [pendingHubSessions])
+
+  // Hub session counts
+  const selectedHubCount = selectedHubSessions.size
+  const hubTotalAmount = pendingHubSessions
+    .filter(s => selectedHubSessions.has(s.id))
+    .reduce((sum, s) => sum + s.daily_rate, 0)
+  const hubFamilyCount = new Set(
+    pendingHubSessions
+      .filter(s => selectedHubSessions.has(s.id))
+      .map(s => s.family_id)
+  ).size
+
+  // Hub handlers
+  const handleToggleHubSession = useCallback((id: string) => {
+    setSelectedHubSessions(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [])
+
+  const handleToggleHubFamily = useCallback((familyId: string) => {
+    const familySessions = pendingHubSessions
+      .filter(s => s.family_id === familyId)
+      .map(s => s.id)
+
+    const allSelected = familySessions.every(id => selectedHubSessions.has(id))
+
+    setSelectedHubSessions(prev => {
+      const next = new Set(prev)
+      familySessions.forEach(id => {
+        if (allSelected) {
+          next.delete(id)
+        } else {
+          next.add(id)
+        }
+      })
+      return next
+    })
+  }, [pendingHubSessions, selectedHubSessions])
+
+  const handleSelectAllHub = useCallback(() => {
+    if (selectedHubCount === pendingHubSessions.length) {
+      setSelectedHubSessions(new Set())
+    } else {
+      setSelectedHubSessions(new Set(pendingHubSessions.map(s => s.id)))
+    }
+  }, [pendingHubSessions, selectedHubCount])
+
   const handleSort = useCallback((field: SortField) => {
     if (sortField === field) {
       setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')
@@ -648,7 +748,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         periodStart,
         periodEnd,
         dueDate,
-        invoiceType,
+        invoiceType: invoiceType as 'weekly' | 'monthly' | 'events',
         customAmounts: Object.keys(customAmounts).length > 0 ? customAmounts : undefined,
       })
       onSuccess()
@@ -724,6 +824,68 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     }
   }, [selectedEventCount, pendingEventOrders, selectedEventOrders, generateEventInvoice, dueDate, onSuccess, showError, showSuccess, showWarning])
 
+  // Generate hub invoices - one invoice per family
+  const handleGenerateHub = useCallback(async () => {
+    if (selectedHubCount === 0) return
+
+    // Track successes and failures
+    const succeeded: string[] = []
+    const failed: string[] = []
+
+    // Group selected bookings by family (skip those without family_id)
+    const bookingsByFamily = new Map<string, PendingHubSession[]>()
+    pendingHubSessions
+      .filter(s => selectedHubSessions.has(s.id))
+      .forEach(booking => {
+        if (!booking.family_id) {
+          failed.push(`Unlinked: ${booking.student_name}`)
+          return
+        }
+        if (!bookingsByFamily.has(booking.family_id)) {
+          bookingsByFamily.set(booking.family_id, [])
+        }
+        bookingsByFamily.get(booking.family_id)!.push(booking)
+      })
+
+    // Create one invoice per family
+    for (const [familyId, bookings] of bookingsByFamily) {
+      const familyName = bookings[0].family_name
+
+      try {
+        await generateHubInvoice.mutateAsync({
+          familyId,
+          bookings: bookings.map(b => ({
+            id: b.id,
+            student_name: b.student_name,
+            session_date: b.session_date,
+            daily_rate: b.daily_rate,
+          })),
+          dueDate,
+        })
+        succeeded.push(familyName)
+      } catch (error) {
+        console.error(`Failed to generate invoice for ${familyName}:`, error)
+        failed.push(familyName)
+      }
+    }
+
+    // Report results
+    if (failed.length > 0) {
+      if (succeeded.length > 0) {
+        showWarning(`Generated ${succeeded.length} invoice(s). ${failed.length} failed.`)
+      } else {
+        showError(`Failed to generate ${failed.length} invoice(s)`)
+      }
+    } else if (succeeded.length > 0) {
+      showSuccess(`Generated ${succeeded.length} invoice(s)`)
+    }
+
+    // Only call onSuccess if at least one succeeded
+    if (succeeded.length > 0) {
+      onSuccess()
+    }
+  }, [selectedHubCount, pendingHubSessions, selectedHubSessions, generateHubInvoice, dueDate, onSuccess, showError, showSuccess, showWarning])
+
   // Service filter options based on invoice type
   const serviceOptions = invoiceType === 'weekly'
     ? [
@@ -734,7 +896,6 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     : [
         { value: '', label: 'All Monthly Services' },
         { value: 'learning_pod', label: 'Learning Pod' },
-        { value: 'eaton_hub', label: 'Eaton Hub' },
         { value: 'consulting', label: 'Consulting' },
         { value: 'elective_classes', label: 'Elective Classes' },
       ]
@@ -744,13 +905,8 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   // Show multiplier controls based on service filter or if those services exist in list
   const hasEatonOnline = sortedPreviewItems.some(i => i.enrollment.service?.code === 'eaton_online')
   const hasLearningPod = sortedPreviewItems.some(i => i.enrollment.service?.code === 'learning_pod')
-  const hasHub = sortedPreviewItems.some(i => i.enrollment.service?.code === 'eaton_hub')
   const showWeeksControl = invoiceType === 'weekly' && (serviceFilter === 'eaton_online' || (!serviceFilter && hasEatonOnline))
-  const showSessionsControl = invoiceType === 'monthly' && (
-    serviceFilter === 'learning_pod' ||
-    serviceFilter === 'eaton_hub' ||
-    (!serviceFilter && (hasLearningPod || hasHub))
-  )
+  const showSessionsControl = invoiceType === 'monthly' && (serviceFilter === 'learning_pod' || (!serviceFilter && hasLearningPod))
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
@@ -789,12 +945,13 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 >
                   <option value="weekly">Weekly (AC, Online)</option>
                   <option value="monthly">Monthly (Pod, Consult, etc.)</option>
+                  <option value="hub">Hub Sessions (Calendly)</option>
                   <option value="events">Events (Step Up)</option>
                 </select>
               </div>
 
               {/* Period Start - only for weekly/monthly */}
-              {invoiceType !== 'events' && (
+              {invoiceType !== 'events' && invoiceType !== 'hub' && (
                 <div>
                   <label className="block text-xs font-medium text-zinc-400 mb-1">
                     Period Start
@@ -809,7 +966,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
               )}
 
               {/* Period End - only for weekly/monthly */}
-              {invoiceType !== 'events' && (
+              {invoiceType !== 'events' && invoiceType !== 'hub' && (
                 <div>
                   <label className="block text-xs font-medium text-zinc-400 mb-1">
                     Period End
@@ -824,7 +981,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
               )}
 
               {/* Due Date */}
-              <div className={invoiceType === 'events' ? 'col-span-2' : ''}>
+              <div className={invoiceType === 'events' || invoiceType === 'hub' ? 'col-span-2' : ''}>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">
                   Due Date
                 </label>
@@ -838,7 +995,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
             </div>
 
             {/* Note and Service Filter */}
-            <div className={`grid gap-4 mt-4 ${invoiceType === 'events' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
+            <div className={`grid gap-4 mt-4 ${invoiceType === 'events' || invoiceType === 'hub' ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-2'}`}>
               <div>
                 <label className="block text-xs font-medium text-zinc-400 mb-1">
                   Invoice Note
@@ -848,11 +1005,11 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                   value={periodNote}
                   onChange={e => setPeriodNote(e.target.value)}
                   className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-zinc-500"
-                  placeholder={invoiceType === 'events' ? 'Step Up Event Registrations' : 'e.g., For the week of 12/23/2025 - 12/27/2025'}
+                  placeholder={invoiceType === 'events' ? 'Step Up Event Registrations' : invoiceType === 'hub' ? 'Eaton Hub Sessions' : 'e.g., For the week of 12/23/2025 - 12/27/2025'}
                 />
               </div>
 
-              {invoiceType !== 'events' && (
+              {invoiceType !== 'events' && invoiceType !== 'hub' && (
                 <div>
                   <label className="block text-xs font-medium text-zinc-400 mb-1">
                     Filter by Service
@@ -871,7 +1028,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
             </div>
 
             {/* Bulk Multiplier Controls - only for weekly/monthly */}
-            {invoiceType !== 'events' && (showWeeksControl || showSessionsControl) && (
+            {invoiceType !== 'events' && invoiceType !== 'hub' && (showWeeksControl || showSessionsControl) && (
               <div className="mt-4 p-3 bg-zinc-900/50 rounded-lg border border-zinc-700">
                 <div className="flex items-center gap-4">
                   {showWeeksControl && (
@@ -894,7 +1051,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                   {showSessionsControl && (
                     <div className="flex items-center gap-2">
                       <label className="text-sm text-zinc-400">
-                        Sessions this month (Pod/Hub):
+                        Sessions this month (Learning Pod):
                       </label>
                       <select
                         value={globalSessions}
@@ -916,7 +1073,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           <div className="px-6 py-3 border-b border-zinc-800 flex items-center justify-between bg-zinc-800/20">
             <div className="flex items-center gap-4">
               <span className="text-sm text-zinc-400">
-                {invoiceType === 'events' ? (
+                {invoiceType === 'hub' ? (
+                  hubSessionsLoading ? 'Loading...' : (
+                    <>
+                      <span className="text-white font-medium">{hubFamilyCount}</span> families,{' '}
+                      <span className="text-white font-medium">{selectedHubCount}</span> hub sessions selected
+                    </>
+                  )
+                ) : invoiceType === 'events' ? (
                   eventsLoading ? 'Loading...' : (
                     <>
                       <span className="text-white font-medium">{eventFamilyCount}</span> families,{' '}
@@ -932,7 +1096,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                   )
                 )}
               </span>
-              {invoiceType !== 'events' && existingCount > 0 && (
+              {invoiceType !== 'events' && invoiceType !== 'hub' && existingCount > 0 && (
                 <span className="flex items-center gap-1 text-xs text-amber-400">
                   <AlertTriangle className="w-3 h-3" />
                   {existingCount} already have invoices for this period
@@ -941,7 +1105,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
             </div>
             <div className="flex items-center gap-4">
               {/* Sort Controls - only for enrollments */}
-              {invoiceType !== 'events' && (
+              {invoiceType !== 'events' && invoiceType !== 'hub' && (
                 <div className="flex items-center gap-2 text-xs">
                   <span className="text-zinc-500">Sort:</span>
                   <button
@@ -966,10 +1130,12 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
               )}
 
               <button
-                onClick={invoiceType === 'events' ? handleSelectAllEvents : handleSelectAll}
+                onClick={invoiceType === 'hub' ? handleSelectAllHub : invoiceType === 'events' ? handleSelectAllEvents : handleSelectAll}
                 className="text-sm text-blue-400 hover:text-blue-300"
               >
-                {invoiceType === 'events'
+                {invoiceType === 'hub'
+                  ? (selectedHubCount === pendingHubSessions.length ? 'Deselect All' : 'Select All')
+                  : invoiceType === 'events'
                   ? (selectedEventCount === pendingEventOrders.length ? 'Deselect All' : 'Select All')
                   : (selectedCount === sortedPreviewItems.filter(i => !i.hasExisting).length ? 'Deselect All' : 'Select All')
                 }
@@ -1091,6 +1257,117 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                             <div className="text-right">
                               <div className="text-sm text-white">
                                 ${(order.total_cents / 100).toFixed(2)}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : invoiceType === 'hub' ? (
+              /* ============================================================ */
+              /* Hub Mode Content */
+              /* ============================================================ */
+              hubSessionsLoading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="w-6 h-6 text-zinc-500 animate-spin" />
+                </div>
+              ) : pendingHubSessions.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-zinc-500">
+                  No pending Hub sessions found
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Unlinked bookings banner */}
+                  {unlinkedHubBookings.length > 0 && (
+                    <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-400" />
+                          <span className="text-amber-200 text-sm">
+                            {unlinkedHubBookings.length} booking{unlinkedHubBookings.length !== 1 ? 's' : ''} not linked to a family
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setIsHubLinkModalOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-sm bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+                        >
+                          <Link2 className="w-4 h-4" />
+                          Link to Family
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {hubSessionsByFamily.map(group => (
+                    <div
+                      key={group.familyId}
+                      className={`border rounded-lg overflow-hidden ${
+                        group.familyId === 'unlinked'
+                          ? 'border-red-500/30 bg-red-500/5'
+                          : 'border-zinc-700 bg-zinc-800/30'
+                      }`}
+                    >
+                      {/* Family Header */}
+                      <div
+                        className="flex items-center justify-between px-4 py-2 bg-zinc-800/50 cursor-pointer"
+                        onClick={() => handleToggleHubFamily(group.familyId)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="checkbox"
+                            checked={group.allSelected}
+                            onChange={() => handleToggleHubFamily(group.familyId)}
+                            onClick={e => e.stopPropagation()}
+                            disabled={group.familyId === 'unlinked'}
+                            className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-50"
+                          />
+                          <span className="font-medium text-white">
+                            {group.familyId === 'unlinked' ? 'Unlinked Bookings' : group.familyName}
+                          </span>
+                        </div>
+                        <span className="text-sm text-zinc-400">
+                          ${group.totalAmount.toFixed(2)}
+                        </span>
+                      </div>
+
+                      {/* Hub Sessions */}
+                      <div className="divide-y divide-zinc-800">
+                        {group.sessions.map(session => (
+                          <div
+                            key={session.id}
+                            className="flex items-center justify-between px-4 py-2"
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={selectedHubSessions.has(session.id)}
+                                onChange={() => handleToggleHubSession(session.id)}
+                                disabled={group.familyId === 'unlinked'}
+                                className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900 disabled:opacity-50"
+                              />
+                              <span className="inline-flex px-1.5 py-0.5 text-xs font-medium rounded bg-amber-500/20 text-amber-400">
+                                Hub
+                              </span>
+                              <div className="flex flex-col">
+                                <span className="text-sm text-zinc-300">
+                                  {session.student_name}
+                                </span>
+                                <span className="text-xs text-zinc-500">
+                                  {new Date(session.session_date).toLocaleDateString('en-US', {
+                                    weekday: 'short',
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-sm text-white">
+                                ${session.daily_rate.toFixed(2)}
                               </div>
                             </div>
                           </div>
@@ -1273,7 +1550,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           {/* Footer */}
           <div className="px-6 py-4 border-t border-zinc-700 bg-zinc-800/30 flex items-center justify-between">
             <div className="text-sm text-zinc-400">
-              {invoiceType === 'events' ? (
+              {invoiceType === 'hub' ? (
+                selectedHubCount > 0 && (
+                  <>
+                    Will create <span className="text-white font-medium">{hubFamilyCount}</span> invoice{hubFamilyCount !== 1 ? 's' : ''} totaling{' '}
+                    <span className="text-green-400 font-medium">${hubTotalAmount.toFixed(2)}</span>
+                  </>
+                )
+              ) : invoiceType === 'events' ? (
                 selectedEventCount > 0 && (
                   <>
                     Will create <span className="text-white font-medium">{eventFamilyCount}</span> invoice{eventFamilyCount !== 1 ? 's' : ''} totaling{' '}
@@ -1297,15 +1581,17 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 Cancel
               </button>
               <button
-                onClick={invoiceType === 'events' ? handleGenerateEvents : handleGenerate}
+                onClick={invoiceType === 'hub' ? handleGenerateHub : invoiceType === 'events' ? handleGenerateEvents : handleGenerate}
                 disabled={
-                  invoiceType === 'events'
+                  invoiceType === 'hub'
+                    ? selectedHubCount === 0 || generateHubInvoice.isPending
+                    : invoiceType === 'events'
                     ? selectedEventCount === 0 || generateEventInvoice.isPending
                     : selectedCount === 0 || generateDrafts.isPending
                 }
                 className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {(invoiceType === 'events' ? generateEventInvoice.isPending : generateDrafts.isPending) ? (
+                {(invoiceType === 'hub' ? generateHubInvoice.isPending : invoiceType === 'events' ? generateEventInvoice.isPending : generateDrafts.isPending) ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
                     Generating...
@@ -1313,7 +1599,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
                 ) : (
                   <>
                     <Check className="w-4 h-4" />
-                    Generate {invoiceType === 'events' ? eventFamilyCount : familyCount} Draft{(invoiceType === 'events' ? eventFamilyCount : familyCount) !== 1 ? 's' : ''}
+                    Generate {invoiceType === 'hub' ? hubFamilyCount : invoiceType === 'events' ? eventFamilyCount : familyCount} Draft{(invoiceType === 'hub' ? hubFamilyCount : invoiceType === 'events' ? eventFamilyCount : familyCount) !== 1 ? 's' : ''}
                   </>
                 )}
               </button>
@@ -1328,6 +1614,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         onClose={() => setIsLinkModalOpen(false)}
         onSuccess={() => setIsLinkModalOpen(false)}
         unlinkedOrders={unlinkedOrders}
+      />
+
+      {/* Link Hub Bookings Modal */}
+      <LinkHubBookingsModal
+        isOpen={isHubLinkModalOpen}
+        onClose={() => setIsHubLinkModalOpen(false)}
+        onSuccess={() => setIsHubLinkModalOpen(false)}
+        unlinkedBookings={unlinkedHubBookings}
       />
     </div>
   )
@@ -1348,7 +1642,6 @@ function buildDescription(enrollment: BillableEnrollment, quantity: number, unit
       }
       return `${studentName} - ${serviceName}: ${quantity} weeks × $${unitPrice.toFixed(2)}`
     case 'learning_pod':
-    case 'eaton_hub':
       if (quantity === 1) {
         return `${studentName} - ${serviceName}`
       }
