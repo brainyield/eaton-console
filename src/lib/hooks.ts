@@ -2342,8 +2342,7 @@ export function useInvoiceMutations() {
       // This allows syncing payment status when invoice is paid
       const bookingIds = bookings.map(b => b.id)
       await supabase.from('calendly_bookings')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .update({ status: 'completed', invoice_id: invoice.id } as any)
+        .update({ status: 'completed', invoice_id: invoice.id })
         .in('id', bookingIds)
 
       return invoice

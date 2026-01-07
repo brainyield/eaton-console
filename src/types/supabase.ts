@@ -208,6 +208,7 @@ export type Database = {
           invitee_email: string
           invitee_name: string | null
           invitee_phone: string | null
+          invoice_id: string | null
           lead_id: string | null
           notes: string | null
           payment_method: string | null
@@ -232,6 +233,7 @@ export type Database = {
           invitee_email: string
           invitee_name?: string | null
           invitee_phone?: string | null
+          invoice_id?: string | null
           lead_id?: string | null
           notes?: string | null
           payment_method?: string | null
@@ -256,6 +258,7 @@ export type Database = {
           invitee_email?: string
           invitee_name?: string | null
           invitee_phone?: string | null
+          invoice_id?: string | null
           lead_id?: string | null
           notes?: string | null
           payment_method?: string | null
@@ -301,6 +304,20 @@ export type Database = {
             columns: ["hub_session_id"]
             isOneToOne: false
             referencedRelation: "unbilled_hub_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "overdue_invoices"
             referencedColumns: ["id"]
           },
           {
