@@ -2187,6 +2187,8 @@ export function useInvoiceMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2272,6 +2274,8 @@ export function useInvoiceMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2350,6 +2354,8 @@ export function useInvoiceMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.hubSessions.pending() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2387,6 +2393,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
     // Suppress global error toast - callers handle errors explicitly
     onError: () => {},
@@ -2478,6 +2486,8 @@ export function useInvoiceMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2494,6 +2504,8 @@ export function useInvoiceMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2510,6 +2522,8 @@ export function useInvoiceMutations() {
     onSuccess: (_, id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(id) })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2527,6 +2541,8 @@ export function useInvoiceMutations() {
       ids.forEach((id) => {
         queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(id) })
       })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2621,6 +2637,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoicePayments.byInvoice(variables.invoiceId) })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -2676,6 +2694,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(invoiceId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -3019,6 +3039,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.invoiceEmails.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate families to update balance in Directory
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
   })
 
@@ -5035,5 +5057,184 @@ export function useLeadCampaignEngagement(leadId: string) {
       return (data || []) as LeadCampaignEngagement[]
     },
     enabled: !!leadId,
+  })
+}
+
+// =============================================================================
+// EVENTS HOOKS
+// =============================================================================
+
+export interface EventWithStats {
+  id: string
+  title: string
+  description: string | null
+  location: string | null
+  start_at: string | null
+  end_at: string | null
+  ticket_price_cents: number | null
+  event_type: string
+  attendee_count: number
+  revenue: number
+}
+
+export interface AttendeeWithDetails {
+  id: string
+  attendee_name: string
+  attendee_age: number | null
+  event_id: string
+  event_title: string
+  event_date: string | null
+  event_location: string | null
+  purchaser_name: string | null
+  purchaser_email: string | null
+  payment_status: string
+  family_id: string | null
+  family_name: string | null
+}
+
+// Database row types for Supabase queries
+interface EventRow {
+  id: string
+  title: string
+  description: string | null
+  venue_name: string | null
+  start_at: string | null
+  end_at: string | null
+  ticket_price_cents: number | null
+  event_type: string
+}
+
+interface AttendeeRow {
+  event_id: string
+}
+
+interface OrderRow {
+  event_id: string
+  total_cents: number | null
+  payment_status: string
+}
+
+interface AttendeeListRow {
+  attendee_id: string
+  attendee_name: string
+  attendee_age: number | null
+  event_id: string
+  event_title: string | null
+  event_date: string | null
+  venue_name: string | null
+  purchaser_name: string | null
+  purchaser_email: string | null
+  payment_status: string | null
+  family_id: string | null
+  event_type: string
+}
+
+interface EventFamilyRow {
+  id: string
+  display_name: string | null
+}
+
+/**
+ * Fetch all events with attendee counts and revenue
+ */
+export function useEvents() {
+  return useQuery({
+    queryKey: queryKeys.events.list(),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      const { data: events, error } = await supabase
+        .from('event_events')
+        .select('*')
+        .eq('event_type', 'event')
+        .order('start_at', { ascending: false })
+        .returns<EventRow[]>()
+
+      if (error) throw error
+
+      const eventIds = (events || []).map(e => e.id)
+
+      if (eventIds.length === 0) {
+        return []
+      }
+
+      const { data: attendees } = await supabase
+        .from('event_attendees')
+        .select('event_id')
+        .in('event_id', eventIds)
+        .returns<AttendeeRow[]>()
+
+      const { data: orders } = await supabase
+        .from('event_orders')
+        .select('event_id, total_cents, payment_status')
+        .in('event_id', eventIds)
+        .eq('payment_status', 'paid')
+        .returns<OrderRow[]>()
+
+      const attendeeCountMap = new Map<string, number>()
+      const revenueMap = new Map<string, number>()
+
+      ;(attendees || []).forEach(a => {
+        const current = attendeeCountMap.get(a.event_id) || 0
+        attendeeCountMap.set(a.event_id, current + 1)
+      })
+
+      ;(orders || []).forEach(o => {
+        const current = revenueMap.get(o.event_id) || 0
+        revenueMap.set(o.event_id, current + (o.total_cents || 0))
+      })
+
+      return (events || []).map(e => ({
+        ...e,
+        location: e.venue_name,
+        attendee_count: attendeeCountMap.get(e.id) || 0,
+        revenue: (revenueMap.get(e.id) || 0) / 100
+      })) as EventWithStats[]
+    }
+  })
+}
+
+/**
+ * Fetch all event attendees with details
+ */
+export function useAllAttendees() {
+  return useQuery({
+    queryKey: queryKeys.events.attendees(),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async () => {
+      // Use the event_attendee_list view which already joins events, orders, and attendees
+      // and filters by payment_status IN ('paid', 'stepup_pending')
+      const { data: attendeeList, error } = await supabase
+        .from('event_attendee_list')
+        .select('*')
+        .eq('event_type', 'event')
+        .order('event_date', { ascending: false })
+        .returns<AttendeeListRow[]>()
+
+      if (error) throw error
+      if (!attendeeList || attendeeList.length === 0) return []
+
+      // Get family names for attendees that have family_id
+      const familyIds = [...new Set(attendeeList.map(a => a.family_id).filter(Boolean))] as string[]
+      const { data: families } = familyIds.length > 0
+        ? await supabase.from('families').select('id, display_name').in('id', familyIds).returns<EventFamilyRow[]>()
+        : { data: [] as EventFamilyRow[] }
+
+      const familyMap = new Map((families || []).map(f => [f.id, f]))
+
+      return attendeeList.map(a => ({
+        id: a.attendee_id,
+        attendee_name: a.attendee_name,
+        attendee_age: a.attendee_age,
+        event_id: a.event_id,
+        event_title: a.event_title || 'Unknown',
+        event_date: a.event_date,
+        event_location: a.venue_name,
+        purchaser_name: a.purchaser_name,
+        purchaser_email: a.purchaser_email,
+        payment_status: a.payment_status || 'unknown',
+        family_id: a.family_id,
+        family_name: a.family_id ? familyMap.get(a.family_id)?.display_name : null
+      })) as AttendeeWithDetails[]
+    }
   })
 }

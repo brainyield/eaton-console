@@ -100,6 +100,27 @@ export const AGE_GROUP_OPTIONS = ['3-5', '6-8', '9-11', '12-14', '15-17'] as con
 export type AgeGroup = (typeof AGE_GROUP_OPTIONS)[number];
 
 /**
+ * Age group sort order - maps age group strings to numeric sort values.
+ * Used for sorting students/enrollments by age group.
+ */
+export const AGE_GROUP_ORDER: Record<string, number> = {
+  '3-5': 1,
+  '6-8': 2,
+  '9-11': 3,
+  '12-14': 4,
+  '15-17': 5,
+};
+
+/**
+ * Get numeric sort value for an age group.
+ * Returns 999 for unknown/null values to push them to the end.
+ */
+export function getAgeGroupSortValue(ageGroup: string | null | undefined): number {
+  if (!ageGroup) return 999;
+  return AGE_GROUP_ORDER[ageGroup] ?? 999;
+}
+
+/**
  * Determines the age group from a date of birth.
  * Returns the appropriate age range string based on the student's current age.
  *

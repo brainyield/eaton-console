@@ -242,4 +242,12 @@ export const queryKeys = {
     byCampaign: (campaignId: string) => ['lead_campaign_engagement', 'campaign', campaignId] as const,
     byLead: (leadId: string) => ['lead_campaign_engagement', 'lead', leadId] as const,
   },
+
+  // Events
+  events: {
+    all: ['events'] as const,
+    list: () => ['events', 'list'] as const,
+    detail: (id: string) => ['events', 'detail', id] as const,
+    attendees: () => ['events', 'all-attendees'] as const,
+  },
 }

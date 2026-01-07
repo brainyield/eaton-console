@@ -26,7 +26,7 @@ import { useEnrollments, useActiveServices } from '../lib/hooks'
 import type { Service, Enrollment } from '../lib/hooks'
 import { queryKeys } from '../lib/queryClient'
 import { getTodayString } from '../lib/dateUtils'
-import { calculateAge } from '../lib/utils'
+import { calculateAge, getAgeGroupSortValue } from '../lib/utils'
 import { EnrollmentDetailPanel } from './EnrollmentDetailPanel'
 import { AddEnrollmentModal } from './AddEnrollmentModal'
 import { EditEnrollmentModal } from './EditEnrollmentModal'
@@ -101,20 +101,6 @@ const STATUS_COLORS: Record<EnrollmentStatus, string> = {
   trial: 'bg-blue-500/20 text-blue-400',
   paused: 'bg-amber-500/20 text-amber-400',
   ended: 'bg-zinc-500/20 text-zinc-400',
-}
-
-// Age group sort order - maps age group strings to numeric sort values
-const AGE_GROUP_ORDER: Record<string, number> = {
-  '3-5': 1,
-  '6-8': 2,
-  '9-11': 3,
-  '12-14': 4,
-  '15-17': 5,
-}
-
-function getAgeGroupSortValue(ageGroup: string | null | undefined): number {
-  if (!ageGroup) return 999 // Push null/undefined to the end
-  return AGE_GROUP_ORDER[ageGroup] ?? 999
 }
 
 // Service icons
