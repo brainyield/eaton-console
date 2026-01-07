@@ -133,6 +133,7 @@ queryKeys.families.detail(id)
 - **DON'T** create families with `status: 'lead'` for paying customers - families with 'lead' status are excluded from Directory search and cannot be invoiced. Event purchases (Step Up, Stripe) should always create families with `status: 'active'`.
 - **DON'T** use `.eq()` for email lookups - emails may have case variations. Use `.ilike()` for case-insensitive matching: `.ilike('primary_email', email.toLowerCase())`.
 - **DON'T** create leads in webhooks without checking for duplicates - always check for existing active leads (status 'new' or 'contacted') with the same email before creating. If exists, log as activity instead. See `ingest-lead` and `calendly-webhook` for the pattern.
+- **DON'T** assume all data creation happens in application code - Supabase database triggers (like `process_class_registration`) can create students and enrollments automatically when event_attendees or event_orders are inserted/updated. Check Supabase Dashboard → Database → Triggers when debugging unexpected data creation. Trigger functions are in `supabase/migrations/` but may have been created directly in Dashboard.
 
 ---
 
