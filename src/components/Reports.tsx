@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
+import { queryKeys } from '../lib/queryClient'
 import { formatDateLocal, parseLocalDate, dateAtMidnight, daysBetween } from '../lib/dateUtils'
 import {
   BarChart,
@@ -26,6 +27,7 @@ import {
   Users,
   Calendar,
   RefreshCw,
+  AlertCircle,
 } from 'lucide-react'
 
 // Supabase response types
@@ -141,37 +143,29 @@ function getStartDate(dateRange: string): string {
   return formatDateLocal(startDate)
 }
 
-// Service name mapping for legend
-const serviceNameMap: Record<string, string> = {
-  academic_coaching: 'Academic Coaching',
-  learning_pod: 'Learning Pod',
-  consulting: 'Consulting',
-  eaton_online: 'Eaton Online',
-  eaton_hub: 'Eaton Hub',
-  elective_classes: 'Electives',
-}
-
 export default function Reports() {
   const [dateRange, setDateRange] = useState('6m')
 
   const startDate = useMemo(() => getStartDate(dateRange), [dateRange])
 
   // Revenue by month query
-  const { 
-    data: revenueResult, 
+  const {
+    data: revenueResult,
     isLoading: loadingRevenue,
+    isError: revenueError,
+    error: revenueErrorMsg,
     refetch: refetchRevenue
   } = useQuery({
-    queryKey: ['reports', 'revenue', startDate],
+    queryKey: queryKeys.reports.revenue(startDate),
     queryFn: async () => {
       // Fetch revenue records
-      const { data: revenueData, error: revenueError } = await supabase
+      const { data: revenueData, error: revenueErr } = await supabase
         .from('revenue_records')
         .select('period_start, revenue, service_id')
         .gte('period_start', startDate)
         .order('period_start', { ascending: true })
 
-      if (revenueError) throw revenueError
+      if (revenueErr) throw revenueErr
 
       // Fetch services for lookup
       const { data: servicesData } = await supabase
@@ -179,8 +173,12 @@ export default function Reports() {
         .select('id, name, code')
 
       const serviceMap: Record<string, { name: string; code: string }> = {}
+      const serviceNameMap: Record<string, string> = {}
       ;(servicesData || []).forEach((s: { id: string; name: string; code: string }) => {
         serviceMap[s.id] = { name: s.name, code: s.code }
+        if (s.code) {
+          serviceNameMap[s.code] = s.name
+        }
       })
 
       const records = revenueData || []
@@ -196,7 +194,7 @@ export default function Reports() {
         const monthKey = `${year}-${month}`
         const revenue = Number(rec.revenue) || 0
         const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'unknown'
-        
+
         // Total by month
         if (!monthlyData[monthKey]) {
           monthlyData[monthKey] = 0
@@ -248,18 +246,21 @@ export default function Reports() {
         revenueData: chartData,
         revenueByServiceData: serviceChartData,
         serviceKeys,
+        serviceNameMap,
         totalRevenue,
       }
     },
   })
 
   // Enrollments by service query
-  const { 
-    data: enrollmentResult, 
+  const {
+    data: enrollmentResult,
     isLoading: loadingEnrollments,
+    isError: enrollmentError,
+    error: enrollmentErrorMsg,
     refetch: refetchEnrollments
   } = useQuery({
-    queryKey: ['reports', 'enrollments'],
+    queryKey: queryKeys.reports.enrollments(),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enrollments')
@@ -311,12 +312,14 @@ export default function Reports() {
   })
 
   // Balance aging query
-  const { 
-    data: balanceResult, 
+  const {
+    data: balanceResult,
     isLoading: loadingBalances,
+    isError: balanceError,
+    error: balanceErrorMsg,
     refetch: refetchBalances
   } = useQuery({
-    queryKey: ['reports', 'balances'],
+    queryKey: queryKeys.reports.balances(),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('invoices')
@@ -339,19 +342,20 @@ export default function Reports() {
 
       invoices.forEach((inv) => {
         const dueDate = parseLocalDate(inv.due_date)
-        const daysOverdue = daysBetween(dueDate, today)
+        const daysPastDue = daysBetween(dueDate, today)
         const amount = Number(inv.balance_due) || 0
 
-        if (daysOverdue <= 0) {
+        if (daysPastDue <= 0) {
+          // Not yet due or due today
           buckets['Current'].amount += amount
           buckets['Current'].count++
-        } else if (daysOverdue <= 30) {
+        } else if (daysPastDue <= 30) {
           buckets['1-30 Days'].amount += amount
           buckets['1-30 Days'].count++
-        } else if (daysOverdue <= 60) {
+        } else if (daysPastDue <= 60) {
           buckets['31-60 Days'].amount += amount
           buckets['31-60 Days'].count++
-        } else if (daysOverdue <= 90) {
+        } else if (daysPastDue <= 90) {
           buckets['61-90 Days'].amount += amount
           buckets['61-90 Days'].count++
         } else {
@@ -376,12 +380,14 @@ export default function Reports() {
   })
 
   // Payroll by month query
-  const { 
-    data: payrollResult, 
+  const {
+    data: payrollResult,
     isLoading: loadingPayroll,
+    isError: payrollError,
+    error: payrollErrorMsg,
     refetch: refetchPayroll
   } = useQuery({
-    queryKey: ['reports', 'payroll', startDate],
+    queryKey: queryKeys.reports.payroll(startDate),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('teacher_payments')
@@ -397,13 +403,14 @@ export default function Reports() {
       const monthlyData: Record<string, { amount: number; count: number }> = {}
 
       payments.forEach((p) => {
-        const date = new Date(p.pay_date)
+        // Use parseLocalDate to avoid timezone issues
+        const date = parseLocalDate(p.pay_date)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-        
+
         if (!monthlyData[monthKey]) {
           monthlyData[monthKey] = { amount: 0, count: 0 }
         }
-        
+
         monthlyData[monthKey].amount += Number(p.total_amount) || 0
         monthlyData[monthKey].count++
       })
@@ -445,6 +452,7 @@ export default function Reports() {
   const revenueData = revenueResult?.revenueData ?? []
   const revenueByServiceData = revenueResult?.revenueByServiceData ?? []
   const serviceKeys = revenueResult?.serviceKeys ?? []
+  const serviceNameMap = revenueResult?.serviceNameMap ?? {}
   const totalRevenue = revenueResult?.totalRevenue ?? 0
 
   const enrollmentData = enrollmentResult?.enrollmentData ?? []
@@ -464,8 +472,11 @@ export default function Reports() {
     color: '#e5e7eb',
   }
 
-  // Pie chart data (simplified for Recharts compatibility)
-  const pieData = enrollmentData.map(({ name, value }) => ({ name, value }))
+  // Pie chart data (memoized for performance)
+  const pieData = useMemo(
+    () => (enrollmentResult?.enrollmentData ?? []).map(({ name, value }) => ({ name, value })),
+    [enrollmentResult?.enrollmentData]
+  )
 
   return (
     <div className="p-6 bg-gray-900 min-h-screen">
@@ -570,6 +581,11 @@ export default function Reports() {
             <div className="h-64 flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
             </div>
+          ) : revenueError ? (
+            <div className="h-64 flex items-center justify-center text-red-400">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {revenueErrorMsg instanceof Error ? revenueErrorMsg.message : 'Failed to load revenue data'}
+            </div>
           ) : revenueData.length === 0 ? (
             <div className="h-64 flex items-center justify-center text-gray-500">
               No revenue data for this period
@@ -599,6 +615,11 @@ export default function Reports() {
           {loadingRevenue ? (
             <div className="h-64 flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : revenueError ? (
+            <div className="h-64 flex items-center justify-center text-red-400">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {revenueErrorMsg instanceof Error ? revenueErrorMsg.message : 'Failed to load revenue data'}
             </div>
           ) : revenueByServiceData.length === 0 ? (
             <div className="h-64 flex items-center justify-center text-gray-500">
@@ -640,6 +661,11 @@ export default function Reports() {
           {loadingEnrollments ? (
             <div className="h-64 flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : enrollmentError ? (
+            <div className="h-64 flex items-center justify-center text-red-400">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {enrollmentErrorMsg instanceof Error ? enrollmentErrorMsg.message : 'Failed to load enrollments'}
             </div>
           ) : enrollmentData.length === 0 ? (
             <div className="h-64 flex items-center justify-center text-gray-500">
@@ -693,6 +719,11 @@ export default function Reports() {
             <div className="h-64 flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
             </div>
+          ) : balanceError ? (
+            <div className="h-64 flex items-center justify-center text-red-400">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {balanceErrorMsg instanceof Error ? balanceErrorMsg.message : 'Failed to load balance data'}
+            </div>
           ) : balanceData.every((d) => d.amount === 0) ? (
             <div className="h-64 flex items-center justify-center text-gray-500">
               No outstanding balances! 🎉
@@ -737,6 +768,11 @@ export default function Reports() {
           {loadingPayroll ? (
             <div className="h-64 flex items-center justify-center">
               <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : payrollError ? (
+            <div className="h-64 flex items-center justify-center text-red-400">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {payrollErrorMsg instanceof Error ? payrollErrorMsg.message : 'Failed to load payroll data'}
             </div>
           ) : payrollData.length === 0 ? (
             <div className="h-64 flex items-center justify-center text-gray-500">
@@ -796,8 +832,8 @@ export default function Reports() {
             </p>
           </div>
           <div>
-            <p className="text-gray-400">Profit Margin</p>
-            <p className="text-xl font-bold text-green-500">
+            <p className="text-gray-400">Gross Margin</p>
+            <p className="text-xl font-bold text-green-500" title="(Revenue - Payroll) / Revenue">
               {totalRevenue > 0 && totalPayroll > 0
                 ? `${Math.round(((totalRevenue - totalPayroll) / totalRevenue) * 100)}%`
                 : '—'}

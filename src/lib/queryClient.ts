@@ -250,4 +250,13 @@ export const queryKeys = {
     detail: (id: string) => ['events', 'detail', id] as const,
     attendees: () => ['events', 'all-attendees'] as const,
   },
+
+  // Reports
+  reports: {
+    all: ['reports'] as const,
+    revenue: (startDate: string) => ['reports', 'revenue', startDate] as const,
+    enrollments: () => ['reports', 'enrollments'] as const,
+    balances: () => ['reports', 'balances'] as const,
+    payroll: (startDate: string) => ['reports', 'payroll', startDate] as const,
+  },
 }
