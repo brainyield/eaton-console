@@ -28,6 +28,7 @@ import {
   Calendar,
   RefreshCw,
   AlertCircle,
+  Info,
 } from 'lucide-react'
 
 // Supabase response types
@@ -832,8 +833,16 @@ export default function Reports() {
             </p>
           </div>
           <div>
-            <p className="text-gray-400">Gross Margin</p>
-            <p className="text-xl font-bold text-green-500" title="(Revenue - Payroll) / Revenue">
+            <p className="text-gray-400 flex items-center gap-1">
+              Net Cash Margin
+              <span className="relative group">
+                <Info className="w-3.5 h-3.5 text-gray-500 cursor-help" />
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 text-xs text-gray-200 bg-gray-800 border border-gray-600 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                  Cash collected minus teacher payments,<br />as % of collections. Based on payment<br />dates, not service periods.
+                </span>
+              </span>
+            </p>
+            <p className="text-xl font-bold text-green-500">
               {totalRevenue > 0 && totalPayroll > 0
                 ? `${Math.round(((totalRevenue - totalPayroll) / totalRevenue) * 100)}%`
                 : '—'}
