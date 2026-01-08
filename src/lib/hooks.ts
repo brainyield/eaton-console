@@ -5238,3 +5238,718 @@ export function useAllAttendees() {
     }
   })
 }
+
+// =============================================================================
+// CHECK-IN TYPES (Teacher's Desk)
+// =============================================================================
+
+export type CheckinPeriodStatus = 'draft' | 'open' | 'closed'
+export type CheckinInviteStatus = 'pending' | 'submitted'
+
+export interface CheckinPeriod {
+  id: string
+  period_key: string           // '2026-01' format
+  display_name: string         // 'January 2026'
+  status: CheckinPeriodStatus
+  opens_at: string | null
+  closes_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface CheckinPeriodSummary extends CheckinPeriod {
+  total_invites: number
+  submitted_count: number
+  pending_count: number
+  sent_pending_count: number
+  not_sent_count: number
+}
+
+export interface CheckinInvite {
+  id: string
+  period_id: string
+  teacher_id: string
+  status: CheckinInviteStatus
+  sent_at: string | null
+  submitted_at: string | null
+  reminders_sent: number
+  last_reminder_at: string | null
+  created_at: string
+}
+
+export interface CheckinInviteWithTeacher extends CheckinInvite {
+  teacher: {
+    id: string
+    display_name: string
+    email: string | null
+    status: string
+    desk_token: string | null
+  }
+}
+
+export interface CheckinResponse {
+  id: string
+  invite_id: string
+  needs_resources: boolean
+  resource_requests: string | null
+  needs_training: boolean
+  training_requests: string | null
+  doing_bom_project: boolean | null
+  general_notes: string | null
+  submitted_at: string
+  created_at: string
+}
+
+export interface CheckinStudentResource {
+  id: string
+  response_id: string
+  student_id: string
+  student_name: string
+  grade_level: string | null
+  ela_resources: string | null
+  math_resources: string | null
+  science_resources: string | null
+  social_resources: string | null
+  elearning_status: string | null
+  created_at: string
+}
+
+export interface CheckinResponseWithResources extends CheckinResponse {
+  student_resources: CheckinStudentResource[]
+}
+
+export interface TeacherStudent {
+  student_id: string
+  student_name: string
+  grade_level: string | null
+  family_name: string
+  service_name: string
+}
+
+// =============================================================================
+// CHECK-IN HOOKS
+// =============================================================================
+
+/**
+ * Fetch all check-in periods with summary stats
+ */
+export function useCheckinPeriods() {
+  return useQuery({
+    queryKey: queryKeys.checkins.periodSummary(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('checkin_period_summary')
+        .select('*')
+        .order('period_key', { ascending: false })
+
+      if (error) throw error
+      return data as CheckinPeriodSummary[]
+    },
+  })
+}
+
+/**
+ * Fetch a single period by ID
+ */
+export function useCheckinPeriod(periodId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.checkins.periodDetail(periodId || ''),
+    queryFn: async () => {
+      if (!periodId) return null
+      const { data, error } = await supabase
+        .from('checkin_periods')
+        .select('*')
+        .eq('id', periodId)
+        .single()
+
+      if (error) throw error
+      return data as CheckinPeriod
+    },
+    enabled: !!periodId,
+  })
+}
+
+/**
+ * Fetch invites for a period with teacher details
+ */
+export function useCheckinInvites(periodId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.checkins.invites(periodId || ''),
+    queryFn: async () => {
+      if (!periodId) return []
+      const { data, error } = await supabase
+        .from('checkin_invites')
+        .select(`
+          *,
+          teacher:teachers(id, display_name, email, status, desk_token)
+        `)
+        .eq('period_id', periodId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data as CheckinInviteWithTeacher[]
+    },
+    enabled: !!periodId,
+  })
+}
+
+/**
+ * Fetch a check-in response with student resources
+ */
+export function useCheckinResponse(inviteId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.checkins.responseWithResources(inviteId || ''),
+    queryFn: async () => {
+      if (!inviteId) return null
+
+      // Get the response
+      const { data: response, error: respError } = await supabase
+        .from('checkin_responses')
+        .select('*')
+        .eq('invite_id', inviteId)
+        .single()
+
+      if (respError) {
+        if (respError.code === 'PGRST116') return null // Not found
+        throw respError
+      }
+
+      // Get student resources
+      const { data: resources, error: resError } = await supabase
+        .from('checkin_student_resources')
+        .select('*')
+        .eq('response_id', response.id)
+        .order('student_name')
+
+      if (resError) throw resError
+
+      return {
+        ...response,
+        student_resources: resources || []
+      } as CheckinResponseWithResources
+    },
+    enabled: !!inviteId,
+  })
+}
+
+/**
+ * Fetch active students for a teacher (for check-in form)
+ */
+export function useTeacherStudents(teacherId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.checkins.teacherStudents(teacherId || ''),
+    queryFn: async () => {
+      if (!teacherId) return []
+
+      const { data, error } = await supabase
+        .from('teacher_assignments')
+        .select(`
+          enrollment:enrollments!inner(
+            student:students!inner(
+              id,
+              full_name,
+              grade_level,
+              family:families!inner(display_name)
+            ),
+            service:services!inner(name)
+          )
+        `)
+        .eq('teacher_id', teacherId)
+        .eq('is_active', true)
+        .not('enrollment_id', 'is', null)
+
+      if (error) throw error
+
+      // Flatten and dedupe by student ID
+      const studentMap = new Map<string, TeacherStudent>()
+
+      for (const row of data || []) {
+        const enrollment = row.enrollment as {
+          student: { id: string; full_name: string; grade_level: string | null; family: { display_name: string } }
+          service: { name: string }
+        } | null
+
+        if (enrollment?.student) {
+          const student = enrollment.student
+          if (!studentMap.has(student.id)) {
+            studentMap.set(student.id, {
+              student_id: student.id,
+              student_name: student.full_name,
+              grade_level: student.grade_level,
+              family_name: student.family?.display_name || '',
+              service_name: enrollment.service?.name || ''
+            })
+          }
+        }
+      }
+
+      return Array.from(studentMap.values()).sort((a, b) =>
+        a.student_name.localeCompare(b.student_name)
+      )
+    },
+    enabled: !!teacherId,
+  })
+}
+
+// =============================================================================
+// CHECK-IN MUTATIONS
+// =============================================================================
+
+export function useCheckinMutations() {
+  const queryClient = useQueryClient()
+
+  // Create a new period
+  const createPeriod = useMutation({
+    mutationFn: async (data: { period_key: string; display_name: string; status?: CheckinPeriodStatus; opens_at?: string; closes_at?: string }) => {
+      const { data: period, error } = await supabase
+        .from('checkin_periods')
+        .insert(data)
+        .select()
+        .single()
+
+      if (error) throw error
+      return period as CheckinPeriod
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periods() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+    },
+  })
+
+  // Update a period
+  const updatePeriod = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<CheckinPeriod> }) => {
+      const { data: period, error } = await supabase
+        .from('checkin_periods')
+        .update(data)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) throw error
+      return period as CheckinPeriod
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periods() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodDetail(variables.id) })
+    },
+  })
+
+  // Delete a period
+  const deletePeriod = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from('checkin_periods')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periods() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+    },
+  })
+
+  // Create invites for teachers
+  const createInvites = useMutation({
+    mutationFn: async ({ periodId, teacherIds }: { periodId: string; teacherIds: string[] }) => {
+      const invites = teacherIds.map(teacherId => ({
+        period_id: periodId,
+        teacher_id: teacherId,
+        status: 'pending' as const,
+      }))
+
+      const { data, error } = await supabase
+        .from('checkin_invites')
+        .insert(invites)
+        .select()
+
+      if (error) throw error
+      return data as CheckinInvite[]
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(variables.periodId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+    },
+  })
+
+  // Mark invites as sent (updates sent_at timestamp and sends emails via n8n)
+  const markInvitesSent = useMutation({
+    mutationFn: async ({
+      invites,
+      periodId,
+      periodDisplayName
+    }: {
+      invites: CheckinInviteWithTeacher[]
+      periodId: string
+      periodDisplayName: string
+    }) => {
+      const inviteIds = invites.map(i => i.id)
+
+      // Update database first
+      const { error } = await supabase
+        .from('checkin_invites')
+        .update({ sent_at: new Date().toISOString() })
+        .in('id', inviteIds)
+
+      if (error) throw error
+
+      // Send emails via n8n webhook for each invite with an email
+      const baseUrl = window.location.origin
+      for (const invite of invites) {
+        if (invite.teacher?.email && invite.teacher?.desk_token) {
+          try {
+            await fetch('https://eatonacademic.app.n8n.cloud/webhook/checkin-notify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'invite',
+                teacher: {
+                  name: invite.teacher.display_name,
+                  email: invite.teacher.email,
+                },
+                period: {
+                  display_name: periodDisplayName,
+                },
+                desk_url: `${baseUrl}/desk/${invite.teacher.desk_token}`,
+                checkin_url: `${baseUrl}/desk/${invite.teacher.desk_token}/checkin/${periodId}`,
+              }),
+            })
+          } catch (webhookError) {
+            // Log but don't fail the mutation - DB is already updated
+            console.error('Failed to send invite email:', webhookError)
+          }
+        }
+      }
+
+      return { periodId }
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(result.periodId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+    },
+  })
+
+  // Mark invites as reminded (updates reminder count and sends emails via n8n)
+  const markInvitesReminded = useMutation({
+    mutationFn: async ({
+      invites,
+      periodId,
+      periodDisplayName
+    }: {
+      invites: CheckinInviteWithTeacher[]
+      periodId: string
+      periodDisplayName: string
+    }) => {
+      const inviteIds = invites.map(i => i.id)
+
+      // Get current reminder counts
+      const { data: currentInvites, error: fetchError } = await supabase
+        .from('checkin_invites')
+        .select('id, reminders_sent')
+        .in('id', inviteIds)
+
+      if (fetchError) throw fetchError
+
+      // Update each invite in database
+      for (const dbInvite of currentInvites || []) {
+        const { error } = await supabase
+          .from('checkin_invites')
+          .update({
+            reminders_sent: (dbInvite.reminders_sent || 0) + 1,
+            last_reminder_at: new Date().toISOString()
+          })
+          .eq('id', dbInvite.id)
+
+        if (error) throw error
+      }
+
+      // Send reminder emails via n8n webhook for each invite with an email
+      const baseUrl = window.location.origin
+      for (const invite of invites) {
+        if (invite.teacher?.email && invite.teacher?.desk_token) {
+          try {
+            await fetch('https://eatonacademic.app.n8n.cloud/webhook/checkin-notify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                type: 'reminder',
+                teacher: {
+                  name: invite.teacher.display_name,
+                  email: invite.teacher.email,
+                },
+                period: {
+                  display_name: periodDisplayName,
+                },
+                desk_url: `${baseUrl}/desk/${invite.teacher.desk_token}`,
+                checkin_url: `${baseUrl}/desk/${invite.teacher.desk_token}/checkin/${periodId}`,
+              }),
+            })
+          } catch (webhookError) {
+            // Log but don't fail the mutation - DB is already updated
+            console.error('Failed to send reminder email:', webhookError)
+          }
+        }
+      }
+
+      return { periodId }
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(result.periodId) })
+    },
+  })
+
+  // Delete an invite
+  const deleteInvite = useMutation({
+    mutationFn: async ({ inviteId, periodId }: { inviteId: string; periodId: string }) => {
+      const { error } = await supabase
+        .from('checkin_invites')
+        .delete()
+        .eq('id', inviteId)
+
+      if (error) throw error
+      return { periodId }
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(result.periodId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+    },
+  })
+
+  return {
+    createPeriod,
+    updatePeriod,
+    deletePeriod,
+    createInvites,
+    markInvitesSent,
+    markInvitesReminded,
+    deleteInvite,
+  }
+}
+
+// =============================================================================
+// TEACHER DESK HOOKS (Public Portal)
+// =============================================================================
+
+/**
+ * Teacher info returned by token lookup
+ */
+export interface TeacherDeskInfo {
+  id: string
+  display_name: string
+  email: string | null
+  desk_token: string
+  status: string
+}
+
+/**
+ * Fetch teacher by their desk token (for public teacher portal)
+ */
+export function useTeacherByToken(token: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.teachers.byToken(token || ''),
+    queryFn: async () => {
+      if (!token) return null
+
+      const { data, error } = await supabase
+        .from('teachers')
+        .select('id, display_name, email, desk_token, status')
+        .eq('desk_token', token)
+        .single()
+
+      if (error) {
+        if (error.code === 'PGRST116') return null // No rows found
+        throw error
+      }
+      return data as TeacherDeskInfo
+    },
+    enabled: !!token,
+  })
+}
+
+/**
+ * Check-in invite with period info for teacher desk
+ */
+export interface TeacherInviteWithPeriod {
+  id: string
+  period_id: string
+  teacher_id: string
+  status: 'pending' | 'submitted'
+  sent_at: string | null
+  submitted_at: string | null
+  reminders_sent: number
+  last_reminder_at: string | null
+  created_at: string
+  period: {
+    id: string
+    period_key: string
+    display_name: string
+    status: 'draft' | 'open' | 'closed'
+    opens_at: string | null
+    closes_at: string | null
+  }
+}
+
+/**
+ * Fetch all check-in invites for a teacher (for their desk portal)
+ */
+export function useTeacherInvites(teacherId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.checkins.invitesByTeacher(teacherId || ''),
+    queryFn: async () => {
+      if (!teacherId) return []
+
+      const { data, error } = await supabase
+        .from('checkin_invites')
+        .select(`
+          id,
+          period_id,
+          teacher_id,
+          status,
+          sent_at,
+          submitted_at,
+          reminders_sent,
+          last_reminder_at,
+          created_at,
+          period:checkin_periods!period_id (
+            id,
+            period_key,
+            display_name,
+            status,
+            opens_at,
+            closes_at
+          )
+        `)
+        .eq('teacher_id', teacherId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+
+      // Transform the response to flatten the period relationship
+      return (data || []).map(invite => ({
+        ...invite,
+        period: Array.isArray(invite.period) ? invite.period[0] : invite.period,
+      })) as TeacherInviteWithPeriod[]
+    },
+    enabled: !!teacherId,
+  })
+}
+
+// =============================================================================
+// CHECK-IN FORM SUBMISSION (Teacher Portal)
+// =============================================================================
+
+interface CheckinFormSubmitData {
+  inviteId: string
+  periodId: string
+  teacherId: string
+  teacherName: string
+  teacherEmail: string | null
+  needsAssessment: {
+    needs_resources: boolean
+    resource_requests: string | null
+    needs_training: boolean
+    training_requests: string | null
+    doing_bom_project: boolean | null
+  }
+  studentResources: Array<{
+    student_id: string
+    student_name: string
+    grade_level: string | null
+    ela_resources: string | null
+    math_resources: string | null
+    science_resources: string | null
+    social_resources: string | null
+    elearning_status: string | null
+  }>
+}
+
+/**
+ * Submit a check-in form (creates response, student resources, updates invite status)
+ */
+export function useCheckinFormSubmit() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: CheckinFormSubmitData) => {
+      // 1. Create the checkin_response record
+      const { data: response, error: responseError } = await supabase
+        .from('checkin_responses')
+        .insert({
+          invite_id: data.inviteId,
+          needs_resources: data.needsAssessment.needs_resources,
+          resource_requests: data.needsAssessment.resource_requests,
+          needs_training: data.needsAssessment.needs_training,
+          training_requests: data.needsAssessment.training_requests,
+          doing_bom_project: data.needsAssessment.doing_bom_project,
+        })
+        .select()
+        .single()
+
+      if (responseError) throw responseError
+
+      // 2. Create student resource records
+      if (data.studentResources.length > 0) {
+        const studentResourceRecords = data.studentResources.map(sr => ({
+          response_id: response.id,
+          student_id: sr.student_id,
+          student_name: sr.student_name,
+          grade_level: sr.grade_level,
+          ela_resources: sr.ela_resources,
+          math_resources: sr.math_resources,
+          science_resources: sr.science_resources,
+          social_resources: sr.social_resources,
+          elearning_status: sr.elearning_status,
+        }))
+
+        const { error: resourcesError } = await supabase
+          .from('checkin_student_resources')
+          .insert(studentResourceRecords)
+
+        if (resourcesError) throw resourcesError
+      }
+
+      // 3. Update invite status to submitted
+      const { error: inviteError } = await supabase
+        .from('checkin_invites')
+        .update({
+          status: 'submitted',
+          submitted_at: new Date().toISOString(),
+        })
+        .eq('id', data.inviteId)
+
+      if (inviteError) throw inviteError
+
+      // 4. If training was requested and teacher has email, send training webhook
+      if (data.needsAssessment.needs_training && data.teacherEmail) {
+        try {
+          await fetch('https://eatonacademic.app.n8n.cloud/webhook/checkin-training', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              teacher: {
+                name: data.teacherName,
+                email: data.teacherEmail,
+              },
+              training_requests: data.needsAssessment.training_requests,
+            }),
+          })
+        } catch (webhookError) {
+          // Log but don't fail the mutation - submission is already complete
+          console.error('Failed to send training request email:', webhookError)
+        }
+      }
+
+      return { responseId: response.id, needsTraining: data.needsAssessment.needs_training }
+    },
+    onSuccess: (_result, variables) => {
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(variables.periodId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invitesByTeacher(variables.teacherId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.periodSummary() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.checkins.response(variables.inviteId) })
+    },
+  })
+}

@@ -75,7 +75,7 @@ export const queryKeys = {
   // Teachers
   teachers: {
     all: ['teachers'] as const,
-    list: (filters?: { status?: string }) => 
+    list: (filters?: { status?: string }) =>
       ['teachers', 'list', filters] as const,
     detail: (id: string) => ['teachers', 'detail', id] as const,
     active: () => ['teachers', 'active'] as const,
@@ -84,6 +84,8 @@ export const queryKeys = {
       ['teachers', 'withLoad', filters] as const,
     withLoadSingle: (id: string) =>
       ['teachers', 'withLoad', 'single', id] as const,
+    // NEW: For teacher desk token lookup
+    byToken: (token: string) => ['teachers', 'byToken', token] as const,
   },
   
   // Services
@@ -258,5 +260,18 @@ export const queryKeys = {
     enrollments: () => ['reports', 'enrollments'] as const,
     balances: () => ['reports', 'balances'] as const,
     payroll: (startDate: string) => ['reports', 'payroll', startDate] as const,
+  },
+
+  // Check-ins (Teacher's Desk)
+  checkins: {
+    all: ['checkins'] as const,
+    periods: () => ['checkins', 'periods'] as const,
+    periodDetail: (id: string) => ['checkins', 'periods', id] as const,
+    periodSummary: () => ['checkins', 'periods', 'summary'] as const,
+    invites: (periodId: string) => ['checkins', 'invites', periodId] as const,
+    invitesByTeacher: (teacherId: string) => ['checkins', 'invites', 'teacher', teacherId] as const,
+    response: (inviteId: string) => ['checkins', 'response', inviteId] as const,
+    responseWithResources: (inviteId: string) => ['checkins', 'response', inviteId, 'resources'] as const,
+    teacherStudents: (teacherId: string) => ['checkins', 'teacherStudents', teacherId] as const,
   },
 }

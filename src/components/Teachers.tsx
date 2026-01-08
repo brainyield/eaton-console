@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Users,
   Search,
@@ -11,22 +12,28 @@ import {
   DollarSign,
   Clock,
   X,
+  ClipboardCheck,
 } from 'lucide-react'
 import { useTeachersWithLoad, useActiveServices, type TeacherWithLoad } from '../lib/hooks'
 import { AddTeacherModal } from './AddTeacherModal'
 import TeacherDetailPanel from './TeacherDetailPanel'
+import CheckinsTab from './CheckinsTab'
 
 type StatusFilter = 'all' | 'active' | 'reserve' | 'inactive'
+type MainTab = 'teachers' | 'checkins'
 
 interface TeachersProps {
   selectedTeacherId?: string | null
   onSelectTeacher?: (id: string | null) => void
 }
 
-export default function Teachers({ 
-  selectedTeacherId: externalSelectedId, 
-  onSelectTeacher: externalSetSelectedId 
+export default function Teachers({
+  selectedTeacherId: externalSelectedId,
+  onSelectTeacher: externalSetSelectedId
 }: TeachersProps = {}) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const mainTab = (searchParams.get('tab') as MainTab) || 'teachers'
+
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -37,6 +44,16 @@ export default function Teachers({
   // Use external state if provided, otherwise use internal state
   const selectedTeacherId = externalSelectedId !== undefined ? externalSelectedId : internalSelectedId
   const setSelectedTeacherId = externalSetSelectedId || setInternalSelectedId
+
+  // Handle main tab change
+  const handleTabChange = (tab: MainTab) => {
+    if (tab === 'teachers') {
+      searchParams.delete('tab')
+    } else {
+      searchParams.set('tab', tab)
+    }
+    setSearchParams(searchParams)
+  }
 
   // Fetch services for filter dropdown
   const { data: services } = useActiveServices()
@@ -137,17 +154,51 @@ export default function Teachers({
             </p>
           </div>
         </div>
+        {mainTab === 'teachers' && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Add Teacher
+          </button>
+        )}
+      </div>
+
+      {/* Main Tab Navigation */}
+      <div className="flex items-center gap-1 border-b border-zinc-700">
         <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          onClick={() => handleTabChange('teachers')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mainTab === 'teachers'
+              ? 'border-blue-500 text-blue-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
         >
-          <Plus className="h-4 w-4" />
-          Add Teacher
+          <Users className="h-4 w-4" />
+          Teachers
+        </button>
+        <button
+          onClick={() => handleTabChange('checkins')}
+          className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            mainTab === 'checkins'
+              ? 'border-blue-500 text-blue-400'
+              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+          }`}
+        >
+          <ClipboardCheck className="h-4 w-4" />
+          Check-ins
         </button>
       </div>
 
-      {/* Search and Filters */}
-      <div className="flex items-center gap-4">
+      {/* Check-ins Tab Content */}
+      {mainTab === 'checkins' && <CheckinsTab />}
+
+      {/* Teachers Tab Content */}
+      {mainTab === 'teachers' && (
+        <>
+          {/* Search and Filters */}
+          <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-500" />
           <input
@@ -291,6 +342,8 @@ export default function Teachers({
             />
           ))}
         </div>
+      )}
+        </>
       )}
 
       {/* Modals */}

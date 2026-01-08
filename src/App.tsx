@@ -8,6 +8,8 @@ import { CommandPalette } from './components/CommandPalette'
 import Invoicing from './components/Invoicing'
 import Payroll from './components/Payroll'
 import PublicInvoicePage from './components/PublicInvoicePage'
+import TeacherDesk from './components/TeacherDesk'
+import CheckinForm from './components/CheckinForm'
 import ActiveRoster from './components/ActiveRoster'
 import Events from './components/Events'
 import Marketing from './components/Marketing'
@@ -103,6 +105,8 @@ function AppContent() {
 
         {/* Public routes - NO Layout wrapper */}
         <Route path="/invoice/:publicId" element={<PublicInvoiceWrapper />} />
+        <Route path="/desk/:token" element={<TeacherDeskWrapper />} />
+        <Route path="/desk/:token/checkin/:periodId" element={<CheckinFormWrapper />} />
 
         {/* Catch-all redirect to directory */}
         <Route path="*" element={
@@ -125,6 +129,32 @@ function PublicInvoiceWrapper() {
     return <div className="p-8 text-center">Invoice ID not provided</div>
   }
   return <PublicInvoicePage publicId={publicId} />
+}
+
+// Wrapper to extract token param for teacher desk
+function TeacherDeskWrapper() {
+  const { token } = useParams<{ token: string }>()
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-zinc-400">Invalid desk link</div>
+      </div>
+    )
+  }
+  return <TeacherDesk token={token} />
+}
+
+// Wrapper to extract params for check-in form
+function CheckinFormWrapper() {
+  const { token, periodId } = useParams<{ token: string; periodId: string }>()
+  if (!token || !periodId) {
+    return (
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-zinc-400">Invalid check-in link</div>
+      </div>
+    )
+  }
+  return <CheckinForm token={token} periodId={periodId} />
 }
 
 function App() {

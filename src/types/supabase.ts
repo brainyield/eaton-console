@@ -371,6 +371,215 @@ export type Database = {
           },
         ]
       }
+      checkin_invites: {
+        Row: {
+          created_at: string
+          id: string
+          last_reminder_at: string | null
+          period_id: string
+          reminders_sent: number
+          sent_at: string | null
+          status: string
+          submitted_at: string | null
+          teacher_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_reminder_at?: string | null
+          period_id: string
+          reminders_sent?: number
+          sent_at?: string | null
+          status?: string
+          submitted_at?: string | null
+          teacher_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_reminder_at?: string | null
+          period_id?: string
+          reminders_sent?: number
+          sent_at?: string | null
+          status?: string
+          submitted_at?: string | null
+          teacher_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkin_invites_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "checkin_period_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_invites_period_id_fkey"
+            columns: ["period_id"]
+            isOneToOne: false
+            referencedRelation: "checkin_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_invites_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_earnings_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_invites_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teacher_load"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_invites_teacher_id_fkey"
+            columns: ["teacher_id"]
+            isOneToOne: false
+            referencedRelation: "teachers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checkin_periods: {
+        Row: {
+          closes_at: string | null
+          created_at: string
+          display_name: string
+          id: string
+          opens_at: string | null
+          period_key: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          closes_at?: string | null
+          created_at?: string
+          display_name: string
+          id?: string
+          opens_at?: string | null
+          period_key: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          closes_at?: string | null
+          created_at?: string
+          display_name?: string
+          id?: string
+          opens_at?: string | null
+          period_key?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      checkin_responses: {
+        Row: {
+          created_at: string
+          doing_bom_project: boolean | null
+          general_notes: string | null
+          id: string
+          invite_id: string
+          needs_resources: boolean
+          needs_training: boolean
+          resource_requests: string | null
+          submitted_at: string
+          training_requests: string | null
+        }
+        Insert: {
+          created_at?: string
+          doing_bom_project?: boolean | null
+          general_notes?: string | null
+          id?: string
+          invite_id: string
+          needs_resources?: boolean
+          needs_training?: boolean
+          resource_requests?: string | null
+          submitted_at?: string
+          training_requests?: string | null
+        }
+        Update: {
+          created_at?: string
+          doing_bom_project?: boolean | null
+          general_notes?: string | null
+          id?: string
+          invite_id?: string
+          needs_resources?: boolean
+          needs_training?: boolean
+          resource_requests?: string | null
+          submitted_at?: string
+          training_requests?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkin_responses_invite_id_fkey"
+            columns: ["invite_id"]
+            isOneToOne: true
+            referencedRelation: "checkin_invites"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      checkin_student_resources: {
+        Row: {
+          created_at: string
+          ela_resources: string | null
+          elearning_status: string | null
+          grade_level: string | null
+          id: string
+          math_resources: string | null
+          response_id: string
+          science_resources: string | null
+          social_resources: string | null
+          student_id: string
+          student_name: string
+        }
+        Insert: {
+          created_at?: string
+          ela_resources?: string | null
+          elearning_status?: string | null
+          grade_level?: string | null
+          id?: string
+          math_resources?: string | null
+          response_id: string
+          science_resources?: string | null
+          social_resources?: string | null
+          student_id: string
+          student_name: string
+        }
+        Update: {
+          created_at?: string
+          ela_resources?: string | null
+          elearning_status?: string | null
+          grade_level?: string | null
+          id?: string
+          math_resources?: string | null
+          response_id?: string
+          science_resources?: string | null
+          social_resources?: string | null
+          student_id?: string
+          student_name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkin_student_resources_response_id_fkey"
+            columns: ["response_id"]
+            isOneToOne: false
+            referencedRelation: "checkin_responses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_student_resources_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       communications: {
         Row: {
           channel: Database["public"]["Enums"]["comm_channel"]
@@ -2851,6 +3060,7 @@ export type Database = {
         Row: {
           created_at: string
           default_hourly_rate: number | null
+          desk_token: string | null
           display_name: string
           email: string | null
           hire_date: string | null
@@ -2868,6 +3078,7 @@ export type Database = {
         Insert: {
           created_at?: string
           default_hourly_rate?: number | null
+          desk_token?: string | null
           display_name: string
           email?: string | null
           hire_date?: string | null
@@ -2885,6 +3096,7 @@ export type Database = {
         Update: {
           created_at?: string
           default_hourly_rate?: number | null
+          desk_token?: string | null
           display_name?: string
           email?: string | null
           hire_date?: string | null
@@ -2960,6 +3172,24 @@ export type Database = {
           unique_clicks: number | null
           unique_opens: number | null
           winning_variant: string | null
+        }
+        Relationships: []
+      }
+      checkin_period_summary: {
+        Row: {
+          closes_at: string | null
+          created_at: string | null
+          display_name: string | null
+          id: string | null
+          not_sent_count: number | null
+          opens_at: string | null
+          pending_count: number | null
+          period_key: string | null
+          sent_pending_count: number | null
+          status: string | null
+          submitted_count: number | null
+          total_invites: number | null
+          updated_at: string | null
         }
         Relationships: []
       }
@@ -3728,6 +3958,7 @@ export type Database = {
         Returns: number
       }
       derive_age_group: { Args: { age: number }; Returns: string }
+      generate_desk_token: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
       generate_public_id: { Args: never; Returns: string }
       mark_overdue_invoices: { Args: never; Returns: undefined }
