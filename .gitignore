@@ -28,3 +28,10 @@ task*.txt
 calendly_api.txt
 .mcp.json
 .claude/
+
+# Data exports (prevent accidental commits)
+*- Sheet1.csv
+*Supabase*.json
+exports/
+*.export.csv
+*.export.json
