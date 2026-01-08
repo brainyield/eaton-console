@@ -2260,6 +2260,7 @@ export type Database = {
           service_id: string | null
           source: string
           source_invoice_id: string | null
+          source_line_item_id: string | null
           student_id: string | null
           teacher_id: string | null
         }
@@ -2278,6 +2279,7 @@ export type Database = {
           service_id?: string | null
           source?: string
           source_invoice_id?: string | null
+          source_line_item_id?: string | null
           student_id?: string | null
           teacher_id?: string | null
         }
@@ -2296,6 +2298,7 @@ export type Database = {
           service_id?: string | null
           source?: string
           source_invoice_id?: string | null
+          source_line_item_id?: string | null
           student_id?: string | null
           teacher_id?: string | null
         }
@@ -3728,6 +3731,7 @@ export type Database = {
       generate_invoice_number: { Args: never; Returns: string }
       generate_public_id: { Args: never; Returns: string }
       mark_overdue_invoices: { Args: never; Returns: undefined }
+      normalize_name_to_last_first: { Args: { name: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
     }
