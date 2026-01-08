@@ -26,3 +26,5 @@ dist-ssr
 # Temporary task files
 task*.txt
 calendly_api.txt
+.mcp.json
+.claude/
