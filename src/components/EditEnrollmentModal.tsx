@@ -275,15 +275,26 @@ export function EditEnrollmentModal({
           }
         }
       } else if (currentActiveAssignment && formData.teacher_id) {
-        // Teacher didn't change, but hourly rate might have
+        // Teacher didn't change, but hourly rate or hours might have
         const rateChanged = teacherHourlyRate !== currentActiveAssignment.hourly_rate_teacher;
-        if (rateChanged) {
+        const newHoursPerWeek = formData.hours_per_week ? parseFloat(formData.hours_per_week) : null;
+        const hoursChanged = newHoursPerWeek !== currentActiveAssignment.hours_per_week;
+
+        if (rateChanged || hoursChanged) {
           try {
+            const updateData: { hourly_rate_teacher?: number | null; hours_per_week?: number | null } = {};
+            if (rateChanged) {
+              updateData.hourly_rate_teacher = teacherHourlyRate;
+            }
+            if (hoursChanged) {
+              updateData.hours_per_week = newHoursPerWeek;
+            }
+
             await new Promise<void>((resolve, reject) => {
               updateAssignment.mutate(
                 {
                   id: currentActiveAssignment.id,
-                  data: { hourly_rate_teacher: teacherHourlyRate }
+                  data: updateData
                 },
                 {
                   onSuccess: () => resolve(),
@@ -291,10 +302,14 @@ export function EditEnrollmentModal({
                 }
               );
             });
-            completedOps.push('Teacher hourly rate updated');
+
+            const updates: string[] = [];
+            if (rateChanged) updates.push('hourly rate');
+            if (hoursChanged) updates.push('hours/week');
+            completedOps.push(`Teacher ${updates.join(' and ')} updated`);
           } catch (err) {
-            console.error('Failed to update teacher rate:', err);
-            failedOps.push('Update teacher hourly rate');
+            console.error('Failed to update teacher assignment:', err);
+            failedOps.push('Update teacher assignment');
           }
         }
       }
