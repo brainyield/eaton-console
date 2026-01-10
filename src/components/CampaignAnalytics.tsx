@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   RefreshCw,
@@ -16,6 +16,13 @@ import { syncCampaigns, syncCampaignActivity } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { useToast } from '../lib/toast'
 import { formatNameLastFirst } from '../lib/utils'
+import { SortableTableHeader, useSortState } from './ui/SortableTableHeader'
+
+// Campaign table sort fields
+type CampaignSortField = 'campaign' | 'sent' | 'emails' | 'opens' | 'openRate' | 'clicks' | 'clickRate'
+
+// Lead engagement table sort fields
+type EngagementSortField = 'lead' | 'opens' | 'clicks' | 'firstOpened' | 'status'
 
 export function CampaignAnalytics() {
   const queryClient = useQueryClient()
@@ -26,9 +33,49 @@ export function CampaignAnalytics() {
   const [syncResult, setSyncResult] = useState<{ synced: number; failed: number } | null>(null)
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
   const [isSyncingActivity, setIsSyncingActivity] = useState(false)
+  const { sort: campaignSort, handleSort: handleCampaignSort } = useSortState<CampaignSortField>('sent', 'desc')
 
   // Find the selected campaign
   const selectedCampaign = campaigns.find(c => c.id === selectedCampaignId)
+
+  // Sort campaigns
+  const sortedCampaigns = useMemo(() => {
+    return [...campaigns].sort((a, b) => {
+      let comparison = 0
+      const { field, direction } = campaignSort
+
+      switch (field) {
+        case 'campaign':
+          comparison = a.campaign_name.toLowerCase().localeCompare(b.campaign_name.toLowerCase())
+          break
+        case 'sent': {
+          const dateA = a.send_time ? new Date(a.send_time).getTime() : 0
+          const dateB = b.send_time ? new Date(b.send_time).getTime() : 0
+          comparison = dateA - dateB
+          break
+        }
+        case 'emails':
+          comparison = a.emails_sent - b.emails_sent
+          break
+        case 'opens':
+          comparison = a.unique_opens - b.unique_opens
+          break
+        case 'openRate':
+          comparison = (a.open_rate || 0) - (b.open_rate || 0)
+          break
+        case 'clicks':
+          comparison = a.unique_clicks - b.unique_clicks
+          break
+        case 'clickRate':
+          comparison = (a.click_rate || 0) - (b.click_rate || 0)
+          break
+        default:
+          comparison = 0
+      }
+
+      return direction === 'asc' ? comparison : -comparison
+    })
+  }, [campaigns, campaignSort])
 
   // Calculate aggregate stats
   const stats = {
@@ -221,32 +268,58 @@ export function CampaignAnalytics() {
           <table className="w-full">
             <thead className="bg-zinc-800">
               <tr>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Campaign
-                </th>
-                <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Sent
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Emails
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Opens
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Open Rate
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Clicks
-                </th>
-                <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                  Click Rate
-                </th>
+                <SortableTableHeader
+                  label="Campaign"
+                  field="campaign"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                />
+                <SortableTableHeader
+                  label="Sent"
+                  field="sent"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                />
+                <SortableTableHeader
+                  label="Emails"
+                  field="emails"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                  className="text-center"
+                />
+                <SortableTableHeader
+                  label="Opens"
+                  field="opens"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                  className="text-center"
+                />
+                <SortableTableHeader
+                  label="Open Rate"
+                  field="openRate"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                  className="text-center"
+                />
+                <SortableTableHeader
+                  label="Clicks"
+                  field="clicks"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                  className="text-center"
+                />
+                <SortableTableHeader
+                  label="Click Rate"
+                  field="clickRate"
+                  currentSort={campaignSort}
+                  onSort={(f) => handleCampaignSort(f as CampaignSortField)}
+                  className="text-center"
+                />
                 <th className="w-10"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-700/50">
-              {campaigns.map((campaign) => (
+              {sortedCampaigns.map((campaign) => (
                 <tr
                   key={campaign.id}
                   onClick={() => setSelectedCampaignId(
@@ -331,9 +404,53 @@ function CampaignDetail({
   isSyncingActivity: boolean
 }) {
   const { data: engagement = [], isLoading } = useCampaignEngagement(campaign.id)
+  const { sort: engagementSort, handleSort: handleEngagementSort } = useSortState<EngagementSortField>('status', 'desc')
 
   const engagedLeads = engagement.filter(e => e.opened || e.clicked)
   const clickedLeads = engagement.filter(e => e.clicked)
+
+  // Sort engagement data
+  const sortedEngagement = useMemo(() => {
+    return [...engagement].sort((a, b) => {
+      let comparison = 0
+      const { field, direction } = engagementSort
+
+      switch (field) {
+        case 'lead': {
+          const nameA = (a.lead?.name || a.lead?.email || '').toLowerCase()
+          const nameB = (b.lead?.name || b.lead?.email || '').toLowerCase()
+          comparison = nameA.localeCompare(nameB)
+          break
+        }
+        case 'opens':
+          comparison = (a.open_count || 0) - (b.open_count || 0)
+          break
+        case 'clicks':
+          comparison = (a.click_count || 0) - (b.click_count || 0)
+          break
+        case 'firstOpened': {
+          const dateA = a.first_opened_at ? new Date(a.first_opened_at).getTime() : 0
+          const dateB = b.first_opened_at ? new Date(b.first_opened_at).getTime() : 0
+          comparison = dateA - dateB
+          break
+        }
+        case 'status': {
+          // Sort by engagement level: clicked > opened > sent
+          const getStatusRank = (e: typeof a) => {
+            if (e.clicked) return 2
+            if (e.opened) return 1
+            return 0
+          }
+          comparison = getStatusRank(a) - getStatusRank(b)
+          break
+        }
+        default:
+          comparison = 0
+      }
+
+      return direction === 'asc' ? comparison : -comparison
+    })
+  }, [engagement, engagementSort])
 
   return (
     <div className="bg-zinc-800/50 rounded-lg border border-zinc-700/50">
@@ -411,15 +528,45 @@ function CampaignDetail({
             <table className="w-full text-sm">
               <thead className="bg-zinc-900/50 sticky top-0">
                 <tr>
-                  <th className="text-left px-3 py-2 text-xs text-zinc-500">Lead</th>
-                  <th className="text-center px-3 py-2 text-xs text-zinc-500">Opens</th>
-                  <th className="text-center px-3 py-2 text-xs text-zinc-500">Clicks</th>
-                  <th className="text-left px-3 py-2 text-xs text-zinc-500">First Opened</th>
-                  <th className="text-left px-3 py-2 text-xs text-zinc-500">Status</th>
+                  <SortableTableHeader
+                    label="Lead"
+                    field="lead"
+                    currentSort={engagementSort}
+                    onSort={(f) => handleEngagementSort(f as EngagementSortField)}
+                    className="px-3 py-2 text-xs"
+                  />
+                  <SortableTableHeader
+                    label="Opens"
+                    field="opens"
+                    currentSort={engagementSort}
+                    onSort={(f) => handleEngagementSort(f as EngagementSortField)}
+                    className="text-center px-3 py-2 text-xs"
+                  />
+                  <SortableTableHeader
+                    label="Clicks"
+                    field="clicks"
+                    currentSort={engagementSort}
+                    onSort={(f) => handleEngagementSort(f as EngagementSortField)}
+                    className="text-center px-3 py-2 text-xs"
+                  />
+                  <SortableTableHeader
+                    label="First Opened"
+                    field="firstOpened"
+                    currentSort={engagementSort}
+                    onSort={(f) => handleEngagementSort(f as EngagementSortField)}
+                    className="px-3 py-2 text-xs"
+                  />
+                  <SortableTableHeader
+                    label="Status"
+                    field="status"
+                    currentSort={engagementSort}
+                    onSort={(f) => handleEngagementSort(f as EngagementSortField)}
+                    className="px-3 py-2 text-xs"
+                  />
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {engagement.map((e) => (
+                {sortedEngagement.map((e) => (
                   <tr key={e.id} className="hover:bg-zinc-700/20">
                     <td className="px-3 py-2">
                       <div>

@@ -29,13 +29,22 @@ import { ImportLeadsModal } from './ImportLeadsModal'
 import { EditLeadModal } from './EditLeadModal'
 import { ConversionAnalytics } from './ConversionAnalytics'
 import { CampaignAnalytics } from './CampaignAnalytics'
+import { SortableTableHeader, useSortState } from './ui/SortableTableHeader'
 import { bulkSyncLeadsToMailchimp, bulkSyncEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { formatNameLastFirst } from '../lib/utils'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
-type SortOption = 'created_desc' | 'created_asc' | 'score_desc' | 'score_asc'
 type TabType = 'leads' | 'event_leads' | 'campaigns' | 'analytics'
+
+// Lead table sort fields
+type LeadSortField = 'name' | 'type' | 'status' | 'score' | 'phone' | 'created' | 'lastContact' | 'contacts' | 'days'
+
+// Event leads table sort fields
+type EventLeadSortField = 'name' | 'email' | 'status' | 'score' | 'created'
+
+// Event purchasers table sort fields
+type EventPurchaserSortField = 'family' | 'email' | 'phone' | 'orders' | 'spend' | 'lastOrder'
 
 const LEADS_PAGE_SIZE = 50 // Number of leads per page
 
@@ -82,7 +91,9 @@ export default function Marketing() {
   const [typeFilter, setTypeFilter] = useState<LeadType | ''>('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | ''>('')
   const [engagementFilter, setEngagementFilter] = useState<EngagementFilter>('')
-  const [sortOption, setSortOption] = useState<SortOption>('score_desc')
+  const { sort: leadsSort, handleSort: handleLeadsSort } = useSortState<LeadSortField>('score', 'desc')
+  const { sort: eventLeadsSort, handleSort: handleEventLeadsSort } = useSortState<EventLeadSortField>('created', 'desc')
+  const { sort: eventPurchasersSort, handleSort: handleEventPurchasersSort } = useSortState<EventPurchaserSortField>('lastOrder', 'desc')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingLead, setEditingLead] = useState<LeadWithFamily | null>(null)
@@ -125,19 +136,53 @@ export default function Marketing() {
       filtered = filtered.filter(lead => getEngagementLevel(lead.mailchimp_engagement_score) === engagementFilter)
     }
 
-    // Sort
+    // Sort with multi-column support
     const sorted = [...filtered].sort((a, b) => {
-      switch (sortOption) {
-        case 'score_desc':
-          return (b.computed_score ?? 0) - (a.computed_score ?? 0)
-        case 'score_asc':
-          return (a.computed_score ?? 0) - (b.computed_score ?? 0)
-        case 'created_asc':
-          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-        case 'created_desc':
+      let comparison = 0
+      const { field, direction } = leadsSort
+
+      switch (field) {
+        case 'name': {
+          const nameA = (a.name || a.email || '').toLowerCase()
+          const nameB = (b.name || b.email || '').toLowerCase()
+          comparison = nameA.localeCompare(nameB)
+          break
+        }
+        case 'type':
+          comparison = a.lead_type.localeCompare(b.lead_type)
+          break
+        case 'status':
+          comparison = a.status.localeCompare(b.status)
+          break
+        case 'score':
+          comparison = (a.computed_score ?? 0) - (b.computed_score ?? 0)
+          break
+        case 'phone': {
+          const phoneA = a.phone || ''
+          const phoneB = b.phone || ''
+          comparison = phoneA.localeCompare(phoneB)
+          break
+        }
+        case 'created':
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          break
+        case 'lastContact': {
+          const dateA = a.last_contacted_at ? new Date(a.last_contacted_at).getTime() : 0
+          const dateB = b.last_contacted_at ? new Date(b.last_contacted_at).getTime() : 0
+          comparison = dateA - dateB
+          break
+        }
+        case 'contacts':
+          comparison = (a.contact_count || 0) - (b.contact_count || 0)
+          break
+        case 'days':
+          comparison = getDaysInPipeline(a.created_at) - getDaysInPipeline(b.created_at)
+          break
         default:
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          comparison = 0
       }
+
+      return direction === 'asc' ? comparison : -comparison
     })
 
     // Paginate
@@ -147,7 +192,7 @@ export default function Marketing() {
     const paginated = sorted.slice(startIdx, startIdx + LEADS_PAGE_SIZE)
 
     return { leads: paginated, totalCount, totalPages }
-  }, [allLeads, engagementFilter, sortOption, currentPage])
+  }, [allLeads, engagementFilter, leadsSort, currentPage, typeFilter])
 
   // Reset page when filters change
   const resetPage = () => setCurrentPage(1)
@@ -169,6 +214,75 @@ export default function Marketing() {
       converted: nonEventLeads.filter(l => l.status === 'converted').length,
     }
   }, [allLeads])
+
+  // Sort event type leads (imported event leads)
+  const sortedEventTypeLeads = useMemo(() => {
+    return [...eventTypeLeads].sort((a, b) => {
+      let comparison = 0
+      const { field, direction } = eventLeadsSort
+
+      switch (field) {
+        case 'name': {
+          const nameA = (a.name || a.email || '').toLowerCase()
+          const nameB = (b.name || b.email || '').toLowerCase()
+          comparison = nameA.localeCompare(nameB)
+          break
+        }
+        case 'email':
+          comparison = a.email.toLowerCase().localeCompare(b.email.toLowerCase())
+          break
+        case 'status':
+          comparison = a.status.localeCompare(b.status)
+          break
+        case 'score':
+          comparison = (a.computed_score ?? 0) - (b.computed_score ?? 0)
+          break
+        case 'created':
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          break
+        default:
+          comparison = 0
+      }
+
+      return direction === 'asc' ? comparison : -comparison
+    })
+  }, [eventTypeLeads, eventLeadsSort])
+
+  // Sort event purchasers (families without enrollments)
+  const sortedEventPurchasers = useMemo(() => {
+    return [...eventLeads].sort((a, b) => {
+      let comparison = 0
+      const { field, direction } = eventPurchasersSort
+
+      switch (field) {
+        case 'family':
+          comparison = (a.family_name || '').toLowerCase().localeCompare((b.family_name || '').toLowerCase())
+          break
+        case 'email':
+          comparison = (a.primary_email || '').toLowerCase().localeCompare((b.primary_email || '').toLowerCase())
+          break
+        case 'phone':
+          comparison = (a.primary_phone || '').localeCompare((b.primary_phone || ''))
+          break
+        case 'orders':
+          comparison = (a.event_order_count || 0) - (b.event_order_count || 0)
+          break
+        case 'spend':
+          comparison = (a.total_event_spend || 0) - (b.total_event_spend || 0)
+          break
+        case 'lastOrder': {
+          const dateA = a.last_event_order_at ? new Date(a.last_event_order_at).getTime() : 0
+          const dateB = b.last_event_order_at ? new Date(b.last_event_order_at).getTime() : 0
+          comparison = dateA - dateB
+          break
+        }
+        default:
+          comparison = 0
+      }
+
+      return direction === 'asc' ? comparison : -comparison
+    })
+  }, [eventLeads, eventPurchasersSort])
 
   // Search in allLeads to find selected lead even if on different page
   const selectedLead = allLeads?.find(l => l.id === selectedLeadId)
@@ -759,17 +873,6 @@ export default function Marketing() {
             <option value="cold">Cold (0)</option>
           </select>
 
-          <select
-            value={sortOption}
-            onChange={(e) => { setSortOption(e.target.value as SortOption); resetPage() }}
-            className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-sm text-white focus:outline-none focus:border-blue-500"
-          >
-            <option value="score_desc">Score (High to Low)</option>
-            <option value="score_asc">Score (Low to High)</option>
-            <option value="created_desc">Newest First</option>
-            <option value="created_asc">Oldest First</option>
-          </select>
-
           {(typeFilter || statusFilter || engagementFilter || search) && (
             <button
               onClick={() => {
@@ -899,33 +1002,62 @@ export default function Marketing() {
                       className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
                     />
                   </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Name / Email
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Type
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Status
-                  </th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Score
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Phone
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Created
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Last Contact
-                  </th>
-                  <th className="text-center px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Contacts
-                  </th>
-                  <th className="text-left px-4 py-3 text-xs font-medium text-zinc-400 uppercase tracking-wider">
-                    Days
-                  </th>
+                  <SortableTableHeader
+                    label="Name / Email"
+                    field="name"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
+                  <SortableTableHeader
+                    label="Type"
+                    field="type"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
+                  <SortableTableHeader
+                    label="Status"
+                    field="status"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
+                  <SortableTableHeader
+                    label="Score"
+                    field="score"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                    className="text-center"
+                  />
+                  <SortableTableHeader
+                    label="Phone"
+                    field="phone"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
+                  <SortableTableHeader
+                    label="Created"
+                    field="created"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
+                  <SortableTableHeader
+                    label="Last Contact"
+                    field="lastContact"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
+                  <SortableTableHeader
+                    label="Contacts"
+                    field="contacts"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                    className="text-center"
+                  />
+                  <SortableTableHeader
+                    label="Days"
+                    field="days"
+                    currentSort={leadsSort}
+                    onSort={(f) => { handleLeadsSort(f as LeadSortField); resetPage() }}
+                  />
                   <th className="w-12"></th>
                 </tr>
               </thead>
@@ -1108,15 +1240,40 @@ export default function Marketing() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-zinc-700/50">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Name</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Email</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Score</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Created</th>
+                        <SortableTableHeader
+                          label="Name"
+                          field="name"
+                          currentSort={eventLeadsSort}
+                          onSort={(f) => handleEventLeadsSort(f as EventLeadSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Email"
+                          field="email"
+                          currentSort={eventLeadsSort}
+                          onSort={(f) => handleEventLeadsSort(f as EventLeadSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Status"
+                          field="status"
+                          currentSort={eventLeadsSort}
+                          onSort={(f) => handleEventLeadsSort(f as EventLeadSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Score"
+                          field="score"
+                          currentSort={eventLeadsSort}
+                          onSort={(f) => handleEventLeadsSort(f as EventLeadSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Created"
+                          field="created"
+                          currentSort={eventLeadsSort}
+                          onSort={(f) => handleEventLeadsSort(f as EventLeadSortField)}
+                        />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-700/50">
-                      {eventTypeLeads.map((lead) => {
+                      {sortedEventTypeLeads.map((lead) => {
                         const scoreLabel = getScoreLabel(lead.computed_score ?? 0)
                         return (
                           <tr
@@ -1179,17 +1336,47 @@ export default function Marketing() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b border-zinc-700/50">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Family</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Email</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Phone</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Event Orders</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Total Spend</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-zinc-400 uppercase tracking-wider">Last Event Order</th>
+                        <SortableTableHeader
+                          label="Family"
+                          field="family"
+                          currentSort={eventPurchasersSort}
+                          onSort={(f) => handleEventPurchasersSort(f as EventPurchaserSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Email"
+                          field="email"
+                          currentSort={eventPurchasersSort}
+                          onSort={(f) => handleEventPurchasersSort(f as EventPurchaserSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Phone"
+                          field="phone"
+                          currentSort={eventPurchasersSort}
+                          onSort={(f) => handleEventPurchasersSort(f as EventPurchaserSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Event Orders"
+                          field="orders"
+                          currentSort={eventPurchasersSort}
+                          onSort={(f) => handleEventPurchasersSort(f as EventPurchaserSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Total Spend"
+                          field="spend"
+                          currentSort={eventPurchasersSort}
+                          onSort={(f) => handleEventPurchasersSort(f as EventPurchaserSortField)}
+                        />
+                        <SortableTableHeader
+                          label="Last Event Order"
+                          field="lastOrder"
+                          currentSort={eventPurchasersSort}
+                          onSort={(f) => handleEventPurchasersSort(f as EventPurchaserSortField)}
+                        />
                         <th className="px-4 py-3 text-right text-xs font-medium text-zinc-400 uppercase tracking-wider">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-zinc-700/50">
-                      {eventLeads.map((eventLead) => (
+                      {sortedEventPurchasers.map((eventLead) => (
                         <tr key={eventLead.family_id} className="hover:bg-zinc-700/30 transition-colors">
                           <td className="px-4 py-3">
                             <span className="font-medium text-white">{eventLead.family_name || 'Unknown'}</span>
