@@ -2083,6 +2083,7 @@ export type Database = {
           name: string | null
           notes: string | null
           num_children: number | null
+          pdf_email_sent_at: string | null
           phone: string | null
           preferred_days: string | null
           preferred_time: string | null
@@ -2114,6 +2115,7 @@ export type Database = {
           name?: string | null
           notes?: string | null
           num_children?: number | null
+          pdf_email_sent_at?: string | null
           phone?: string | null
           preferred_days?: string | null
           preferred_time?: string | null
@@ -2145,6 +2147,7 @@ export type Database = {
           name?: string | null
           notes?: string | null
           num_children?: number | null
+          pdf_email_sent_at?: string | null
           phone?: string | null
           preferred_days?: string | null
           preferred_time?: string | null
@@ -3958,7 +3961,6 @@ export type Database = {
         Returns: number
       }
       derive_age_group: { Args: { age: number }; Returns: string }
-      generate_desk_token: { Args: never; Returns: string }
       generate_invoice_number: { Args: never; Returns: string }
       generate_public_id: { Args: never; Returns: string }
       mark_overdue_invoices: { Args: never; Returns: undefined }
