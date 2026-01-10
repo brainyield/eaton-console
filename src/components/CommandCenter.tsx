@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
@@ -22,6 +23,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 
 interface DashboardStats {
@@ -68,6 +71,7 @@ interface UpcomingBooking {
   id: string
   event_type: string
   invitee_name: string
+  invitee_phone: string | null
   scheduled_at: string
   student_name?: string
 }
@@ -394,11 +398,10 @@ function useUpcomingBookings() {
     queryFn: async (): Promise<UpcomingBooking[]> => {
       const { data, error } = await supabase
         .from('calendly_bookings')
-        .select('id, event_type, invitee_name, scheduled_at, student_name')
+        .select('id, event_type, invitee_name, invitee_phone, scheduled_at, student_name')
         .eq('status', 'scheduled')
         .gte('scheduled_at', new Date().toISOString())
         .order('scheduled_at', { ascending: true })
-        .limit(5)
 
       if (error) throw error
       return (data || []) as UpcomingBooking[]
@@ -426,6 +429,11 @@ export default function CommandCenter() {
   const navigate = useNavigate()
   const { data: stats, isLoading, error } = useDashboardStats()
   const { data: upcomingBookings = [] } = useUpcomingBookings()
+  const [showAllBookings, setShowAllBookings] = useState(false)
+
+  // Pagination for bookings - show 5 by default, all when expanded
+  const displayedBookings = showAllBookings ? upcomingBookings : upcomingBookings.slice(0, 5)
+  const hasMoreBookings = upcomingBookings.length > 5
 
   // Derive alerts from stats
   const alerts: Alert[] = []
@@ -768,7 +776,7 @@ export default function CommandCenter() {
             <p className="text-sm text-muted-foreground">No upcoming bookings</p>
           ) : (
             <div className="space-y-2">
-              {upcomingBookings.map((booking) => (
+              {displayedBookings.map((booking) => (
                 <div
                   key={booking.id}
                   className="flex items-center justify-between p-2 rounded-md bg-background"
@@ -779,6 +787,12 @@ export default function CommandCenter() {
                     }`} />
                     <div>
                       <div className="text-sm font-medium">{booking.invitee_name}</div>
+                      {booking.invitee_phone && (
+                        <div className="text-xs text-muted-foreground flex items-center gap-1">
+                          <Phone className="w-3 h-3" />
+                          {booking.invitee_phone}
+                        </div>
+                      )}
                       {booking.student_name && (
                         <div className="text-xs text-muted-foreground">Student: {booking.student_name}</div>
                       )}
@@ -789,6 +803,24 @@ export default function CommandCenter() {
                   </div>
                 </div>
               ))}
+              {hasMoreBookings && (
+                <button
+                  onClick={() => setShowAllBookings(!showAllBookings)}
+                  className="w-full flex items-center justify-center gap-1 py-2 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showAllBookings ? (
+                    <>
+                      <ChevronUp className="w-4 h-4" />
+                      Show less
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-4 h-4" />
+                      Show {upcomingBookings.length - 5} more
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           )}
         </div>

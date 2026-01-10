@@ -119,18 +119,27 @@ Deno.serve(async (req) => {
     const inviteeName = safeString(inviteeData.name || data.name)
     const inviteeEmail = safeString(inviteeData.email || data.email).toLowerCase()
     const inviteeUri = safeString(inviteeData.uri || data.uri)
-    // Timezone available if needed: safeString(inviteeData.timezone || data.timezone)
+    // Phone can come from text_reminder_number (SMS reminders) or form answers
+    const inviteePhoneFromReminder = safeString(inviteeData.text_reminder_number || data.text_reminder_number)
 
     // Extract event fields
     const scheduledEventUri = safeString(scheduledEventData.uri)
     const startTime = safeString(scheduledEventData.start_time || data.start_time)
     const eventName = safeString(scheduledEventData.name || data.event_name || '')
 
+    // Extract phone from location field (for outbound_call type events)
+    const locationData = (scheduledEventData.location || {}) as Record<string, unknown>
+    const locationType = safeString(locationData.type)
+    const locationValue = safeString(locationData.location)
+    const phoneFromLocation = locationType === 'outbound_call' ? locationValue : ''
+
     console.log('Extracted data:', {
       eventType,
       inviteeName,
       inviteeEmail,
       inviteeUri,
+      inviteePhoneFromReminder,
+      phoneFromLocation,
       scheduledEventUri,
       startTime,
       eventName,
@@ -143,6 +152,10 @@ Deno.serve(async (req) => {
     // Extract form answers
     const formAnswers = extractFormAnswers(data)
     console.log('Form answers:', formAnswers)
+
+    // Prefer phone from location (outbound_call), then text reminder, then form answers
+    const inviteePhone = phoneFromLocation || inviteePhoneFromReminder || formAnswers.phone || null
+    console.log('Resolved phone:', inviteePhone)
 
     // Handle cancellation
     if (eventType === 'invitee.canceled') {
@@ -237,7 +250,7 @@ Deno.serve(async (req) => {
               calendly_event_uri: scheduledEventUri || null,
               calendly_invitee_uri: inviteeUri || null,
               scheduled_at: startTime || null,
-              phone: formAnswers.phone || undefined, // Only update if provided
+              phone: inviteePhone || undefined, // Only update if provided
             })
             .eq('id', leadId)
 
@@ -268,7 +281,7 @@ Deno.serve(async (req) => {
               .insert({
                 display_name: formatFamilyName(inviteeName),
                 primary_email: inviteeEmail,
-                primary_phone: formAnswers.phone || null,
+                primary_phone: inviteePhone || null,
                 primary_contact_name: inviteeName || null,
                 status: 'lead',
               })
@@ -289,7 +302,7 @@ Deno.serve(async (req) => {
             .insert({
               email: inviteeEmail,
               name: inviteeName || null,
-              phone: formAnswers.phone || null,
+              phone: inviteePhone || null,
               lead_type: 'calendly_call',
               status: 'new',
               calendly_event_uri: scheduledEventUri || null,
@@ -318,7 +331,7 @@ Deno.serve(async (req) => {
           event_type: bookingType,
           invitee_email: inviteeEmail,
           invitee_name: inviteeName || null,
-          invitee_phone: formAnswers.phone || null,
+          invitee_phone: inviteePhone || null,
           scheduled_at: startTime || null,
           status: 'scheduled',
           family_id: familyId,
