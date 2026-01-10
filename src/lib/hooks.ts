@@ -3776,6 +3776,7 @@ export function usePayrollMutations() {
         .select(`
           *,
           teacher:teachers(*),
+          service:services(*),
           enrollment:enrollments(
             *,
             student:students(full_name),
@@ -3805,15 +3806,20 @@ export function usePayrollMutations() {
         const calculatedAmount = hours * rate
 
         // Build description
+        // For student assignments: "Student Name - Service Name"
+        // For service-level assignments: "Service Name" (e.g., "Eaton Hub", "Learning Pod")
         let description = ''
         if (assignment.enrollment?.student?.full_name) {
           description = assignment.enrollment.student.full_name
+          const serviceName = assignment.enrollment?.service?.name
+          if (serviceName) {
+            description += ` - ${serviceName}`
+          }
+        } else if (assignment.service?.name) {
+          // Service-level assignment (no student) - use service name directly
+          description = assignment.service.name
         } else {
           description = assignment.teacher?.display_name || 'Unknown'
-        }
-        const serviceName = assignment.enrollment?.service?.name
-        if (serviceName) {
-          description += ` - ${serviceName}`
         }
 
         lineItems.push({
@@ -3821,7 +3827,7 @@ export function usePayrollMutations() {
           teacher_id: assignment.teacher_id,
           teacher_assignment_id: assignment.id,
           enrollment_id: assignment.enrollment_id,
-          service_id: assignment.enrollment?.service_id || null,
+          service_id: assignment.enrollment?.service_id || assignment.service_id || null,
           description,
           calculated_hours: hours,
           actual_hours: hours, // Default actual = calculated
@@ -4111,10 +4117,99 @@ export function usePayrollMutations() {
     },
   })
 
+  /**
+   * Create a manual line item for miscellaneous tasks (e.g., "Cleaning and organizing files")
+   * Used for one-off tasks that aren't part of regular assignments
+   */
+  const createLineItem = useMutation({
+    mutationFn: async ({
+      runId,
+      teacherId,
+      description,
+      hours,
+      hourlyRate,
+    }: {
+      runId: string
+      teacherId: string
+      description: string
+      hours: number
+      hourlyRate: number
+    }) => {
+      const calculatedAmount = hours * hourlyRate
+
+      const { data, error } = await payrollDb.from('payroll_line_item')
+        .insert({
+          payroll_run_id: runId,
+          teacher_id: teacherId,
+          teacher_assignment_id: null, // Manual line items have no assignment
+          enrollment_id: null,
+          service_id: null,
+          description,
+          calculated_hours: hours,
+          actual_hours: hours,
+          hourly_rate: hourlyRate,
+          rate_source: 'teacher', // Manual entries use teacher rate source
+          calculated_amount: calculatedAmount,
+          adjustment_amount: 0,
+          final_amount: calculatedAmount,
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Recalculate run totals
+      await recalculateRunTotals(runId)
+
+      return data as PayrollLineItem
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(data.payroll_run_id) })
+    },
+  })
+
+  /**
+   * Delete a line item (only for manual items without assignment)
+   */
+  const deleteLineItem = useMutation({
+    mutationFn: async (id: string) => {
+      // First get the line item to verify it's deletable and get the run id
+      const { data: item, error: fetchError } = await payrollDb.from('payroll_line_item')
+        .select('payroll_run_id, teacher_assignment_id')
+        .eq('id', id)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      // Only allow deleting manual line items (no assignment)
+      if (item.teacher_assignment_id) {
+        throw new Error('Cannot delete assignment-based line items')
+      }
+
+      const { error } = await payrollDb.from('payroll_line_item')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+
+      // Recalculate run totals
+      await recalculateRunTotals(item.payroll_run_id)
+
+      return { id, runId: item.payroll_run_id }
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.payroll.runWithItems(data.runId) })
+    },
+  })
+
   return {
     createPayrollRun,
     updateRunStatus,
     updateLineItem,
+    createLineItem,
+    deleteLineItem,
     createAdjustment,
     deletePayrollRun,
     bulkUpdateTeacherHours,

@@ -12,6 +12,8 @@ import {
   Edit2,
   CheckSquare,
   Square,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 import {
   usePayrollMutations,
@@ -25,6 +27,7 @@ import type {
 } from '../lib/hooks'
 import { useToast } from '../lib/toast'
 import BulkAdjustHoursModal from './BulkAdjustHoursModal'
+import AddManualLineItemModal from './AddManualLineItemModal'
 
 interface Props {
   run: PayrollRunWithDetails
@@ -71,6 +74,7 @@ interface TeacherSectionProps {
   isEditable: boolean
   isSelected: boolean
   onUpdateHours: (itemId: string, hours: number) => void
+  onDeleteItem: (itemId: string) => void
   onToggleSelect: (teacherId: string) => void
 }
 
@@ -81,6 +85,7 @@ function TeacherSection({
   isEditable,
   isSelected,
   onUpdateHours,
+  onDeleteItem,
   onToggleSelect,
 }: TeacherSectionProps) {
   const [isExpanded, setIsExpanded] = useState(false)
@@ -168,80 +173,106 @@ function TeacherSection({
                 <th className="px-4 py-2 text-right font-medium">Rate</th>
                 <th className="px-4 py-2 text-right font-medium">Hours</th>
                 <th className="px-4 py-2 text-right font-medium">Amount</th>
+                {isEditable && <th className="px-4 py-2 w-10"></th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/50">
-              {items.map(item => (
-                <tr key={item.id}>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-white">{item.description}</div>
-                    <div className="text-xs text-zinc-500 mt-0.5">
-                      Rate from: {item.rate_source}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-right text-sm text-zinc-300">
-                    {formatCurrency(item.hourly_rate)}/hr
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {editingItemId === item.id ? (
-                      <div className="flex items-center justify-end gap-1">
-                        <input
-                          type="number"
-                          step="0.5"
-                          min="0"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleEditSave(item.id)
-                            if (e.key === 'Escape') handleEditCancel()
-                          }}
-                          className="w-16 px-2 py-1 text-sm text-right bg-zinc-800 border border-zinc-600 rounded text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          autoFocus
-                        />
-                        <button
-                          onClick={() => handleEditSave(item.id)}
-                          className="p-1 text-green-400 hover:text-green-300"
-                          aria-label="Save hours"
-                        >
-                          <Check className="w-4 h-4" aria-hidden="true" />
-                        </button>
-                        <button
-                          onClick={handleEditCancel}
-                          className="p-1 text-zinc-400 hover:text-zinc-300"
-                          aria-label="Cancel edit"
-                        >
-                          <X className="w-4 h-4" aria-hidden="true" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-end gap-2">
-                        <span className="text-sm text-zinc-300">
-                          {item.actual_hours.toFixed(1)}
-                        </span>
-                        {isEditable && (
-                          <button
-                            onClick={() => handleEditStart(item)}
-                            className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
-                            aria-label="Edit hours"
-                          >
-                            <Edit2 className="w-3 h-3" aria-hidden="true" />
-                          </button>
+              {items.map(item => {
+                // Manual line items have no teacher_assignment_id
+                const isManualItem = !item.teacher_assignment_id
+                return (
+                  <tr key={item.id}>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white">{item.description}</span>
+                        {isManualItem && (
+                          <span className="px-1.5 py-0.5 text-xs bg-purple-500/20 text-purple-400 rounded">
+                            Manual
+                          </span>
                         )}
                       </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <span className="text-sm text-white">
-                      {formatCurrency(item.final_amount)}
-                    </span>
-                    {item.adjustment_amount !== 0 && (
-                      <div className={`text-xs ${item.adjustment_amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {item.adjustment_amount > 0 ? '+' : ''}{formatCurrency(item.adjustment_amount)}
+                      <div className="text-xs text-zinc-500 mt-0.5">
+                        Rate from: {item.rate_source}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-right text-sm text-zinc-300">
+                      {formatCurrency(item.hourly_rate)}/hr
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {editingItemId === item.id ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleEditSave(item.id)
+                              if (e.key === 'Escape') handleEditCancel()
+                            }}
+                            className="w-16 px-2 py-1 text-sm text-right bg-zinc-800 border border-zinc-600 rounded text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+                            autoFocus
+                          />
+                          <button
+                            onClick={() => handleEditSave(item.id)}
+                            className="p-1 text-green-400 hover:text-green-300"
+                            aria-label="Save hours"
+                          >
+                            <Check className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                          <button
+                            onClick={handleEditCancel}
+                            className="p-1 text-zinc-400 hover:text-zinc-300"
+                            aria-label="Cancel edit"
+                          >
+                            <X className="w-4 h-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-end gap-2">
+                          <span className="text-sm text-zinc-300">
+                            {item.actual_hours.toFixed(1)}
+                          </span>
+                          {isEditable && (
+                            <button
+                              onClick={() => handleEditStart(item)}
+                              className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+                              aria-label="Edit hours"
+                            >
+                              <Edit2 className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="text-sm text-white">
+                        {formatCurrency(item.final_amount)}
+                      </span>
+                      {item.adjustment_amount !== 0 && (
+                        <div className={`text-xs ${item.adjustment_amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                          {item.adjustment_amount > 0 ? '+' : ''}{formatCurrency(item.adjustment_amount)}
+                        </div>
+                      )}
+                    </td>
+                    {isEditable && (
+                      <td className="px-4 py-3 text-right">
+                        {isManualItem && (
+                          <button
+                            onClick={() => onDeleteItem(item.id)}
+                            className="p-1 text-zinc-500 hover:text-red-400 transition-colors"
+                            aria-label="Delete line item"
+                            title="Delete manual line item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                      </td>
                     )}
-                  </td>
-                </tr>
-              ))}
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -282,13 +313,23 @@ async function triggerBulkPayrollNotifications(
       teacherEmail: teacher?.email || '',
       totalHours: group.items.reduce((sum, item) => sum + item.actual_hours, 0),
       totalAmount: group.items.reduce((sum, item) => sum + item.final_amount, 0),
-      items: group.items.map(item => ({
-        student: item.enrollment?.student?.full_name || 'Service Assignment',
-        service: item.service?.name || item.description || 'Unknown',
-        hours: item.actual_hours,
-        rate: item.hourly_rate,
-        amount: item.final_amount,
-      })),
+      items: group.items.map(item => {
+        // Determine the label based on item type:
+        // - Student assignment: student name
+        // - Service-level assignment: "Service Assignment"
+        // - Manual line item: "Miscellaneous"
+        const isManualItem = !item.teacher_assignment_id
+        const studentLabel = item.enrollment?.student?.full_name
+          || (isManualItem ? 'Miscellaneous' : 'Service Assignment')
+
+        return {
+          student: studentLabel,
+          service: item.service?.name || item.description || 'Unknown',
+          hours: item.actual_hours,
+          rate: item.hourly_rate,
+          amount: item.final_amount,
+        }
+      }),
     }
   })
 
@@ -339,10 +380,11 @@ async function triggerBulkPayrollNotifications(
 
 export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
   const { showError, showSuccess } = useToast()
-  const { updateRunStatus, updateLineItem } = usePayrollMutations()
+  const { updateRunStatus, updateLineItem, deleteLineItem } = usePayrollMutations()
   const [isUpdating, setIsUpdating] = useState(false)
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set())
   const [showBulkAdjustModal, setShowBulkAdjustModal] = useState(false)
+  const [showAddLineItemModal, setShowAddLineItemModal] = useState(false)
 
   // Group line items by teacher
   const teacherGroups = useMemo(() => {
@@ -434,6 +476,17 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
     } catch (error) {
       console.error('Failed to update hours:', error)
       showError(error instanceof Error ? error.message : 'Failed to update hours')
+    }
+  }
+
+  const handleDeleteItem = async (itemId: string) => {
+    if (!confirm('Are you sure you want to delete this line item?')) return
+    try {
+      await deleteLineItem.mutateAsync(itemId)
+      showSuccess('Line item deleted')
+    } catch (error) {
+      console.error('Failed to delete line item:', error)
+      showError(error instanceof Error ? error.message : 'Failed to delete line item')
     }
   }
 
@@ -592,13 +645,22 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowBulkAdjustModal(true)}
-                  disabled={selectedTeacherIds.size === 0}
-                  className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Bulk Adjust Hours
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowAddLineItemModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium text-zinc-300 bg-zinc-700 hover:bg-zinc-600 rounded-lg transition-colors"
+                  >
+                    <Plus className="w-4 h-4" aria-hidden="true" />
+                    Add Line Item
+                  </button>
+                  <button
+                    onClick={() => setShowBulkAdjustModal(true)}
+                    disabled={selectedTeacherIds.size === 0}
+                    className="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Bulk Adjust Hours
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -618,6 +680,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
                   isEditable={isEditable}
                   isSelected={selectedTeacherIds.has(teacherId)}
                   onUpdateHours={handleUpdateHours}
+                  onDeleteItem={handleDeleteItem}
                   onToggleSelect={handleToggleSelect}
                 />
               ))}
@@ -635,6 +698,19 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
               setShowBulkAdjustModal(false)
               setSelectedTeacherIds(new Set())
               showSuccess(`Updated hours for ${selectedTeachers.length} teacher${selectedTeachers.length !== 1 ? 's' : ''}`)
+            }}
+          />
+        )}
+
+        {/* Add Manual Line Item Modal */}
+        {showAddLineItemModal && (
+          <AddManualLineItemModal
+            runId={run.id}
+            existingTeacherIds={teacherGroups.map(([id]) => id)}
+            onClose={() => setShowAddLineItemModal(false)}
+            onSuccess={() => {
+              setShowAddLineItemModal(false)
+              showSuccess('Line item added')
             }}
           />
         )}
