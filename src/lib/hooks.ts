@@ -2399,7 +2399,8 @@ export function useInvoiceMutations() {
   })
 
   const updateInvoice = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<Invoice> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Partial<Invoice> }): Promise<{ data: Invoice; warnings: string[] }> => {
+      const warnings: string[] = []
       const { data: invoice, error } = await supabase.from('invoices')
         .update(data)
         .eq('id', id)
@@ -2419,14 +2420,14 @@ export function useInvoiceMutations() {
 
         if (syncError) {
           console.error('Failed to sync event_orders payment status:', syncError)
-          // Don't throw - the invoice update succeeded, this is a secondary operation
+          warnings.push(`Invoice updated but failed to sync event orders: ${syncError.message}`)
         }
 
         // Note: calendly_bookings (Hub) are linked via invoice_id for reporting,
         // but their status stays 'completed'. The invoice is the source of truth for payment.
       }
 
-      return invoice
+      return { data: invoice as Invoice, warnings }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
@@ -2436,7 +2437,9 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
     },
     // Suppress global error toast - callers handle errors explicitly
-    onError: () => {},
+    onError: (error) => {
+      console.error('Invoice update failed:', error)
+    },
   })
 
   const updateLineItem = useMutation({
@@ -2457,7 +2460,9 @@ export function useInvoiceMutations() {
       }
     },
     // Suppress global error toast - callers handle errors explicitly
-    onError: () => {},
+    onError: (error) => {
+      console.error('Line item update failed:', error)
+    },
   })
 
   const createLineItem = useMutation({
@@ -2495,7 +2500,9 @@ export function useInvoiceMutations() {
       }
     },
     // Suppress global error toast - callers handle errors explicitly
-    onError: () => {},
+    onError: (error) => {
+      console.error('Line item creation failed:', error)
+    },
   })
 
   const deleteLineItem = useMutation({
@@ -2509,15 +2516,21 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(variables.invoiceId) })
     },
     // Suppress global error toast - callers handle errors explicitly
-    onError: () => {},
+    onError: (error) => {
+      console.error('Line item deletion failed:', error)
+    },
   })
 
   const deleteInvoice = useMutation({
     mutationFn: async (id: string) => {
       // Unlink any event_orders referencing this invoice first
-      await supabase.from('event_orders')
+      const { error: unlinkError } = await supabase.from('event_orders')
         .update({ invoice_id: null, payment_status: 'stepup_pending' })
         .eq('invoice_id', id)
+
+      if (unlinkError) {
+        throw new Error(`Failed to unlink event orders: ${unlinkError.message}`)
+      }
 
       const { error } = await supabase.from('invoices').delete().eq('id', id)
       if (error) throw error
@@ -2533,9 +2546,13 @@ export function useInvoiceMutations() {
   const bulkDeleteInvoices = useMutation({
     mutationFn: async (ids: string[]) => {
       // Unlink any event_orders referencing these invoices first
-      await supabase.from('event_orders')
+      const { error: unlinkError } = await supabase.from('event_orders')
         .update({ invoice_id: null, payment_status: 'stepup_pending' })
         .in('invoice_id', ids)
+
+      if (unlinkError) {
+        throw new Error(`Failed to unlink event orders: ${unlinkError.message}`)
+      }
 
       const { error } = await supabase.from('invoices').delete().in('id', ids)
       if (error) throw error
@@ -2597,7 +2614,9 @@ export function useInvoiceMutations() {
       amount: number
       paymentMethod?: string
       notes?: string
-    }) => {
+    }): Promise<{ data: Invoice; warnings: string[] }> => {
+      const warnings: string[] = []
+
       // First, get the invoice to know the current amounts
       const { data: invoice, error: fetchError } = await supabase.from('invoices')
         .select('id, total_amount, amount_paid, balance_due, status')
@@ -2664,11 +2683,11 @@ export function useInvoiceMutations() {
 
         if (syncError) {
           console.error('Failed to sync event_orders payment status:', syncError)
-          // Don't throw - the invoice update succeeded
+          warnings.push(`Payment recorded but failed to sync event orders: ${syncError.message}`)
         }
       }
 
-      return updatedInvoice
+      return { data: updatedInvoice as Invoice, warnings }
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
@@ -3797,7 +3816,9 @@ export function usePayrollMutations() {
     }: {
       periodStart: string
       periodEnd: string
-    }) => {
+    }): Promise<{ data: PayrollRun; warnings: string[] }> => {
+      const warnings: string[] = []
+
       // 1. Create the payroll run
       const { data: run, error: runError } = await payrollDb.from('payroll_run')
         .insert({
@@ -3898,7 +3919,10 @@ export function usePayrollMutations() {
           .update({ target_payroll_run_id: run.id })
           .is('target_payroll_run_id', null)
 
-        if (adjError) console.error('Failed to link adjustments:', adjError)
+        if (adjError) {
+          console.error('Failed to link adjustments:', adjError)
+          warnings.push(`Failed to link pending adjustments: ${adjError.message}`)
+        }
 
         // Add adjustment amounts to corresponding teacher line items
         for (const adj of pendingAdjustments) {
@@ -3907,7 +3931,7 @@ export function usePayrollMutations() {
           if (teacherItems.length > 0) {
             // Add adjustment to first line item for this teacher
             const firstItem = teacherItems[0]
-            await payrollDb.from('payroll_line_item')
+            const { error: lineItemAdjError } = await payrollDb.from('payroll_line_item')
               .update({
                 adjustment_amount: adj.amount,
                 adjustment_note: adj.reason,
@@ -3916,6 +3940,11 @@ export function usePayrollMutations() {
               .eq('payroll_run_id', run.id)
               .eq('teacher_id', adj.teacher_id)
               .limit(1)
+
+            if (lineItemAdjError) {
+              console.error('Failed to apply adjustment to line item:', lineItemAdjError)
+              warnings.push(`Failed to apply adjustment for teacher ${adj.teacher_id}: ${lineItemAdjError.message}`)
+            }
           }
         }
       }
@@ -3935,9 +3964,12 @@ export function usePayrollMutations() {
         })
         .eq('id', run.id)
 
-      if (updateError) console.error('Failed to update run totals:', updateError)
+      if (updateError) {
+        console.error('Failed to update run totals:', updateError)
+        warnings.push(`Payroll run created but failed to update totals: ${updateError.message}`)
+      }
 
-      return run as PayrollRun
+      return { data: run as PayrollRun, warnings }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
@@ -5719,7 +5751,8 @@ export function useCheckinMutations() {
       invites: CheckinInviteWithTeacher[]
       periodId: string
       periodDisplayName: string
-    }) => {
+    }): Promise<{ periodId: string; warnings: string[] }> => {
+      const warnings: string[] = []
       const inviteIds = invites.map(i => i.id)
 
       // Update database first
@@ -5754,11 +5787,12 @@ export function useCheckinMutations() {
           } catch (webhookError) {
             // Log but don't fail the mutation - DB is already updated
             console.error('Failed to send invite email:', webhookError)
+            warnings.push(`Failed to send email to ${invite.teacher.display_name}`)
           }
         }
       }
 
-      return { periodId }
+      return { periodId, warnings }
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(result.periodId) })
@@ -5776,7 +5810,8 @@ export function useCheckinMutations() {
       invites: CheckinInviteWithTeacher[]
       periodId: string
       periodDisplayName: string
-    }) => {
+    }): Promise<{ periodId: string; warnings: string[] }> => {
+      const warnings: string[] = []
       const inviteIds = invites.map(i => i.id)
 
       // Get current reminder counts
@@ -5824,11 +5859,12 @@ export function useCheckinMutations() {
           } catch (webhookError) {
             // Log but don't fail the mutation - DB is already updated
             console.error('Failed to send reminder email:', webhookError)
+            warnings.push(`Failed to send reminder to ${invite.teacher.display_name}`)
           }
         }
       }
 
-      return { periodId }
+      return { periodId, warnings }
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.checkins.invites(result.periodId) })
@@ -6007,7 +6043,9 @@ export function useCheckinFormSubmit() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (data: CheckinFormSubmitData) => {
+    mutationFn: async (data: CheckinFormSubmitData): Promise<{ responseId: string; needsTraining: boolean; warnings: string[] }> => {
+      const warnings: string[] = []
+
       // 1. Create the checkin_response record
       const { data: response, error: responseError } = await supabase
         .from('checkin_responses')
@@ -6073,10 +6111,11 @@ export function useCheckinFormSubmit() {
         } catch (webhookError) {
           // Log but don't fail the mutation - submission is already complete
           console.error('Failed to send training request email:', webhookError)
+          warnings.push('Check-in submitted but failed to send training request notification')
         }
       }
 
-      return { responseId: response.id, needsTraining: data.needsAssessment.needs_training }
+      return { responseId: response.id, needsTraining: data.needsAssessment.needs_training, warnings }
     },
     onSuccess: (_result, variables) => {
       // Invalidate relevant queries
