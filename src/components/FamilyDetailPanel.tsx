@@ -19,6 +19,7 @@ interface FamilyDetailPanelProps {
 }
 
 const STATUS_COLORS: Record<CustomerStatus, string> = {
+  lead: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
   active: 'bg-green-500/20 text-green-400 border-green-500/30',
   trial: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
   paused: 'bg-amber-500/20 text-amber-400 border-amber-500/30',

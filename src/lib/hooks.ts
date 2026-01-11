@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
 import { getTodayString } from './dateUtils'
-import { addMoney, centsToDollars } from './moneyUtils'
+import { addMoney, centsToDollars, multiplyMoney } from './moneyUtils'
 import { formatNameLastFirst } from './utils'
 import type { GmailSearchParams } from '../types/gmail'
 
@@ -11,7 +11,7 @@ import type { GmailSearchParams } from '../types/gmail'
 // TYPE DEFINITIONS
 // =============================================================================
 
-export type CustomerStatus = 'trial' | 'active' | 'paused' | 'churned'
+export type CustomerStatus = 'lead' | 'trial' | 'active' | 'paused' | 'churned'
 export type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
 export type EmployeeStatus = 'active' | 'reserve' | 'inactive'
 export type BillingFrequency = 'per_session' | 'weekly' | 'monthly' | 'bi_monthly' | 'annual' | 'one_time'
@@ -1814,7 +1814,7 @@ export function usePendingHubSessions() {
         .eq('event_type', 'hub_dropoff')
         .eq('status', 'scheduled')
         .is('hub_session_id', null)
-        .gte('scheduled_at', new Date().toISOString().split('T')[0])
+        .gte('scheduled_at', getTodayString())
         .order('scheduled_at', { ascending: true })
 
       if (error) throw error
@@ -3842,7 +3842,7 @@ export function usePayrollMutations() {
         if (hours === 0 && !isVariable) continue
 
         const { rate, source } = resolveHourlyRate(assignment)
-        const calculatedAmount = hours * rate
+        const calculatedAmount = multiplyMoney(hours, rate)
 
         // Build description
         // For student assignments: "Student Name - Service Name"
@@ -4013,7 +4013,7 @@ export function usePayrollMutations() {
 
       const hours = actualHours ?? current.actual_hours
       const adjustment = adjustmentAmount ?? current.adjustment_amount
-      const calculatedAmount = hours * current.hourly_rate
+      const calculatedAmount = multiplyMoney(hours, current.hourly_rate)
       const finalAmount = calculatedAmount + adjustment
 
       const { data, error } = await payrollDb.from('payroll_line_item')
@@ -4126,7 +4126,7 @@ export function usePayrollMutations() {
 
       // Update each line item with new hours
       const updates = lineItems.map((item: { id: string; hourly_rate: number; adjustment_amount: number }) => {
-        const calculatedAmount = hours * item.hourly_rate
+        const calculatedAmount = multiplyMoney(hours, item.hourly_rate)
         const finalAmount = calculatedAmount + (item.adjustment_amount || 0)
         return payrollDb.from('payroll_line_item')
           .update({
@@ -4174,7 +4174,7 @@ export function usePayrollMutations() {
       hours: number
       hourlyRate: number
     }) => {
-      const calculatedAmount = hours * hourlyRate
+      const calculatedAmount = multiplyMoney(hours, hourlyRate)
 
       const { data, error } = await payrollDb.from('payroll_line_item')
         .insert({

@@ -747,8 +747,10 @@ export default function Reports() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
                   formatter={(value, name) => [`$${Number(value).toLocaleString()}`, serviceNameMap[name as string] || name]}
                 />
                 <Legend 
@@ -850,8 +852,10 @@ export default function Reports() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="bucket" stroke="#9ca3af" tick={{ fill: '#9ca3af', fontSize: 12 }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
                   formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Amount']}
                 />
                 <Bar dataKey="amount" name="Amount" radius={[4, 4, 0, 0]}>
@@ -961,8 +965,10 @@ export default function Reports() {
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
                   formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Payroll']}
                 />
                 <Legend wrapperStyle={{ color: '#9ca3af' }} />

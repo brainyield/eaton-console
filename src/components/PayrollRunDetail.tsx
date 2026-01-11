@@ -371,7 +371,6 @@ async function triggerBulkPayrollNotifications(
 
   // Wait for all notifications to complete (but don't fail if some fail)
   await Promise.allSettled(notifications)
-  console.log(`Sent payroll notifications to ${notifications.length} teachers`)
 }
 
 // ============================================================================
@@ -502,9 +501,9 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
 
       // Trigger bulk notifications when payroll is marked as paid
       if (newStatus === 'paid') {
-        triggerBulkPayrollNotifications(run, teacherGroups)
-          .then(() => console.log('Bulk payroll notifications sent'))
-          .catch((err) => console.error('Error sending bulk notifications:', err))
+        triggerBulkPayrollNotifications(run, teacherGroups).catch(() => {
+          // Silently handle notification errors - status was already updated successfully
+        })
       }
     } catch (error) {
       console.error('Failed to update status:', error)

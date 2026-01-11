@@ -68,6 +68,7 @@ interface SortConfig {
 }
 
 const STATUS_COLORS: Record<CustomerStatus, string> = {
+  lead: 'bg-violet-500/20 text-violet-400',
   active: 'bg-green-500/20 text-green-400',
   trial: 'bg-blue-500/20 text-blue-400',
   paused: 'bg-amber-500/20 text-amber-400',

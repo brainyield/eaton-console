@@ -301,7 +301,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         }
         
         const finalAmount = multiplyMoney(quantity, unitPrice)
-        const baseAmount = baseQuantity * baseUnitPrice
+        const baseAmount = multiplyMoney(baseQuantity, baseUnitPrice)
         const isEdited = override?.quantity !== undefined || override?.unit_price !== undefined
         
         return {
@@ -687,7 +687,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
     }
     
     // Calculate what unit_price would give this amount
-    const newUnitPrice = item.quantity > 0 ? newAmount / item.quantity : newAmount
+    const newUnitPrice = item.quantity > 0 ? Math.round((newAmount / item.quantity) * 100) / 100 : newAmount
     
     setOverrides(prev => ({
       ...prev,
