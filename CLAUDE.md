@@ -141,6 +141,7 @@ queryKeys.families.detail(id)
 - **DON'T** use only `contentStyle` for Recharts tooltips in dark mode - the inner text will be invisible. Must also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}` for visible text.
 - **DON'T** use non-null assertions (`!`) for env vars in Edge Functions - if the env var is missing, the function will crash with an unclear error. Always validate and return early with a clear error: `if (!supabaseUrl) { return new Response(JSON.stringify({ error: 'Server configuration error' }), { status: 500 }) }`.
 - **DON'T** use `.single()` when a query might return 0 or multiple rows - it throws on both cases. Use `.maybeSingle()` for queries that may or may not find a match (returns `null` if not found, first result if multiple). Only use `.single()` when you're certain exactly one row exists.
+- **DON'T** silently swallow errors in secondary operations - mutations with secondary steps (e.g., syncing event_orders after invoice payment, sending webhook emails) should return `{ data, warnings: string[] }`. Callers can then show warnings to users about partial failures. See `updateInvoice`, `recordPayment`, `createPayrollRun`, and check-in mutations for examples of this pattern.
 
 ---
 
