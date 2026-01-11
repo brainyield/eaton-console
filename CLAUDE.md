@@ -139,6 +139,8 @@ queryKeys.families.detail(id)
 - **DON'T** forget that `enrollments` and `teacher_assignments` have separate `hours_per_week` fields - when editing enrollment hours in a modal, you must update BOTH records. The `EditEnrollmentModal` handles this, but any new edit flows must sync both tables. Active Roster and Teachers views display `teacher_assignments.hours_per_week`, while invoicing uses `enrollments.hours_per_week`.
 - **DON'T** assume `revenue_records` links to enrollments - the table tracks revenue by `family_id`, `student_id`, `service_id` separately with no `enrollment_id` FK. For location-based revenue reporting, `location_id` was added directly to `revenue_records`.
 - **DON'T** use only `contentStyle` for Recharts tooltips in dark mode - the inner text will be invisible. Must also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}` for visible text.
+- **DON'T** use non-null assertions (`!`) for env vars in Edge Functions - if the env var is missing, the function will crash with an unclear error. Always validate and return early with a clear error: `if (!supabaseUrl) { return new Response(JSON.stringify({ error: 'Server configuration error' }), { status: 500 }) }`.
+- **DON'T** use `.single()` when a query might return 0 or multiple rows - it throws on both cases. Use `.maybeSingle()` for queries that may or may not find a match (returns `null` if not found, first result if multiple). Only use `.single()` when you're certain exactly one row exists.
 
 ---
 
