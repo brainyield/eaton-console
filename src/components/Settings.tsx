@@ -11,7 +11,10 @@ import {
   X,
   Check,
   AlertCircle,
-  Loader2
+  Loader2,
+  MapPin,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
@@ -43,7 +46,21 @@ interface AppSettingRow {
   updated_at?: string
 }
 
-type TabId = 'business' | 'invoicing' | 'payments' | 'rates'
+type TabId = 'business' | 'invoicing' | 'payments' | 'rates' | 'locations'
+
+// Location type
+interface LocationRow {
+  id: string
+  code: string
+  name: string
+  address_line1: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  phone: string | null
+  is_active: boolean
+  created_at: string
+}
 
 // Toast component
 function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
@@ -95,7 +112,8 @@ export default function Settings() {
     { id: 'business' as TabId, label: 'Business Info', icon: Building2 },
     { id: 'invoicing' as TabId, label: 'Invoicing', icon: FileText },
     { id: 'payments' as TabId, label: 'Payment Methods', icon: CreditCard },
-    { id: 'rates' as TabId, label: 'Rates', icon: DollarSign }
+    { id: 'rates' as TabId, label: 'Rates', icon: DollarSign },
+    { id: 'locations' as TabId, label: 'Locations', icon: MapPin }
   ]
 
   // React Query - fetch all settings
@@ -107,13 +125,27 @@ export default function Settings() {
         .select('key, value')
 
       if (error) throw error
-      
+
       // Transform array into object for easier access
       const settingsMap: Record<string, unknown> = {}
       ;(data as AppSettingRow[] || []).forEach((setting) => {
         settingsMap[setting.key] = setting.value
       })
       return settingsMap
+    },
+  })
+
+  // Fetch locations
+  const { data: locations = [], isLoading: loadingLocations } = useQuery({
+    queryKey: queryKeys.locations.all,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('*')
+        .order('name')
+
+      if (error) throw error
+      return data as LocationRow[]
     },
   })
 
@@ -183,6 +215,28 @@ export default function Settings() {
   })
 
   const saving = updateSetting.isPending
+
+  // Toggle location active status
+  const toggleLocationStatus = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase
+        .from('locations')
+        .update({ is_active })
+        .eq('id', id)
+
+      if (error) throw error
+      return { id, is_active }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.active() })
+      setToast({ message: 'Location status updated', type: 'success' })
+    },
+    onError: (err) => {
+      console.error('Error updating location:', err)
+      setToast({ message: 'Failed to update location status', type: 'error' })
+    },
+  })
 
   // Save a setting
   function saveSetting(key: string, value: unknown) {
@@ -569,6 +623,89 @@ export default function Settings() {
                 Save All Rate Changes
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Locations Tab */}
+        {activeTab === 'locations' && (
+          <div className="p-6">
+            <h2 className="text-lg font-semibold text-white mb-4">Locations</h2>
+            <p className="text-gray-400 text-sm mb-6">
+              Manage physical locations where services are delivered. Inactive locations won't appear in enrollment forms.
+            </p>
+
+            {loadingLocations ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {locations.map((location) => (
+                  <div
+                    key={location.id}
+                    className={`flex items-center justify-between px-4 py-4 bg-gray-900 border rounded-lg ${
+                      location.is_active ? 'border-gray-700' : 'border-gray-800 opacity-60'
+                    }`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div
+                        className={`w-3 h-3 rounded-full ${
+                          location.is_active ? 'bg-green-500' : 'bg-gray-600'
+                        }`}
+                      />
+                      <div>
+                        <p className="font-medium text-white">{location.name}</p>
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <span className="text-xs bg-gray-700 px-2 py-0.5 rounded font-mono">
+                            {location.code}
+                          </span>
+                          {location.city && (
+                            <span>• {location.city}{location.state ? `, ${location.state}` : ''}</span>
+                          )}
+                          {location.phone && <span>• {location.phone}</span>}
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleLocationStatus.mutate({
+                        id: location.id,
+                        is_active: !location.is_active
+                      })}
+                      disabled={toggleLocationStatus.isPending}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        location.is_active
+                          ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                          : 'bg-green-600/20 text-green-400 hover:bg-green-600/30'
+                      }`}
+                      title={location.is_active ? 'Deactivate location' : 'Activate location'}
+                    >
+                      {location.is_active ? (
+                        <>
+                          <ToggleRight className="h-4 w-4" />
+                          Active
+                        </>
+                      ) : (
+                        <>
+                          <ToggleLeft className="h-4 w-4" />
+                          Inactive
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+
+                {locations.length === 0 && (
+                  <p className="text-gray-500 text-sm py-4 text-center">
+                    No locations configured
+                  </p>
+                )}
+
+                <p className="text-gray-500 text-xs mt-4 pt-4 border-t border-gray-700">
+                  <AlertCircle className="inline h-3 w-3 mr-1" />
+                  To add new locations or modify location details, contact support or update directly in the database.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

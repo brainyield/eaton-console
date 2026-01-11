@@ -4,18 +4,23 @@ import { useQueryClient } from '@tanstack/react-query';
 import {
   useEnrollmentMutations,
   useActiveTeachers,
+  useActiveLocations,
   useTeacherAssignmentsByEnrollment,
   useTeacherAssignmentMutations,
   type Enrollment,
   type EnrollmentStatus,
   type BillingFrequency,
   type Service,
-  type Teacher
+  type Teacher,
+  type Location
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
 import { getPeriodOptions, getDefaultPeriod, type ServiceCode } from '../lib/enrollmentPeriod';
 import { getTodayString } from '../lib/dateUtils';
 import { AccessibleModal } from './ui/AccessibleModal';
+
+// Services that require a physical location
+const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes'];
 
 interface EnrollmentWithService extends Enrollment {
   service?: Service
@@ -33,6 +38,7 @@ interface FormData {
   start_date: string;
   end_date: string;
   enrollment_period: string;
+  location_id: string;
   hourly_rate_customer: string;
   hours_per_week: string;
   monthly_rate: string;
@@ -74,6 +80,7 @@ export function EditEnrollmentModal({
     start_date: '',
     end_date: '',
     enrollment_period: '',
+    location_id: '',
     hourly_rate_customer: '',
     hours_per_week: '',
     monthly_rate: '',
@@ -88,8 +95,9 @@ export function EditEnrollmentModal({
   });
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch active teachers for the dropdown
+  // Fetch active teachers and locations for the dropdowns
   const { data: teachers = [] } = useActiveTeachers();
+  const { data: locations = [] } = useActiveLocations();
 
   // Fetch current teacher assignment for this enrollment
   const { data: currentAssignments = [] } = useTeacherAssignmentsByEnrollment(enrollment?.id || '');
@@ -125,6 +133,7 @@ export function EditEnrollmentModal({
         start_date: enrollment.start_date || '',
         end_date: enrollment.end_date || '',
         enrollment_period: period,
+        location_id: enrollment.location_id || '',
         hourly_rate_customer: enrollment.hourly_rate_customer?.toString() || '',
         hours_per_week: enrollment.hours_per_week?.toString() || '',
         monthly_rate: enrollment.monthly_rate?.toString() || '',
@@ -139,6 +148,9 @@ export function EditEnrollmentModal({
       });
     }
   }, [enrollment, serviceCode, currentActiveAssignment]);
+
+  // Show location picker for in-person services
+  const requiresLocation = serviceCode && IN_PERSON_SERVICES.includes(serviceCode);
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) {
     const { name, value } = e.target;
@@ -162,6 +174,7 @@ export function EditEnrollmentModal({
     updateData.start_date = formData.start_date || null;
     updateData.end_date = formData.end_date || null;
     updateData.enrollment_period = formData.enrollment_period || null;
+    updateData.location_id = formData.location_id || null;
     updateData.hourly_rate_customer = formData.hourly_rate_customer ? parseFloat(formData.hourly_rate_customer) : null;
     updateData.hours_per_week = formData.hours_per_week ? parseFloat(formData.hours_per_week) : null;
     updateData.monthly_rate = formData.monthly_rate ? parseFloat(formData.monthly_rate) : null;
@@ -427,6 +440,31 @@ export function EditEnrollmentModal({
                 : 'School Year'}
             </p>
           </div>
+
+          {/* Location (for in-person services only) */}
+          {requiresLocation && (
+            <div>
+              <label htmlFor="location-select" className="block text-sm font-medium text-gray-300 mb-2">
+                Location
+              </label>
+              <select
+                id="location-select"
+                name="location_id"
+                value={formData.location_id}
+                onChange={handleChange}
+                className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                <option value="">Select location...</option>
+                {(locations as Location[])
+                  .filter(loc => loc.code !== 'remote')
+                  .map(loc => (
+                    <option key={loc.id} value={loc.id}>
+                      {loc.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Billing */}

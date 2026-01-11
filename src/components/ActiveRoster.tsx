@@ -22,8 +22,8 @@ import {
   Download,
   X
 } from 'lucide-react'
-import { useEnrollments, useActiveServices } from '../lib/hooks'
-import type { Service, Enrollment } from '../lib/hooks'
+import { useEnrollments, useActiveServices, useActiveLocations } from '../lib/hooks'
+import type { Service, Enrollment, Location } from '../lib/hooks'
 import { queryKeys } from '../lib/queryClient'
 import { getTodayString } from '../lib/dateUtils'
 import { calculateAge, getAgeGroupSortValue } from '../lib/utils'
@@ -94,6 +94,7 @@ interface EnrollmentWithRelations extends Enrollment {
   student: Student | null
   family: Family
   teacher_assignments: TeacherAssignment[]
+  location: Location | null
 }
 
 const STATUS_COLORS: Record<EnrollmentStatus, string> = {
@@ -151,6 +152,10 @@ export default function ActiveRoster() {
   // Fetch services for the filter dropdown
   const { data: services = [] } = useActiveServices()
 
+  // Fetch locations for the filter dropdown
+  const { data: locations = [] } = useActiveLocations()
+  const [selectedLocationId, setSelectedLocationId] = useState<string>('all')
+
   // FIX #3 & #4: Get service ID from service code for the query
   const selectedServiceId = useMemo(() => {
     if (selectedServiceCode === 'all') return undefined
@@ -181,9 +186,19 @@ export default function ActiveRoster() {
   // FIX #1: REMOVED the useEffect that auto-expands all groups
   // Groups now start collapsed by default
 
-  // Filter enrollments (search is client-side)
+  // Filter enrollments (search and location are client-side)
   const filteredEnrollments = useMemo(() => {
     return enrollments.filter(enrollment => {
+      // Location filter
+      if (selectedLocationId !== 'all') {
+        // Handle 'none' to filter for NULL location_id
+        if (selectedLocationId === 'none') {
+          if (enrollment.location_id !== null) return false
+        } else {
+          if (enrollment.location_id !== selectedLocationId) return false
+        }
+      }
+
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase()
@@ -192,18 +207,18 @@ export default function ActiveRoster() {
         const classTitle = enrollment.class_title?.toLowerCase() || ''
         const activeAssignment = enrollment.teacher_assignments?.find(a => a.is_active)
         const teacherName = activeAssignment?.teacher?.display_name?.toLowerCase() || ''
-        
-        if (!studentName.includes(query) && 
-            !familyName.includes(query) && 
+
+        if (!studentName.includes(query) &&
+            !familyName.includes(query) &&
             !teacherName.includes(query) &&
             !classTitle.includes(query)) {
           return false
         }
       }
-      
+
       return true
     })
-  }, [enrollments, searchQuery])
+  }, [enrollments, searchQuery, selectedLocationId])
 
   // Group enrollments
   const groupedEnrollments = useMemo(() => {
@@ -422,6 +437,7 @@ export default function ActiveRoster() {
     if (columns.showHours) headers.push('Hrs/Week')
     if (columns.showRate) headers.push('Rate')
     headers.push('Status')
+    headers.push('Location')
 
     // Build rows
     const rows = enrollments.map(enrollment => {
@@ -438,6 +454,7 @@ export default function ActiveRoster() {
       if (columns.showHours) row.push(activeAssignment?.hours_per_week?.toString() || '')
       if (columns.showRate) row.push(formatRate(enrollment))
       row.push(enrollment.status)
+      row.push(enrollment.location?.name || '')
       return row
     })
 
@@ -561,6 +578,19 @@ export default function ActiveRoster() {
           {services.map(service => (
             <option key={service.id} value={service.code}>{service.name}</option>
           ))}
+        </select>
+
+        {/* Location Filter */}
+        <select
+          value={selectedLocationId}
+          onChange={(e) => setSelectedLocationId(e.target.value)}
+          className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+        >
+          <option value="all">All Locations</option>
+          {locations.map(loc => (
+            <option key={loc.id} value={loc.id}>{loc.name}</option>
+          ))}
+          <option value="none">No Location</option>
         </select>
 
         {/* Group By */}
@@ -828,6 +858,18 @@ export default function ActiveRoster() {
                                   {enrollment.status}
                                 </span>
                               </div>
+
+                              {/* Location Badge (for in-person services) */}
+                              {enrollment.location && (
+                                <div className="w-20">
+                                  <span className="px-2 py-0.5 rounded text-xs font-medium bg-purple-500/20 text-purple-400">
+                                    {enrollment.location.code === 'kendall' ? 'KDL' :
+                                     enrollment.location.code === 'homestead' ? 'HMS' :
+                                     enrollment.location.code === 'remote' ? 'RMT' :
+                                     enrollment.location.name.slice(0, 3).toUpperCase()}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                           )
                         })}

@@ -6,12 +6,14 @@ import {
   useFamiliesWithStudents,
   useActiveServices,
   useActiveTeachers,
+  useActiveLocations,
   useEnrollmentMutations,
   useTeacherAssignmentMutations,
   type EnrollmentStatus,
   type BillingFrequency,
   type Family,
-  type Student
+  type Student,
+  type Location
 } from '../lib/hooks';
 import { queryKeys } from '../lib/queryClient';
 import { getTodayString } from '../lib/dateUtils';
@@ -55,6 +57,7 @@ interface FormData {
   family_id: string;
   student_id: string;
   service_id: string;
+  location_id: string;
   status: EnrollmentStatus;
   start_date: string;
   // Billing fields
@@ -79,6 +82,7 @@ const INITIAL_FORM: FormData = {
   family_id: '',
   student_id: '',
   service_id: '',
+  location_id: '',
   status: 'active',
   start_date: getTodayString(),
   hourly_rate_customer: '',
@@ -94,6 +98,9 @@ const INITIAL_FORM: FormData = {
   schedule_notes: '',
   notes: '',
 };
+
+// Services that require a physical location
+const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes'];
 
 const STATUS_OPTIONS: { value: EnrollmentStatus; label: string }[] = [
   { value: 'trial', label: 'Trial' },
@@ -117,17 +124,19 @@ export function AddEnrollmentModal({
   const { data: familiesData = [], isLoading: loadingFamilies } = useFamiliesWithStudents();
   const { data: servicesData = [], isLoading: loadingServices } = useActiveServices();
   const { data: teachersData = [], isLoading: loadingTeachers } = useActiveTeachers();
+  const { data: locationsData = [], isLoading: loadingLocations } = useActiveLocations();
 
   // Cast to local types for type safety
   const families = familiesData as FamilyWithStudents[];
   const services = servicesData as ServiceData[];
   const teachers = teachersData as TeacherData[];
+  const locations = locationsData as Location[];
 
   // Mutations
   const { createEnrollment } = useEnrollmentMutations();
   const { createAssignment } = useTeacherAssignmentMutations();
 
-  const loading = loadingFamilies || loadingServices || loadingTeachers;
+  const loading = loadingFamilies || loadingServices || loadingTeachers || loadingLocations;
   const isSubmitting = createEnrollment.isPending;
 
   // Pre-select family/student when modal opens
@@ -178,6 +187,9 @@ export function AddEnrollmentModal({
 
   // Eaton Hub: daily rate only
   const showDailyField = selectedService?.code === 'eaton_hub';
+
+  // Show location picker for in-person services
+  const requiresLocation = selectedService && IN_PERSON_SERVICES.includes(selectedService.code);
 
   // Calculate estimated billing display
   const estimatedBilling = useMemo(() => {
@@ -236,6 +248,8 @@ export function AddEnrollmentModal({
     const updates: Partial<FormData> = {
       service_id: serviceId,
       billing_frequency: service?.billing_frequency || '',
+      // Reset location when service changes (only needed for in-person services)
+      location_id: '',
       // Reset all billing fields
       hourly_rate_customer: '',
       hours_per_week: '',
@@ -289,6 +303,13 @@ export function AddEnrollmentModal({
     }
     if (!formData.service_id) {
       setError('Please select a service');
+      return;
+    }
+
+    // Validate location for in-person services
+    const service = services.find(s => s.id === formData.service_id);
+    if (service && IN_PERSON_SERVICES.includes(service.code) && !formData.location_id) {
+      setError('Please select a location for in-person services');
       return;
     }
 
@@ -355,6 +376,9 @@ export function AddEnrollmentModal({
     // Optional fields
     if (formData.student_id) {
       enrollmentData.student_id = formData.student_id;
+    }
+    if (formData.location_id) {
+      enrollmentData.location_id = formData.location_id;
     }
     if (formData.start_date) {
       enrollmentData.start_date = formData.start_date;
@@ -604,6 +628,31 @@ export function AddEnrollmentModal({
                 />
               </div>
             </div>
+
+            {/* Location (for in-person services only) */}
+            {requiresLocation && (
+              <div>
+                <label htmlFor="location-select" className="block text-sm font-medium text-gray-300 mb-2">
+                  Location <span className="text-red-400">*</span>
+                </label>
+                <select
+                  id="location-select"
+                  name="location_id"
+                  value={formData.location_id}
+                  onChange={handleChange}
+                  className="w-full px-4 py-2.5 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Select location...</option>
+                  {locations
+                    .filter(loc => loc.code !== 'remote')
+                    .map(loc => (
+                      <option key={loc.id} value={loc.id}>
+                        {loc.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Billing Section */}

@@ -779,6 +779,7 @@ export type Database = {
           hourly_rate_customer: number | null
           hours_per_week: number | null
           id: string
+          location_id: string | null
           monthly_rate: number | null
           notes: string | null
           program_type: string | null
@@ -806,6 +807,7 @@ export type Database = {
           hourly_rate_customer?: number | null
           hours_per_week?: number | null
           id?: string
+          location_id?: string | null
           monthly_rate?: number | null
           notes?: string | null
           program_type?: string | null
@@ -833,6 +835,7 @@ export type Database = {
           hourly_rate_customer?: number | null
           hours_per_week?: number | null
           id?: string
+          location_id?: string | null
           monthly_rate?: number | null
           notes?: string | null
           program_type?: string | null
@@ -892,6 +895,13 @@ export type Database = {
             columns: ["family_id"]
             isOneToOne: false
             referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollments_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
@@ -2181,6 +2191,45 @@ export type Database = {
           },
         ]
       }
+      locations: {
+        Row: {
+          address_line1: string | null
+          city: string | null
+          code: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          phone: string | null
+          state: string | null
+          zip: string | null
+        }
+        Insert: {
+          address_line1?: string | null
+          city?: string | null
+          code: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          phone?: string | null
+          state?: string | null
+          zip?: string | null
+        }
+        Update: {
+          address_line1?: string | null
+          city?: string | null
+          code?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          phone?: string | null
+          state?: string | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
       payments: {
         Row: {
           amount: number
@@ -2465,6 +2514,7 @@ export type Database = {
           hourly_rate_teacher: number | null
           hours: number | null
           id: string
+          location_id: string | null
           notes: string | null
           period_end: string
           period_start: string
@@ -2484,6 +2534,7 @@ export type Database = {
           hourly_rate_teacher?: number | null
           hours?: number | null
           id?: string
+          location_id?: string | null
           notes?: string | null
           period_end: string
           period_start: string
@@ -2503,6 +2554,7 @@ export type Database = {
           hourly_rate_teacher?: number | null
           hours?: number | null
           id?: string
+          location_id?: string | null
           notes?: string | null
           period_end?: string
           period_start?: string
@@ -2534,6 +2586,13 @@ export type Database = {
             columns: ["family_id"]
             isOneToOne: false
             referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revenue_records_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {

@@ -79,11 +79,25 @@ export interface Service {
   is_active: boolean
 }
 
+export interface Location {
+  id: string
+  code: string
+  name: string
+  address_line1: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  phone: string | null
+  is_active: boolean
+  created_at: string
+}
+
 export interface Enrollment {
   id: string
   family_id: string
   student_id: string | null
   service_id: string
+  location_id: string | null
   status: EnrollmentStatus
   start_date: string | null
   end_date: string | null
@@ -972,6 +986,27 @@ export function useActiveServices() {
 }
 
 // =============================================================================
+// LOCATIONS HOOKS
+// =============================================================================
+
+export function useActiveLocations() {
+  return useQuery({
+    queryKey: queryKeys.locations.active(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+
+      if (error) throw error
+      return data as Location[]
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+// =============================================================================
 // ENROLLMENT TYPES
 // =============================================================================
 
@@ -979,6 +1014,7 @@ export interface EnrollmentWithDetails extends Enrollment {
   student: Student | null
   family: Family | null
   service: Service
+  location: Location | null
   teacher_assignments: (TeacherAssignment & { teacher: Teacher })[]
 }
 
@@ -996,6 +1032,7 @@ export function useEnrollments(filters?: { status?: string; serviceId?: string; 
           student:students(*),
           family:families(*),
           service:services(*),
+          location:locations(*),
           teacher_assignments(
             *,
             teacher:teachers(*)
@@ -1033,6 +1070,7 @@ export function useEnrollmentsByFamily(familyId: string) {
           *,
           student:students(*),
           service:services(*),
+          location:locations(*),
           teacher_assignments(
             *,
             teacher:teachers(*)
@@ -1058,6 +1096,7 @@ export function useEnrollment(id: string) {
           student:students(*),
           family:families(*),
           service:services(*),
+          location:locations(*),
           teacher_assignments(
             *,
             teacher:teachers(*)

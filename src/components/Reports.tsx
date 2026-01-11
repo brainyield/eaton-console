@@ -83,6 +83,13 @@ interface PayrollByMonth {
   payments: number
 }
 
+interface RevenueByLocation {
+  name: string
+  code: string
+  revenue: number
+  enrollments: number
+}
+
 // Color palette for dark mode
 const COLORS = {
   primary: '#3b82f6',
@@ -111,6 +118,12 @@ const SERVICE_COLORS: Record<string, string> = {
   eaton_online: COLORS.pink,
   eaton_hub: COLORS.cyan,
   elective_classes: '#f97316',
+}
+
+const LOCATION_COLORS: Record<string, string> = {
+  kendall: COLORS.secondary,
+  homestead: COLORS.primary,
+  remote: COLORS.purple,
 }
 
 // Date range options
@@ -438,8 +451,97 @@ export default function Reports() {
     },
   })
 
+  // Revenue by location query
+  const {
+    data: locationResult,
+    isLoading: loadingLocation,
+    isError: locationError,
+    error: locationErrorMsg,
+    refetch: refetchLocation
+  } = useQuery({
+    queryKey: ['reports', 'revenueByLocation', startDate],
+    queryFn: async () => {
+      // Fetch revenue records with direct location join
+      const { data: revenueData, error: revenueErr } = await supabase
+        .from('revenue_records')
+        .select(`
+          revenue,
+          location_id,
+          location:locations (
+            id,
+            name,
+            code
+          )
+        `)
+        .gte('period_start', startDate)
+
+      if (revenueErr) throw revenueErr
+
+      // Fetch locations for reference (including those with no revenue yet)
+      const { data: locationsData } = await supabase
+        .from('locations')
+        .select('id, name, code')
+        .eq('is_active', true)
+
+      // Group by location
+      const locationData: Record<string, { name: string; code: string; revenue: number; records: number }> = {}
+
+      // Initialize with all locations
+      ;(locationsData || []).forEach((loc: { id: string; name: string; code: string }) => {
+        locationData[loc.id] = {
+          name: loc.name,
+          code: loc.code,
+          revenue: 0,
+          records: 0,
+        }
+      })
+
+      // Add a "No Location" bucket for academic coaching, etc.
+      locationData['none'] = {
+        name: 'No Location',
+        code: 'none',
+        revenue: 0,
+        records: 0,
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(revenueData || []).forEach((rec: any) => {
+        const revenue = Number(rec.revenue) || 0
+        const location = rec.location
+        const locationId = rec.location_id || 'none'
+
+        if (!locationData[locationId]) {
+          locationData[locationId] = {
+            name: location?.name || 'Unknown',
+            code: location?.code || 'unknown',
+            revenue: 0,
+            records: 0,
+          }
+        }
+
+        locationData[locationId].revenue += revenue
+        locationData[locationId].records++
+      })
+
+      // Convert to array for chart
+      const chartData: RevenueByLocation[] = Object.values(locationData)
+        .filter((loc) => loc.revenue > 0)
+        .map((loc) => ({
+          name: loc.name,
+          code: loc.code,
+          revenue: Math.round(loc.revenue),
+          enrollments: loc.records, // Using records count instead of enrollments
+        }))
+        .sort((a, b) => b.revenue - a.revenue)
+
+      return {
+        locationData: chartData,
+      }
+    },
+  })
+
   // Combined loading state
-  const loading = loadingRevenue || loadingEnrollments || loadingBalances || loadingPayroll
+  const loading = loadingRevenue || loadingEnrollments || loadingBalances || loadingPayroll || loadingLocation
 
   // Refresh all data
   const handleRefresh = () => {
@@ -447,6 +549,7 @@ export default function Reports() {
     refetchEnrollments()
     refetchBalances()
     refetchPayroll()
+    refetchLocation()
   }
 
   // Extract data from query results with defaults
@@ -465,12 +568,22 @@ export default function Reports() {
   const payrollData = payrollResult?.payrollData ?? []
   const totalPayroll = payrollResult?.totalPayroll ?? 0
 
+  const locationData = locationResult?.locationData ?? []
+
   // Custom tooltip styles for dark mode
   const tooltipStyle = {
     backgroundColor: '#1f2937',
     border: '1px solid #374151',
     borderRadius: '8px',
     color: '#e5e7eb',
+  }
+
+  const tooltipItemStyle = {
+    color: '#e5e7eb',
+  }
+
+  const tooltipLabelStyle = {
+    color: '#9ca3af',
   }
 
   // Pie chart data (memoized for performance)
@@ -598,7 +711,9 @@ export default function Reports() {
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
                 <Tooltip 
-                  contentStyle={tooltipStyle} 
+                  contentStyle={tooltipStyle}
+                  itemStyle={tooltipItemStyle}
+                  labelStyle={tooltipLabelStyle}
                   formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
                 />
                 <Bar dataKey="revenue" name="Revenue" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
@@ -691,7 +806,7 @@ export default function Reports() {
                       <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
+                  <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="w-40 space-y-2">
@@ -757,6 +872,67 @@ export default function Reports() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          )}
+        </div>
+
+        {/* Revenue by Location */}
+        <div className="bg-gray-800 border border-gray-700 rounded-lg p-4 lg:col-span-2">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <BarChart3 className="w-5 h-5 text-purple-500" />
+            Revenue by Location
+          </h3>
+          {loadingLocation ? (
+            <div className="h-64 flex items-center justify-center">
+              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
+            </div>
+          ) : locationError ? (
+            <div className="h-64 flex items-center justify-center text-red-400">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {locationErrorMsg instanceof Error ? locationErrorMsg.message : 'Failed to load location data'}
+            </div>
+          ) : locationData.length === 0 ? (
+            <div className="h-64 flex items-center justify-center text-gray-500">
+              No revenue data for this period
+            </div>
+          ) : (
+            <div className="flex items-center gap-8">
+              <ResponsiveContainer width="60%" height={280}>
+                <BarChart data={locationData} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis type="number" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
+                  <YAxis dataKey="name" type="category" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} width={100} />
+                  <Tooltip
+                    contentStyle={tooltipStyle}
+                    itemStyle={tooltipItemStyle}
+                    labelStyle={tooltipLabelStyle}
+                    formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
+                  />
+                  <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
+                    {locationData.map((entry) => (
+                      <Cell
+                        key={`cell-${entry.code}`}
+                        fill={LOCATION_COLORS[entry.code] || COLORS.primary}
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="w-48 space-y-3">
+                {locationData.map((entry) => (
+                  <div key={entry.code} className="flex items-center gap-3">
+                    <div
+                      className="w-3 h-3 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: LOCATION_COLORS[entry.code] || COLORS.primary }}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-300 truncate">{entry.name}</p>
+                      <p className="text-xs text-gray-500">{entry.enrollments} records</p>
+                    </div>
+                    <span className="text-sm font-medium text-white">${entry.revenue.toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

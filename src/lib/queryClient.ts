@@ -93,6 +93,12 @@ export const queryKeys = {
     all: ['services'] as const,
     active: () => ['services', 'active'] as const,
   },
+
+  // Locations
+  locations: {
+    all: ['locations'] as const,
+    active: () => ['locations', 'active'] as const,
+  },
   
   // Enrollments
   enrollments: {
