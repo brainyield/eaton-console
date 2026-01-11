@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
-import { addRecentlyViewed } from '../lib/useRecentlyViewed'
 import { getTodayString } from '../lib/dateUtils'
+import { addRecentlyViewed } from '../lib/hooks'
 import type { CustomerStatus } from '../lib/hooks'
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,

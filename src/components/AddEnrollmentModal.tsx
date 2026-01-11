@@ -10,6 +10,7 @@ import {
   useEnrollmentMutations,
   useTeacherAssignmentMutations,
   type EnrollmentStatus,
+  type EnrollmentInsert,
   type BillingFrequency,
   type Family,
   type Student,
@@ -367,7 +368,7 @@ export function AddEnrollmentModal({
     setError(null);
 
     // Build enrollment data with validated values
-    const enrollmentData: Record<string, unknown> = {
+    const enrollmentData: EnrollmentInsert & { teacher_id?: string; hourly_rate_teacher?: number } = {
       family_id: formData.family_id,
       service_id: formData.service_id,
       status: formData.status,

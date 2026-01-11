@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query'
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
@@ -16,6 +17,12 @@ export type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
 export type EmployeeStatus = 'active' | 'reserve' | 'inactive'
 export type BillingFrequency = 'per_session' | 'weekly' | 'monthly' | 'bi_monthly' | 'annual' | 'one_time'
 export type InvoiceStatus = 'draft' | 'sent' | 'paid' | 'partial' | 'overdue' | 'void'
+
+// Insert types - required fields only, for use with mutations
+export type FamilyInsert = Pick<Family, 'display_name'> & Partial<Omit<Family, 'id' | 'display_name' | 'created_at'>>
+export type StudentInsert = Pick<Student, 'full_name' | 'family_id'> & Partial<Omit<Student, 'id' | 'full_name' | 'family_id' | 'created_at'>>
+export type EnrollmentInsert = Pick<Enrollment, 'family_id' | 'service_id' | 'status'> & Partial<Omit<Enrollment, 'id' | 'family_id' | 'service_id' | 'status' | 'created_at'>>
+export type TeacherInsert = Pick<Teacher, 'display_name'> & Partial<Omit<Teacher, 'id' | 'display_name' | 'created_at'>>
 
 export interface Family {
   id: string
@@ -367,7 +374,7 @@ export function getServiceShortName(code: string): string {
 // FAMILIES HOOKS
 // =============================================================================
 
-export function useFamilies(filters?: { status?: string; search?: string; limit?: number }) {
+export function useFamilies(filters?: { status?: CustomerStatus | 'all'; search?: string; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.families.list(filters),
     queryFn: async () => {
@@ -378,7 +385,7 @@ export function useFamilies(filters?: { status?: string; search?: string; limit?
         .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status as 'trial' | 'active' | 'paused' | 'churned')
+        query = query.eq('status', filters.status)
       }
 
       if (filters?.search) {
@@ -435,10 +442,9 @@ export function useFamilyMutations() {
   const queryClient = useQueryClient()
 
   const createFamily = useMutation({
-    mutationFn: async (data: Partial<Family>) => {
+    mutationFn: async (data: FamilyInsert) => {
       const { data: family, error } = await supabase.from('families')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert(data as any)
+        .insert(data)
         .select()
         .single()
       if (error) throw error
@@ -505,35 +511,32 @@ export function useStudentMutations() {
   const queryClient = useQueryClient()
 
   const createStudent = useMutation({
-    mutationFn: async (data: Partial<Student>) => {
+    mutationFn: async (data: StudentInsert) => {
       // Check for duplicate student name within the same family
       // Normalize both input and existing names to "Last, First" format for comparison
       // This catches duplicates like "Celine Orellana" vs "Orellana, Celine"
-      if (data.family_id && data.full_name) {
-        const { data: existingStudents, error: checkError } = await supabase
-          .from('students')
-          .select('id, full_name')
-          .eq('family_id', data.family_id)
+      const { data: existingStudents, error: checkError } = await supabase
+        .from('students')
+        .select('id, full_name')
+        .eq('family_id', data.family_id)
 
-        if (checkError) throw checkError
+      if (checkError) throw checkError
 
-        // Normalize the input name to "Last, First" format for comparison
-        const inputNormalized = formatNameLastFirst(data.full_name).trim().toLowerCase()
+      // Normalize the input name to "Last, First" format for comparison
+      const inputNormalized = formatNameLastFirst(data.full_name).trim().toLowerCase()
 
-        const duplicate = existingStudents?.find(s => {
-          // Normalize existing student names the same way
-          const existingNormalized = formatNameLastFirst(s.full_name).trim().toLowerCase()
-          return existingNormalized === inputNormalized
-        })
+      const duplicate = existingStudents?.find(s => {
+        // Normalize existing student names the same way
+        const existingNormalized = formatNameLastFirst(s.full_name).trim().toLowerCase()
+        return existingNormalized === inputNormalized
+      })
 
-        if (duplicate) {
-          throw new Error(`A student named "${duplicate.full_name}" already exists in this family. Please use a different name or edit the existing student.`)
-        }
+      if (duplicate) {
+        throw new Error(`A student named "${duplicate.full_name}" already exists in this family. Please use a different name or edit the existing student.`)
       }
 
       const { data: student, error } = await supabase.from('students')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert(data as any)
+        .insert(data)
         .select()
         .single()
       if (error) throw error
@@ -638,7 +641,7 @@ export function useStudentMutations() {
 // TEACHERS HOOKS
 // =============================================================================
 
-export function useTeachers(filters?: { status?: string }) {
+export function useTeachers(filters?: { status?: EmployeeStatus | 'all' }) {
   return useQuery({
     queryKey: queryKeys.teachers.list(filters),
     queryFn: async () => {
@@ -648,7 +651,7 @@ export function useTeachers(filters?: { status?: string }) {
         .order('display_name')
 
       if (filters?.status && filters.status !== 'all') {
-        query = query.eq('status', filters.status as 'active' | 'reserve' | 'inactive')
+        query = query.eq('status', filters.status)
       }
 
       const { data, error } = await query
@@ -695,10 +698,9 @@ export function useTeacherMutations() {
   const queryClient = useQueryClient()
 
   const createTeacher = useMutation({
-    mutationFn: async (data: Partial<Teacher>) => {
+    mutationFn: async (data: TeacherInsert) => {
       const { data: teacher, error } = await supabase.from('teachers')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert(data as any)
+        .insert(data)
         .select()
         .single()
       if (error) throw error
@@ -841,7 +843,7 @@ export function useTeacherAssignments(teacherId: string | undefined) {
  * Fetch all teachers with their load calculations
  * This enhances the existing useTeachers hook for the Teachers view
  */
-export function useTeachersWithLoad(filters?: { status?: string }) {
+export function useTeachersWithLoad(filters?: { status?: EmployeeStatus | 'all' }) {
   const teachersQuery = useTeachers(filters)
   
   return useQuery({
@@ -1012,7 +1014,7 @@ export function useActiveLocations() {
 
 export interface EnrollmentWithDetails extends Enrollment {
   student: Student | null
-  family: Family | null
+  family: Family
   service: Service
   location: Location | null
   teacher_assignments: (TeacherAssignment & { teacher: Teacher })[]
@@ -1022,7 +1024,7 @@ export interface EnrollmentWithDetails extends Enrollment {
 // ENROLLMENTS HOOKS
 // =============================================================================
 
-export function useEnrollments(filters?: { status?: string; serviceId?: string; createdFrom?: string; limit?: number }) {
+export function useEnrollments(filters?: { status?: EnrollmentStatus | 'all'; serviceId?: string; createdFrom?: string; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.enrollments.list(filters),
     queryFn: async () => {
@@ -1042,8 +1044,7 @@ export function useEnrollments(filters?: { status?: string; serviceId?: string; 
         .limit(filters?.limit ?? 500) // Default limit to prevent unbounded fetching
 
       if (filters?.status && filters.status !== 'all') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        query = query.eq('status', filters.status as any)
+        query = query.eq('status', filters.status)
       }
 
       if (filters?.serviceId) {
@@ -1116,13 +1117,12 @@ export function useEnrollmentMutations() {
   const queryClient = useQueryClient()
 
   const createEnrollment = useMutation({
-    mutationFn: async (data: Partial<Enrollment> & { teacher_id?: string; hourly_rate_teacher?: number }) => {
+    mutationFn: async (data: EnrollmentInsert & { teacher_id?: string; hourly_rate_teacher?: number }) => {
       const { teacher_id, hourly_rate_teacher, ...enrollmentData } = data
 
       // Create enrollment
       const { data: enrollment, error } = await supabase.from('enrollments')
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        .insert(enrollmentData as any)
+        .insert(enrollmentData)
         .select()
         .single()
       if (error) throw error
@@ -1510,7 +1510,7 @@ export interface InvoiceWithFamily extends Invoice {
 // INVOICE HOOKS
 // =============================================================================
 
-export function useInvoices(filters?: { status?: string | string[]; limit?: number }) {
+export function useInvoices(filters?: { status?: InvoiceStatus | InvoiceStatus[] | 'all'; limit?: number }) {
   return useQuery({
     queryKey: queryKeys.invoices.list(filters),
     queryFn: async () => {
@@ -1524,11 +1524,9 @@ export function useInvoices(filters?: { status?: string | string[]; limit?: numb
 
       if (filters?.status) {
         if (Array.isArray(filters.status)) {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          query = query.in('status', filters.status as any)
+          query = query.in('status', filters.status)
         } else if (filters.status !== 'all') {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          query = query.eq('status', filters.status as any)
+          query = query.eq('status', filters.status)
         }
       }
 
@@ -6125,4 +6123,77 @@ export function useCheckinFormSubmit() {
       queryClient.invalidateQueries({ queryKey: queryKeys.checkins.response(variables.inviteId) })
     },
   })
+}
+
+// =============================================================================
+// RECENTLY VIEWED HOOKS
+// =============================================================================
+
+export interface RecentItem {
+  id: string
+  name: string
+  type: 'family' | 'enrollment' | 'teacher'
+  href: string
+  timestamp: number
+}
+
+const RECENTLY_VIEWED_STORAGE_KEY = 'recentlyViewed'
+const RECENTLY_VIEWED_MAX_ITEMS = 5
+
+function getStoredRecentItems(): RecentItem[] {
+  try {
+    const stored = localStorage.getItem(RECENTLY_VIEWED_STORAGE_KEY)
+    if (!stored) return []
+    return JSON.parse(stored)
+  } catch {
+    return []
+  }
+}
+
+function saveRecentItems(items: RecentItem[]): void {
+  try {
+    localStorage.setItem(RECENTLY_VIEWED_STORAGE_KEY, JSON.stringify(items))
+  } catch {
+    // localStorage might be full or unavailable - fail silently
+  }
+}
+
+export function useRecentlyViewed() {
+  const [items, setItems] = useState<RecentItem[]>(getStoredRecentItems)
+
+  const addItem = useCallback((item: Omit<RecentItem, 'timestamp'>) => {
+    setItems(current => {
+      // Remove existing entry for this item (to move it to top)
+      const filtered = current.filter(i => !(i.id === item.id && i.type === item.type))
+
+      // Add new item at the beginning
+      const newItems: RecentItem[] = [
+        { ...item, timestamp: Date.now() },
+        ...filtered
+      ].slice(0, RECENTLY_VIEWED_MAX_ITEMS)
+
+      // Save to localStorage
+      saveRecentItems(newItems)
+
+      return newItems
+    })
+  }, [])
+
+  const clearItems = useCallback(() => {
+    setItems([])
+    localStorage.removeItem(RECENTLY_VIEWED_STORAGE_KEY)
+  }, [])
+
+  return { items, addItem, clearItems }
+}
+
+// Standalone function to add item (for use outside React components)
+export function addRecentlyViewed(item: Omit<RecentItem, 'timestamp'>): void {
+  const current = getStoredRecentItems()
+  const filtered = current.filter(i => !(i.id === item.id && i.type === item.type))
+  const newItems: RecentItem[] = [
+    { ...item, timestamp: Date.now() },
+    ...filtered
+  ].slice(0, RECENTLY_VIEWED_MAX_ITEMS)
+  saveRecentItems(newItems)
 }

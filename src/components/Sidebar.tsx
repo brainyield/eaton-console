@@ -13,7 +13,7 @@ import {
   Train,
   Megaphone
 } from 'lucide-react'
-import { useRecentlyViewed } from '../lib/useRecentlyViewed'
+import { useRecentlyViewed } from '../lib/hooks'
 
 interface NavItem {
   name: string
