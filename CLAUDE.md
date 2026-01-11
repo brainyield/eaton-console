@@ -137,6 +137,8 @@ queryKeys.families.detail(id)
 - **DON'T** assume all data creation happens in application code - Supabase database triggers (like `process_class_registration`) can create students and enrollments automatically when event_attendees or event_orders are inserted/updated. Check Supabase Dashboard → Database → Triggers when debugging unexpected data creation. Trigger functions are in `supabase/migrations/` but may have been created directly in Dashboard.
 - **DON'T** use BEFORE INSERT triggers that reference the new row via foreign key - the row doesn't exist yet, causing FK violations. Use AFTER INSERT triggers when you need to insert related records that have a foreign key back to the triggering table (e.g., `lead_score_history.lead_id → leads.id`).
 - **DON'T** forget that `enrollments` and `teacher_assignments` have separate `hours_per_week` fields - when editing enrollment hours in a modal, you must update BOTH records. The `EditEnrollmentModal` handles this, but any new edit flows must sync both tables. Active Roster and Teachers views display `teacher_assignments.hours_per_week`, while invoicing uses `enrollments.hours_per_week`.
+- **DON'T** assume `revenue_records` links to enrollments - the table tracks revenue by `family_id`, `student_id`, `service_id` separately with no `enrollment_id` FK. For location-based revenue reporting, `location_id` was added directly to `revenue_records`.
+- **DON'T** use only `contentStyle` for Recharts tooltips in dark mode - the inner text will be invisible. Must also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}` for visible text.
 
 ---
 
