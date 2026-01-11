@@ -6197,3 +6197,572 @@ export function addRecentlyViewed(item: Omit<RecentItem, 'timestamp'>): void {
   ].slice(0, RECENTLY_VIEWED_MAX_ITEMS)
   saveRecentItems(newItems)
 }
+
+// =============================================================================
+// FAMILY BALANCE CALCULATION
+// =============================================================================
+
+/**
+ * Calculate outstanding balances for families from unpaid invoices.
+ * Queries invoices directly to avoid the Cartesian product bug in family_overview view.
+ */
+export async function calculateFamilyBalances(familyIds: string[]): Promise<Map<string, number>> {
+  const balanceMap = new Map<string, number>()
+  if (familyIds.length === 0) return balanceMap
+
+  const { data: invoices } = await supabase
+    .from('invoices')
+    .select('family_id, balance_due')
+    .in('family_id', familyIds)
+    .or('status.eq.sent,status.eq.partial,status.eq.overdue')
+
+  if (invoices) {
+    invoices.forEach(inv => {
+      const current = balanceMap.get(inv.family_id) || 0
+      balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
+    })
+  }
+
+  return balanceMap
+}
+
+// =============================================================================
+// PAGINATED FAMILIES HOOK
+// =============================================================================
+
+export type DirectorySortField = 'display_name' | 'students' | 'status' | 'total_balance' | 'primary_email'
+export type SortDirection = 'asc' | 'desc'
+
+export interface DirectorySortConfig {
+  field: DirectorySortField
+  direction: SortDirection
+}
+
+export interface FamilyWithStudents extends Family {
+  students: Student[]
+  total_balance: number
+  active_enrollment_count?: number
+}
+
+/**
+ * Hook for paginated families with students and balance calculation.
+ * Supports search (family name, email, phone, student names), status filtering,
+ * sorting by various fields including balance, and pagination.
+ */
+export function usePaginatedFamilies(
+  page: number,
+  pageSize: number,
+  statusFilter: CustomerStatus | 'all',
+  sortConfig: DirectorySortConfig,
+  searchQuery: string
+) {
+  return useQuery({
+    queryKey: ['families', 'paginated', { page, pageSize, status: statusFilter, sort: sortConfig, search: searchQuery }],
+    queryFn: async () => {
+      // When searching, we need to search across all families including student names
+      // This requires fetching more data and filtering client-side for student matches
+      // Limit search results to prevent unbounded data fetching
+      const SEARCH_LIMIT = 500
+
+      if (searchQuery.trim()) {
+        const query = searchQuery.toLowerCase().trim()
+
+        // Fetch families with students (with status filter if applicable)
+        // Limited to prevent unbounded fetching on broad searches
+        let familyQuery = supabase
+          .from('families')
+          .select(`*, students (*)`)
+          .limit(SEARCH_LIMIT)
+
+        if (statusFilter === 'all') {
+          // Exclude leads from Directory - they belong in Marketing view
+          familyQuery = familyQuery.in('status', ['trial', 'active', 'paused', 'churned'])
+        } else {
+          familyQuery = familyQuery.eq('status', statusFilter)
+        }
+
+        // Apply server-side filtering for family fields using OR
+        familyQuery = familyQuery.or(
+          `display_name.ilike.%${query}%,primary_email.ilike.%${query}%,primary_phone.ilike.%${query}%`
+        )
+
+        const { data: familyMatches, error: familyError } = await familyQuery
+        if (familyError) throw familyError
+
+        // Also search for families by student name (separate query since Supabase
+        // doesn't support filtering parent by child fields easily)
+        // Limited to prevent unbounded fetching
+        const studentQuery = supabase
+          .from('students')
+          .select('family_id')
+          .ilike('full_name', `%${query}%`)
+          .limit(SEARCH_LIMIT)
+
+        const { data: studentMatches } = await studentQuery
+        const studentFamilyIds = new Set<string>((studentMatches || []).map((s) => s.family_id))
+
+        // If we have student matches, fetch those families too
+        let additionalFamilies: typeof familyMatches = []
+        if (studentFamilyIds.size > 0) {
+          // Filter out families we already have
+          const existingIds = new Set((familyMatches || []).map((f) => f.id))
+          const missingIds = [...studentFamilyIds].filter(id => !existingIds.has(id))
+
+          // Limit to prevent fetching too many additional families
+          const limitedMissingIds = missingIds.slice(0, SEARCH_LIMIT)
+
+          if (limitedMissingIds.length > 0) {
+            let additionalQuery = supabase
+              .from('families')
+              .select(`*, students (*)`)
+              .in('id', limitedMissingIds)
+
+            if (statusFilter === 'all') {
+              // Exclude leads from Directory - they belong in Marketing view
+              additionalQuery = additionalQuery.in('status', ['trial', 'active', 'paused', 'churned'])
+            } else {
+              additionalQuery = additionalQuery.eq('status', statusFilter)
+            }
+
+            const { data: additionalData } = await additionalQuery
+            additionalFamilies = additionalData || []
+          }
+        }
+
+        // Combine results
+        const allMatches = [...(familyMatches || []), ...additionalFamilies]
+
+        // Get balances for all matching families
+        const familyIds = allMatches.map(f => f.id)
+        const balanceMap = await calculateFamilyBalances(familyIds)
+
+        // Merge balance into family data
+        const familiesWithBalance = allMatches.map(f => ({
+          ...f,
+          total_balance: balanceMap.get(f.id) || 0
+        })) as FamilyWithStudents[]
+
+        // Apply sorting
+        if (sortConfig.field === 'display_name') {
+          familiesWithBalance.sort((a, b) => {
+            const diff = a.display_name.localeCompare(b.display_name)
+            return sortConfig.direction === 'asc' ? diff : -diff
+          })
+        } else if (sortConfig.field === 'total_balance') {
+          familiesWithBalance.sort((a, b) => {
+            const diff = a.total_balance - b.total_balance
+            return sortConfig.direction === 'asc' ? diff : -diff
+          })
+        } else if (sortConfig.field === 'students') {
+          familiesWithBalance.sort((a, b) => {
+            const diff = a.students.length - b.students.length
+            return sortConfig.direction === 'asc' ? diff : -diff
+          })
+        }
+
+        // Paginate the results
+        const totalCount = familiesWithBalance.length
+        const startIdx = (page - 1) * pageSize
+        const paginatedFamilies = familiesWithBalance.slice(startIdx, startIdx + pageSize)
+
+        return { families: paginatedFamilies, totalCount }
+      }
+
+      // No search query - use original paginated approach
+      // For balance sorting, we need a different approach:
+      // 1. Get all family balances first
+      // 2. Sort by balance
+      // 3. Then paginate
+      // Note: Limited to 2000 families for balance sorting to prevent memory issues
+      const BALANCE_SORT_LIMIT = 2000
+
+      if (sortConfig.field === 'total_balance') {
+        // Get balances for families matching the filter (limited to prevent unbounded fetching)
+        // Query invoices directly to avoid the Cartesian product bug in family_overview
+        let familyQuery = supabase
+          .from('families')
+          .select('id', { count: 'exact' })
+          .limit(BALANCE_SORT_LIMIT)
+
+        if (statusFilter === 'all') {
+          // Exclude leads from Directory - they belong in Marketing view
+          familyQuery = familyQuery.in('status', ['trial', 'active', 'paused', 'churned'])
+        } else {
+          familyQuery = familyQuery.eq('status', statusFilter)
+        }
+
+        const { data: allFamilyIds, count } = await familyQuery
+        const familyIds = (allFamilyIds || []).map((f) => f.id)
+
+        // Get balances from invoices directly (no Cartesian product issue)
+        const balanceMap = await calculateFamilyBalances(familyIds)
+
+        // Sort family IDs by balance
+        const sortedFamilyIds = familyIds.sort((a: string, b: string) => {
+          const balA = balanceMap.get(a) || 0
+          const balB = balanceMap.get(b) || 0
+          const diff = balA - balB
+          return sortConfig.direction === 'asc' ? diff : -diff
+        })
+
+        // Paginate the sorted IDs
+        const startIdx = (page - 1) * pageSize
+        const paginatedIds = sortedFamilyIds.slice(startIdx, startIdx + pageSize)
+
+        if (paginatedIds.length === 0) {
+          return { families: [], totalCount: count || 0 }
+        }
+
+        // Fetch full family data for paginated IDs
+        const { data: familyData, error } = await supabase
+          .from('families')
+          .select(`*, students (*)`)
+          .in('id', paginatedIds)
+
+        if (error) throw error
+
+        // Merge balance and maintain sort order
+        const familiesWithBalance = paginatedIds.map((id) => {
+          const family = (familyData || []).find((f) => f.id === id)
+          return family ? {
+            ...family,
+            total_balance: balanceMap.get(id) || 0
+          } : null
+        }).filter(Boolean) as FamilyWithStudents[]
+
+        return { families: familiesWithBalance, totalCount: count || 0 }
+      }
+
+      // For non-balance sorting, use original approach but fix balance calculation
+      let query = supabase
+        .from('families')
+        .select(`
+          *,
+          students (*)
+        `, { count: 'exact' })
+
+      // Apply status filter - always exclude 'lead' status (leads belong in Marketing view)
+      if (statusFilter === 'all') {
+        query = query.in('status', ['trial', 'active', 'paused', 'churned'])
+      } else {
+        query = query.eq('status', statusFilter)
+      }
+
+      // Apply sorting (only for fields that can be sorted server-side)
+      if (sortConfig.field === 'display_name') {
+        query = query.order('display_name', { ascending: sortConfig.direction === 'asc' })
+      } else if (sortConfig.field === 'primary_email') {
+        query = query.order('primary_email', { ascending: sortConfig.direction === 'asc' })
+      } else if (sortConfig.field === 'status') {
+        query = query.order('status', { ascending: sortConfig.direction === 'asc' })
+      } else {
+        // Default sort for other fields
+        query = query.order('display_name')
+      }
+
+      // Apply pagination
+      query = query.range((page - 1) * pageSize, page * pageSize - 1)
+
+      const { data, error, count } = await query
+
+      if (error) throw error
+
+      const familyData = data || []
+      const familyIds = familyData.map(f => f.id)
+
+      // Query invoices directly - NOT the family_overview VIEW
+      // The VIEW has a Cartesian product bug that multiplies balances
+      const balanceMap = await calculateFamilyBalances(familyIds)
+
+      // Merge balance into family data
+      const familiesWithBalance = familyData.map(f => ({
+        ...f,
+        total_balance: balanceMap.get(f.id) || 0
+      })) as FamilyWithStudents[]
+
+      // Client-side sorting for student count
+      if (sortConfig.field === 'students') {
+        familiesWithBalance.sort((a, b) => {
+          const diff = a.students.length - b.students.length
+          return sortConfig.direction === 'asc' ? diff : -diff
+        })
+      }
+
+      return {
+        families: familiesWithBalance,
+        totalCount: count || 0
+      }
+    },
+  })
+}
+
+// =============================================================================
+// SELECTION STATE HOOK
+// =============================================================================
+
+export interface SelectionState<T extends string> {
+  selectedIds: Set<T>
+  toggle: (id: T) => void
+  toggleAll: (ids: T[], enabled?: boolean) => void
+  selectAll: (ids: T[]) => void
+  deselectAll: () => void
+  isSelected: (id: T) => boolean
+  isAllSelected: (ids: T[]) => boolean
+  count: number
+  clear: () => void
+}
+
+/**
+ * Hook for managing selection state with toggle/select-all logic.
+ * Reusable across any list with checkboxes.
+ */
+export function useSelectionState<T extends string>(
+  disabledIds?: Set<T>
+): SelectionState<T> {
+  const [selectedIds, setSelectedIds] = useState<Set<T>>(new Set())
+
+  const toggle = useCallback((id: T) => {
+    if (disabledIds?.has(id)) return
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }, [disabledIds])
+
+  const toggleAll = useCallback((ids: T[], enabled?: boolean) => {
+    const eligibleIds = disabledIds
+      ? ids.filter(id => !disabledIds.has(id))
+      : ids
+
+    setSelectedIds(prev => {
+      const allSelected = enabled ?? !eligibleIds.every(id => prev.has(id))
+      const next = new Set(prev)
+      eligibleIds.forEach(id => {
+        if (allSelected) {
+          next.add(id)
+        } else {
+          next.delete(id)
+        }
+      })
+      return next
+    })
+  }, [disabledIds])
+
+  const selectAll = useCallback((ids: T[]) => {
+    const eligibleIds = disabledIds
+      ? ids.filter(id => !disabledIds.has(id))
+      : ids
+    setSelectedIds(new Set(eligibleIds))
+  }, [disabledIds])
+
+  const deselectAll = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  const isSelected = useCallback((id: T) => selectedIds.has(id), [selectedIds])
+
+  const isAllSelected = useCallback((ids: T[]) => {
+    const eligibleIds = disabledIds
+      ? ids.filter(id => !disabledIds.has(id))
+      : ids
+    return eligibleIds.length > 0 && eligibleIds.every(id => selectedIds.has(id))
+  }, [selectedIds, disabledIds])
+
+  const clear = useCallback(() => {
+    setSelectedIds(new Set())
+  }, [])
+
+  return {
+    selectedIds,
+    toggle,
+    toggleAll,
+    selectAll,
+    deselectAll,
+    isSelected,
+    isAllSelected,
+    count: selectedIds.size,
+    clear,
+  }
+}
+
+// =============================================================================
+// GENERIC SORT UTILITIES
+// =============================================================================
+
+/**
+ * Generic sort function for arrays of objects.
+ * Supports string comparison, number comparison, and date comparison.
+ */
+export function sortBy<T>(
+  items: T[],
+  field: keyof T | ((item: T) => string | number | Date | null | undefined),
+  direction: 'asc' | 'desc' = 'asc'
+): T[] {
+  const sorted = [...items]
+
+  sorted.sort((a, b) => {
+    const valueA = typeof field === 'function' ? field(a) : a[field]
+    const valueB = typeof field === 'function' ? field(b) : b[field]
+
+    // Handle null/undefined
+    if (valueA == null && valueB == null) return 0
+    if (valueA == null) return direction === 'asc' ? 1 : -1
+    if (valueB == null) return direction === 'asc' ? -1 : 1
+
+    let comparison = 0
+
+    // Date comparison
+    if (valueA instanceof Date && valueB instanceof Date) {
+      comparison = valueA.getTime() - valueB.getTime()
+    }
+    // String comparison
+    else if (typeof valueA === 'string' && typeof valueB === 'string') {
+      comparison = valueA.localeCompare(valueB)
+    }
+    // Number comparison
+    else if (typeof valueA === 'number' && typeof valueB === 'number') {
+      comparison = valueA - valueB
+    }
+    // Fallback to string comparison
+    else {
+      comparison = String(valueA).localeCompare(String(valueB))
+    }
+
+    return direction === 'asc' ? comparison : -comparison
+  })
+
+  return sorted
+}
+
+/**
+ * Multi-field sort function. Sorts by the first field, then by subsequent fields for ties.
+ */
+export function sortByMultiple<T>(
+  items: T[],
+  sortFields: Array<{
+    field: keyof T | ((item: T) => string | number | Date | null | undefined)
+    direction: 'asc' | 'desc'
+  }>
+): T[] {
+  const sorted = [...items]
+
+  sorted.sort((a, b) => {
+    for (const { field, direction } of sortFields) {
+      const valueA = typeof field === 'function' ? field(a) : a[field]
+      const valueB = typeof field === 'function' ? field(b) : b[field]
+
+      // Handle null/undefined
+      if (valueA == null && valueB == null) continue
+      if (valueA == null) return direction === 'asc' ? 1 : -1
+      if (valueB == null) return direction === 'asc' ? -1 : 1
+
+      let comparison = 0
+
+      if (valueA instanceof Date && valueB instanceof Date) {
+        comparison = valueA.getTime() - valueB.getTime()
+      } else if (typeof valueA === 'string' && typeof valueB === 'string') {
+        comparison = valueA.localeCompare(valueB)
+      } else if (typeof valueA === 'number' && typeof valueB === 'number') {
+        comparison = valueA - valueB
+      } else {
+        comparison = String(valueA).localeCompare(String(valueB))
+      }
+
+      if (comparison !== 0) {
+        return direction === 'asc' ? comparison : -comparison
+      }
+    }
+    return 0
+  })
+
+  return sorted
+}
+
+// =============================================================================
+// BULK ACTION HOOK
+// =============================================================================
+
+export interface BulkActionResult {
+  succeeded: number
+  failed: number
+  failedIds: string[]
+}
+
+export interface UseBulkActionOptions<T, R = void> {
+  /** The async action to perform for each item */
+  action: (id: string, data: T) => Promise<R>
+  /** Callback when all actions complete successfully */
+  onSuccess?: (result: BulkActionResult) => void
+  /** Callback when some actions fail */
+  onPartialSuccess?: (result: BulkActionResult) => void
+  /** Callback when all actions fail */
+  onError?: (error: Error, result: BulkActionResult) => void
+}
+
+/**
+ * Hook for handling bulk actions (status updates, deletes, etc.) with
+ * proper error tracking and partial success handling.
+ */
+export function useBulkAction<T = void, R = void>(options: UseBulkActionOptions<T, R>) {
+  const [isExecuting, setIsExecuting] = useState(false)
+  const [result, setResult] = useState<BulkActionResult | null>(null)
+
+  const execute = useCallback(async (ids: string[], data: T): Promise<BulkActionResult> => {
+    if (ids.length === 0) {
+      return { succeeded: 0, failed: 0, failedIds: [] }
+    }
+
+    setIsExecuting(true)
+    setResult(null)
+
+    try {
+      const results = await Promise.allSettled(
+        ids.map(id => options.action(id, data))
+      )
+
+      const succeeded = results.filter(r => r.status === 'fulfilled').length
+      const failed = results.filter(r => r.status === 'rejected').length
+      const failedIds = ids.filter((_, i) => results[i].status === 'rejected')
+
+      const actionResult: BulkActionResult = { succeeded, failed, failedIds }
+      setResult(actionResult)
+
+      if (failed === 0) {
+        options.onSuccess?.(actionResult)
+      } else if (succeeded > 0) {
+        options.onPartialSuccess?.(actionResult)
+      } else {
+        const firstError = results.find(r => r.status === 'rejected') as PromiseRejectedResult | undefined
+        options.onError?.(
+          firstError?.reason instanceof Error ? firstError.reason : new Error('All actions failed'),
+          actionResult
+        )
+      }
+
+      return actionResult
+    } catch (error) {
+      const actionResult: BulkActionResult = { succeeded: 0, failed: ids.length, failedIds: ids }
+      setResult(actionResult)
+      options.onError?.(error instanceof Error ? error : new Error('Bulk action failed'), actionResult)
+      return actionResult
+    } finally {
+      setIsExecuting(false)
+    }
+  }, [options])
+
+  const reset = useCallback(() => {
+    setResult(null)
+  }, [])
+
+  return {
+    execute,
+    isExecuting,
+    result,
+    reset,
+  }
+}

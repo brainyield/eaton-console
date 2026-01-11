@@ -3,8 +3,15 @@ import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
 import { getTodayString } from '../lib/dateUtils'
-import { addRecentlyViewed } from '../lib/hooks'
-import type { CustomerStatus } from '../lib/hooks'
+import {
+  addRecentlyViewed,
+  usePaginatedFamilies,
+  calculateFamilyBalances,
+  type CustomerStatus,
+  type FamilyWithStudents,
+  type DirectorySortField,
+  type DirectorySortConfig,
+} from '../lib/hooks'
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Download, Trash2, RefreshCw, X, Loader2
@@ -13,58 +20,9 @@ import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
 import { calculateAge } from '../lib/utils'
 
-// Define Student locally with all required fields from database
-interface Student {
-  id: string
-  family_id: string
-  full_name: string
-  dob: string | null
-  grade_level: string | null
-  age_group: string | null
-  homeschool_status: string | null
-  active: boolean
-  notes: string | null
-  created_at: string
-  updated_at: string
-}
-
-// Define FamilyWithStudents locally with all required fields
-interface FamilyWithStudents {
-  id: string
-  display_name: string
-  status: CustomerStatus
-  primary_email: string | null
-  primary_phone: string | null
-  primary_contact_name: string | null
-  payment_gateway: string | null
-  address_line1: string | null
-  address_line2: string | null
-  city: string | null
-  state: string | null
-  zip: string | null
-  last_contact_at: string | null
-  reengagement_flag: boolean
-  legacy_lookup_key: string | null
-  notes: string | null
-  created_at: string
-  updated_at: string
-  students: Student[]
-  total_balance: number
-  active_enrollment_count?: number
-}
-
 interface DirectoryProps {
   selectedFamilyId?: string | null
   onSelectFamily?: (id: string | null) => void
-}
-
-// Sort configuration
-type SortField = 'display_name' | 'students' | 'status' | 'total_balance' | 'primary_email'
-type SortDirection = 'asc' | 'desc'
-
-interface SortConfig {
-  field: SortField
-  direction: SortDirection
 }
 
 const STATUS_COLORS: Record<CustomerStatus, string> = {
@@ -73,297 +31,6 @@ const STATUS_COLORS: Record<CustomerStatus, string> = {
   trial: 'bg-blue-500/20 text-blue-400',
   paused: 'bg-amber-500/20 text-amber-400',
   churned: 'bg-red-500/20 text-red-400',
-}
-
-
-// Custom hook for paginated families with students and balance
-function usePaginatedFamilies(
-  page: number,
-  pageSize: number,
-  statusFilter: CustomerStatus | 'all',
-  sortConfig: SortConfig,
-  searchQuery: string
-) {
-  return useQuery({
-    queryKey: ['families', 'paginated', { page, pageSize, status: statusFilter, sort: sortConfig, search: searchQuery }],
-    queryFn: async () => {
-      // When searching, we need to search across all families including student names
-      // This requires fetching more data and filtering client-side for student matches
-      // Limit search results to prevent unbounded data fetching
-      const SEARCH_LIMIT = 500
-
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase().trim()
-
-        // Fetch families with students (with status filter if applicable)
-        // Limited to prevent unbounded fetching on broad searches
-        let familyQuery = supabase
-          .from('families')
-          .select(`*, students (*)`)
-          .limit(SEARCH_LIMIT)
-
-        if (statusFilter === 'all') {
-          // Exclude leads from Directory - they belong in Marketing view
-          familyQuery = familyQuery.in('status', ['trial', 'active', 'paused', 'churned'])
-        } else {
-          familyQuery = familyQuery.eq('status', statusFilter)
-        }
-
-        // Apply server-side filtering for family fields using OR
-        familyQuery = familyQuery.or(
-          `display_name.ilike.%${query}%,primary_email.ilike.%${query}%,primary_phone.ilike.%${query}%`
-        )
-
-        const { data: familyMatches, error: familyError } = await familyQuery
-        if (familyError) throw familyError
-
-        // Also search for families by student name (separate query since Supabase
-        // doesn't support filtering parent by child fields easily)
-        // Limited to prevent unbounded fetching
-        const studentQuery = supabase
-          .from('students')
-          .select('family_id')
-          .ilike('full_name', `%${query}%`)
-          .limit(SEARCH_LIMIT)
-
-        const { data: studentMatches } = await studentQuery
-        const studentFamilyIds = new Set<string>((studentMatches || []).map((s) => s.family_id))
-
-        // If we have student matches, fetch those families too
-        let additionalFamilies: typeof familyMatches = []
-        if (studentFamilyIds.size > 0) {
-          // Filter out families we already have
-          const existingIds = new Set((familyMatches || []).map((f) => f.id))
-          const missingIds = [...studentFamilyIds].filter(id => !existingIds.has(id))
-
-          // Limit to prevent fetching too many additional families
-          const limitedMissingIds = missingIds.slice(0, SEARCH_LIMIT)
-
-          if (limitedMissingIds.length > 0) {
-            let additionalQuery = supabase
-              .from('families')
-              .select(`*, students (*)`)
-              .in('id', limitedMissingIds)
-
-            if (statusFilter === 'all') {
-              // Exclude leads from Directory - they belong in Marketing view
-              additionalQuery = additionalQuery.in('status', ['trial', 'active', 'paused', 'churned'])
-            } else {
-              additionalQuery = additionalQuery.eq('status', statusFilter)
-            }
-
-            const { data: additionalData } = await additionalQuery
-            additionalFamilies = additionalData || []
-          }
-        }
-
-        // Combine results
-        const allMatches = [...(familyMatches || []), ...additionalFamilies]
-
-        // Get balances for all matching families
-        const familyIds = allMatches.map(f => f.id)
-        const balanceMap: Map<string, number> = new Map()
-        if (familyIds.length > 0) {
-          const { data: invoices } = await supabase
-            .from('invoices')
-            .select('family_id, balance_due')
-            .in('family_id', familyIds)
-            .or('status.eq.sent,status.eq.partial,status.eq.overdue')
-
-          if (invoices) {
-            invoices.forEach(inv => {
-              const current = balanceMap.get(inv.family_id) || 0
-              balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
-            })
-          }
-        }
-
-        // Merge balance into family data
-        const familiesWithBalance = allMatches.map(f => ({
-          ...f,
-          total_balance: balanceMap.get(f.id) || 0
-        })) as FamilyWithStudents[]
-
-        // Apply sorting
-        if (sortConfig.field === 'display_name') {
-          familiesWithBalance.sort((a, b) => {
-            const diff = a.display_name.localeCompare(b.display_name)
-            return sortConfig.direction === 'asc' ? diff : -diff
-          })
-        } else if (sortConfig.field === 'total_balance') {
-          familiesWithBalance.sort((a, b) => {
-            const diff = a.total_balance - b.total_balance
-            return sortConfig.direction === 'asc' ? diff : -diff
-          })
-        } else if (sortConfig.field === 'students') {
-          familiesWithBalance.sort((a, b) => {
-            const diff = a.students.length - b.students.length
-            return sortConfig.direction === 'asc' ? diff : -diff
-          })
-        }
-
-        // Paginate the results
-        const totalCount = familiesWithBalance.length
-        const startIdx = (page - 1) * pageSize
-        const paginatedFamilies = familiesWithBalance.slice(startIdx, startIdx + pageSize)
-
-        return { families: paginatedFamilies, totalCount }
-      }
-
-      // No search query - use original paginated approach
-      // For balance sorting, we need a different approach:
-      // 1. Get all family balances first
-      // 2. Sort by balance
-      // 3. Then paginate
-      // Note: Limited to 2000 families for balance sorting to prevent memory issues
-      const BALANCE_SORT_LIMIT = 2000
-
-      if (sortConfig.field === 'total_balance') {
-        // Get balances for families matching the filter (limited to prevent unbounded fetching)
-        // Query invoices directly to avoid the Cartesian product bug in family_overview
-        let familyQuery = supabase
-          .from('families')
-          .select('id', { count: 'exact' })
-          .limit(BALANCE_SORT_LIMIT)
-
-        if (statusFilter === 'all') {
-          // Exclude leads from Directory - they belong in Marketing view
-          familyQuery = familyQuery.in('status', ['trial', 'active', 'paused', 'churned'])
-        } else {
-          familyQuery = familyQuery.eq('status', statusFilter)
-        }
-
-        const { data: allFamilyIds, count } = await familyQuery
-        const familyIds = (allFamilyIds || []).map((f) => f.id)
-
-        // Get balances from invoices directly (no Cartesian product issue)
-        const balanceMap: Map<string, number> = new Map()
-        if (familyIds.length > 0) {
-          const { data: invoices } = await supabase
-            .from('invoices')
-            .select('family_id, balance_due')
-            .in('family_id', familyIds)
-            .or('status.eq.sent,status.eq.partial,status.eq.overdue')
-
-          if (invoices) {
-            invoices.forEach(inv => {
-              const current = balanceMap.get(inv.family_id) || 0
-              balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
-            })
-          }
-        }
-
-        // Sort family IDs by balance
-        const sortedFamilyIds = familyIds.sort((a: string, b: string) => {
-          const balA = balanceMap.get(a) || 0
-          const balB = balanceMap.get(b) || 0
-          const diff = balA - balB
-          return sortConfig.direction === 'asc' ? diff : -diff
-        })
-
-        // Paginate the sorted IDs
-        const startIdx = (page - 1) * pageSize
-        const paginatedIds = sortedFamilyIds.slice(startIdx, startIdx + pageSize)
-
-        if (paginatedIds.length === 0) {
-          return { families: [], totalCount: count || 0 }
-        }
-
-        // Fetch full family data for paginated IDs
-        const { data: familyData, error } = await supabase
-          .from('families')
-          .select(`*, students (*)`)
-          .in('id', paginatedIds)
-
-        if (error) throw error
-
-        // Merge balance and maintain sort order
-        const familiesWithBalance = paginatedIds.map((id) => {
-          const family = (familyData || []).find((f) => f.id === id)
-          return family ? {
-            ...family,
-            total_balance: balanceMap.get(id) || 0
-          } : null
-        }).filter(Boolean) as FamilyWithStudents[]
-
-        return { families: familiesWithBalance, totalCount: count || 0 }
-      }
-
-      // For non-balance sorting, use original approach but fix balance calculation
-      let query = supabase
-        .from('families')
-        .select(`
-          *,
-          students (*)
-        `, { count: 'exact' })
-
-      // Apply status filter - always exclude 'lead' status (leads belong in Marketing view)
-      if (statusFilter === 'all') {
-        query = query.in('status', ['trial', 'active', 'paused', 'churned'])
-      } else {
-        query = query.eq('status', statusFilter)
-      }
-
-      // Apply sorting (only for fields that can be sorted server-side)
-      if (sortConfig.field === 'display_name') {
-        query = query.order('display_name', { ascending: sortConfig.direction === 'asc' })
-      } else if (sortConfig.field === 'primary_email') {
-        query = query.order('primary_email', { ascending: sortConfig.direction === 'asc' })
-      } else if (sortConfig.field === 'status') {
-        query = query.order('status', { ascending: sortConfig.direction === 'asc' })
-      } else {
-        // Default sort for other fields
-        query = query.order('display_name')
-      }
-
-      // Apply pagination
-      query = query.range((page - 1) * pageSize, page * pageSize - 1)
-
-      const { data, error, count } = await query
-
-      if (error) throw error
-
-      const familyData = data || []
-      const familyIds = familyData.map(f => f.id)
-
-      // Query invoices directly - NOT the family_overview VIEW
-      // The VIEW has a Cartesian product bug that multiplies balances
-      const balanceMap: Map<string, number> = new Map()
-      if (familyIds.length > 0) {
-        const { data: invoices } = await supabase
-          .from('invoices')
-          .select('family_id, balance_due')
-          .in('family_id', familyIds)
-          .or('status.eq.sent,status.eq.partial,status.eq.overdue')
-
-        if (invoices) {
-          invoices.forEach(inv => {
-            const current = balanceMap.get(inv.family_id) || 0
-            balanceMap.set(inv.family_id, current + (Number(inv.balance_due) || 0))
-          })
-        }
-      }
-
-      // Merge balance into family data
-      const familiesWithBalance = familyData.map(f => ({
-        ...f,
-        total_balance: balanceMap.get(f.id) || 0
-      })) as FamilyWithStudents[]
-
-      // Client-side sorting for student count
-      if (sortConfig.field === 'students') {
-        familiesWithBalance.sort((a, b) => {
-          const diff = a.students.length - b.students.length
-          return sortConfig.direction === 'asc' ? diff : -diff
-        })
-      }
-
-      return {
-        families: familiesWithBalance,
-        totalCount: count || 0
-      }
-    },
-  })
 }
 
 // Hook to fetch a single family by ID (for external selection)
@@ -379,19 +46,10 @@ function useFamilyById(id: string | null) {
         .single()
 
       if (error) throw error
-      
-      // Query invoices directly - NOT the family_overview VIEW
-      // The VIEW has a Cartesian product bug that multiplies balances
-      const { data: invoices } = await supabase
-        .from('invoices')
-        .select('balance_due')
-        .eq('family_id', id)
-        .or('status.eq.sent,status.eq.partial,status.eq.overdue')
 
-      const total_balance = invoices?.reduce(
-        (sum, inv) => sum + (Number(inv.balance_due) || 0),
-        0
-      ) || 0
+      // Use the shared calculateFamilyBalances helper
+      const balanceMap = await calculateFamilyBalances([id])
+      const total_balance = balanceMap.get(id) || 0
 
       return { ...data, total_balance } as FamilyWithStudents
     },
@@ -408,7 +66,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const pageSize = 25
   
   // Sorting state
-  const [sortConfig, setSortConfig] = useState<SortConfig>({ field: 'display_name', direction: 'asc' })
+  const [sortConfig, setSortConfig] = useState<DirectorySortConfig>({ field: 'display_name', direction: 'asc' })
   
   // Selection state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -556,7 +214,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   }
 
   // Sort handler
-  const handleSort = (field: SortField) => {
+  const handleSort = (field: DirectorySortField) => {
     setSortConfig(prev => ({
       field,
       direction: prev.field === field && prev.direction === 'asc' ? 'desc' : 'asc'
@@ -632,7 +290,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   }
 
   // Render sort icon
-  const SortIcon = ({ field }: { field: SortField }) => {
+  const SortIcon = ({ field }: { field: DirectorySortField }) => {
     if (sortConfig.field !== field) {
       return <ChevronUp className="h-3 w-3 text-zinc-600" aria-hidden="true" />
     }
