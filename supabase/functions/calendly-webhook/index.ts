@@ -94,8 +94,17 @@ Deno.serve(async (req) => {
   let rawPayload: Record<string, unknown> = {}
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Supabase configuration missing')
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     const rawBody = await req.text()
@@ -170,7 +179,13 @@ Deno.serve(async (req) => {
         })
         .eq('calendly_invitee_uri', inviteeUri)
 
-      if (error) console.error('Error updating canceled booking:', error)
+      if (error) {
+        console.error('Error updating canceled booking:', error)
+        return new Response(JSON.stringify({ success: false, error: 'Failed to update booking' }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
 
       return new Response(JSON.stringify({ success: true, action: 'canceled' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -183,7 +198,7 @@ Deno.serve(async (req) => {
       if (!inviteeEmail) {
         console.error('Missing invitee email - cannot process')
         // Still save the raw payload so we can debug
-        await supabase.from('calendly_bookings').insert({
+        const { error: errorRecordError } = await supabase.from('calendly_bookings').insert({
           calendly_event_uri: scheduledEventUri || 'unknown',
           calendly_invitee_uri: inviteeUri || `unknown-${Date.now()}`,
           event_type: '15min_call',
@@ -194,6 +209,9 @@ Deno.serve(async (req) => {
           raw_payload: rawPayload,
           notes: 'Error: Could not extract invitee email from webhook payload',
         })
+        if (errorRecordError) {
+          console.error('Failed to save error record:', errorRecordError)
+        }
         return new Response(JSON.stringify({ error: 'Missing invitee email' }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -204,11 +222,15 @@ Deno.serve(async (req) => {
       let leadId: string | null = null
 
       // Check for existing family
-      const { data: existingFamily } = await supabase
+      const { data: existingFamily, error: familyQueryError } = await supabase
         .from('families')
         .select('id')
         .ilike('primary_email', inviteeEmail)
         .maybeSingle()
+
+      if (familyQueryError) {
+        console.error('Error querying existing family:', familyQueryError)
+      }
 
       let hasActiveEnrollment = false
 
@@ -216,12 +238,16 @@ Deno.serve(async (req) => {
         familyId = existingFamily.id
         console.log('Found existing family:', familyId)
 
-        const { data: enrollments } = await supabase
+        const { data: enrollments, error: enrollmentsError } = await supabase
           .from('enrollments')
           .select('id')
           .eq('family_id', familyId)
           .in('status', ['active', 'trial'])
           .limit(1)
+
+        if (enrollmentsError) {
+          console.error('Error querying enrollments:', enrollmentsError)
+        }
 
         hasActiveEnrollment = (enrollments?.length || 0) > 0
       }
@@ -229,11 +255,15 @@ Deno.serve(async (req) => {
       // For 15min calls, create family and lead (or update existing lead)
       if (bookingType === '15min_call' && !hasActiveEnrollment) {
         // Check for existing active lead with same email (case-insensitive)
-        const { data: existingLeads } = await supabase
+        const { data: existingLeads, error: leadsQueryError } = await supabase
           .from('leads')
           .select('id, status, family_id, lead_type')
           .ilike('email', inviteeEmail)
           .order('created_at', { ascending: false })
+
+        if (leadsQueryError) {
+          console.error('Error querying existing leads:', leadsQueryError)
+        }
 
         const activeLead = existingLeads?.find(l => l.status === 'new' || l.status === 'contacted')
 

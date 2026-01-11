@@ -91,9 +91,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
     const apiKey = Deno.env.get('LEAD_INGEST_API_KEY')
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Supabase configuration missing')
+      return new Response(
+        JSON.stringify({ error: 'Server configuration error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     // Optional API key verification (if configured)
     if (apiKey) {
@@ -128,11 +136,15 @@ Deno.serve(async (req) => {
 
     // Check for existing lead with same email (any type, any status)
     // This prevents duplicate leads for the same person
-    const { data: existingLeads } = await supabase
+    const { data: existingLeads, error: leadsQueryError } = await supabase
       .from('leads')
       .select('id, status, family_id, lead_type')
-      .eq('email', email)
+      .ilike('email', email)
       .order('created_at', { ascending: false })
+
+    if (leadsQueryError) {
+      console.error('Error querying existing leads:', leadsQueryError)
+    }
 
     if (existingLeads && existingLeads.length > 0) {
       // Check if there's an active lead (new or contacted)
@@ -178,11 +190,15 @@ Deno.serve(async (req) => {
     let familyId: string | null = null
     let familyAction: 'existing' | 'created' = 'existing'
 
-    const { data: existingFamily } = await supabase
+    const { data: existingFamily, error: familyQueryError } = await supabase
       .from('families')
       .select('id, status')
       .ilike('primary_email', email)
-      .single()
+      .maybeSingle()
+
+    if (familyQueryError) {
+      console.error('Error querying existing family:', familyQueryError)
+    }
 
     if (existingFamily) {
       familyId = existingFamily.id

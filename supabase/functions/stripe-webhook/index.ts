@@ -16,10 +16,18 @@ Deno.serve(async (req) => {
     return new Response('ok', { headers: corsHeaders })
   }
 
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
   const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY')
   const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    console.error('Supabase configuration missing')
+    return new Response(
+      JSON.stringify({ error: 'Server configuration error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
+  }
 
   if (!stripeSecretKey || !webhookSecret) {
     console.error('Stripe configuration missing')
@@ -82,10 +90,14 @@ Deno.serve(async (req) => {
 
       // For failed or stuck events, delete the old record to allow retry
       console.log(`Event ${event.id} has status '${existingEvent.processing_status}', allowing retry`)
-      await supabase
+      const { error: deleteError } = await supabase
         .from('stripe_invoice_webhooks')
         .delete()
         .eq('stripe_event_id', event.id)
+
+      if (deleteError) {
+        console.error('Error deleting old webhook record for retry:', deleteError)
+      }
     }
 
     // Handle checkout.session.completed
@@ -173,13 +185,17 @@ Deno.serve(async (req) => {
 
         // If fully paid, update any linked event_orders
         if (newStatus === 'paid') {
-          await supabase
+          const { error: eventOrderError } = await supabase
             .from('event_orders')
             .update({
               payment_status: 'paid',
               paid_at: new Date().toISOString(),
             })
             .eq('invoice_id', invoiceId)
+
+          if (eventOrderError) {
+            console.error('Error updating event_orders payment status:', eventOrderError)
+          }
         }
 
         // Mark webhook as processed
