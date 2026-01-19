@@ -2434,6 +2434,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates when invoices are sent
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
     // Suppress global error toast - callers handle errors explicitly
     onError: (error) => {
@@ -2539,6 +2541,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -2561,6 +2565,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -2579,6 +2585,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(id) })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -2598,6 +2606,8 @@ export function useInvoiceMutations() {
       })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
