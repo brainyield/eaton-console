@@ -143,6 +143,7 @@ queryKeys.families.detail(id)
 - **DON'T** use `.single()` when a query might return 0 or multiple rows - it throws on both cases. Use `.maybeSingle()` for queries that may or may not find a match (returns `null` if not found, first result if multiple). Only use `.single()` when you're certain exactly one row exists.
 - **DON'T** silently swallow errors in secondary operations - mutations with secondary steps (e.g., syncing event_orders after invoice payment, sending webhook emails) should return `{ data, warnings: string[] }`. Callers can then show warnings to users about partial failures. See `updateInvoice`, `recordPayment`, `createPayrollRun`, and check-in mutations for examples of this pattern.
 - **DON'T** forget to invalidate `stats.dashboard()` in mutations that affect Command Center metrics - the dashboard has a 60-second `staleTime`, so without explicit invalidation, metrics won't update immediately. Any mutation affecting invoices (outstanding balance), enrollments (student counts), or families should include `queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })` in its `onSuccess` handler.
+- **DON'T** pass empty strings to Supabase for nullable fields - PostgreSQL cannot convert `''` to date/timestamp types. Always use `value || null` pattern when saving form data: `due_date: dueDate || null`. This applies to all nullable date, timestamp, and optional string fields.
 
 ---
 
