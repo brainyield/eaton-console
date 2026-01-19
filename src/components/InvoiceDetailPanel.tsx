@@ -22,6 +22,7 @@ import type { InvoiceWithDetails } from '../lib/hooks'
 import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations } from '../lib/hooks'
 import { parseLocalDate } from '../lib/dateUtils'
 import { useToast } from '../lib/toast'
+import { generateInvoicePdf } from '../lib/invoicePdf'
 
 // ============================================================================
 // Types
@@ -618,10 +619,7 @@ export default function InvoiceDetailPanel({
           )}
 
           <button
-            onClick={() => {
-              // TODO: Implement PDF download
-              window.open(publicUrl + '?print=1', '_blank')
-            }}
+            onClick={() => generateInvoicePdf(invoice)}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
           >
             <Download className="w-4 h-4" aria-hidden="true" />
