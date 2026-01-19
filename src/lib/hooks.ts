@@ -1170,6 +1170,7 @@ export function useEnrollmentMutations() {
     },
     onSuccess: (enrollment, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.detail(variables.id) })
       // Invalidate family/student-scoped enrollment queries
       if (enrollment.family_id) {
