@@ -168,6 +168,12 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
       return
     }
 
+    // Validate required invoice date
+    if (!invoiceDate) {
+      setValidationError('Invoice date is required')
+      return
+    }
+
     setIsSaving(true)
     const errors: string[] = []
     let invoiceUpdated = false
@@ -189,10 +195,10 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
         id: invoice.id,
         data: {
           invoice_date: invoiceDate,
-          due_date: dueDate,
-          period_start: periodStart,
-          period_end: periodEnd,
-          notes: notes.trim(),
+          due_date: dueDate || null,
+          period_start: periodStart || null,
+          period_end: periodEnd || null,
+          notes: notes.trim() || null,
           subtotal,
           total_amount: subtotal,
         },
