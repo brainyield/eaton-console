@@ -3,6 +3,8 @@
 // - Exit intent forms
 // - Waitlist forms
 // - Any future lead sources
+//
+// Leads are stored as families with status='lead' and lead_status tracking pipeline stage
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -134,65 +136,10 @@ Deno.serve(async (req) => {
 
     const email = payload.email.toLowerCase().trim()
 
-    // Check for existing lead with same email (any type, any status)
-    // This prevents duplicate leads for the same person
-    const { data: existingLeads, error: leadsQueryError } = await supabase
-      .from('leads')
-      .select('id, status, family_id, lead_type')
-      .ilike('email', email)
-      .order('created_at', { ascending: false })
-
-    if (leadsQueryError) {
-      console.error('Error querying existing leads:', leadsQueryError)
-    }
-
-    if (existingLeads && existingLeads.length > 0) {
-      // Check if there's an active lead (new or contacted)
-      const activeLead = existingLeads.find(l => l.status === 'new' || l.status === 'contacted')
-
-      if (activeLead) {
-        console.log(`Active lead already exists for ${email}: ${activeLead.id} (${activeLead.lead_type})`)
-
-        // Log this repeat touchpoint as activity (so we track all interactions)
-        const { error: activityError } = await supabase
-          .from('lead_activities')
-          .insert({
-            lead_id: activeLead.id,
-            contact_type: 'other',
-            notes: `Repeat ${payload.lead_type} form submission${payload.source_url ? ` from ${payload.source_url}` : ''}`,
-            contacted_at: new Date().toISOString(),
-          })
-
-        if (activityError) {
-          console.error('Error logging activity for existing lead:', activityError)
-        } else {
-          console.log('Logged repeat touchpoint activity for lead:', activeLead.id)
-        }
-
-        return new Response(
-          JSON.stringify({
-            success: true,
-            action: 'exists',
-            leadId: activeLead.id,
-            familyId: activeLead.family_id,
-            message: `Lead already exists in pipeline (${activeLead.lead_type}). Activity logged.`,
-          }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      // If only converted/closed leads exist, allow creating a new one
-      // This handles re-engagement of past leads
-      console.log(`Email ${email} has ${existingLeads.length} past lead(s), creating new lead`)
-    }
-
     // Check if email matches existing family
-    let familyId: string | null = null
-    let familyAction: 'existing' | 'created' = 'existing'
-
     const { data: existingFamily, error: familyQueryError } = await supabase
       .from('families')
-      .select('id, status')
+      .select('id, status, lead_status, lead_type')
       .ilike('primary_email', email)
       .maybeSingle()
 
@@ -201,96 +148,147 @@ Deno.serve(async (req) => {
     }
 
     if (existingFamily) {
-      familyId = existingFamily.id
-      console.log(`Found existing family: ${familyId}`)
+      // Check if this is an active lead (status='lead' with lead_status='new' or 'contacted')
+      if (existingFamily.status === 'lead' &&
+          (existingFamily.lead_status === 'new' || existingFamily.lead_status === 'contacted')) {
+        console.log(`Active lead already exists for ${email}: ${existingFamily.id} (${existingFamily.lead_type})`)
+
+        // Log this repeat touchpoint as activity (so we track all interactions)
+        const { error: activityError } = await supabase
+          .from('lead_activities')
+          .insert({
+            family_id: existingFamily.id,
+            contact_type: 'other',
+            notes: `Repeat ${payload.lead_type} form submission${payload.source_url ? ` from ${payload.source_url}` : ''}`,
+            contacted_at: new Date().toISOString(),
+          })
+
+        if (activityError) {
+          console.error('Error logging activity for existing lead:', activityError)
+        } else {
+          console.log('Logged repeat touchpoint activity for lead:', existingFamily.id)
+        }
+
+        return new Response(
+          JSON.stringify({
+            success: true,
+            action: 'exists',
+            familyId: existingFamily.id,
+            message: `Lead already exists in pipeline (${existingFamily.lead_type}). Activity logged.`,
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
 
       // Check if family has active/trial enrollments (meaning they're already a customer)
       const { data: activeEnrollments } = await supabase
         .from('enrollments')
         .select('id')
-        .eq('family_id', familyId)
+        .eq('family_id', existingFamily.id)
         .in('status', ['active', 'trial'])
         .limit(1)
 
       if (activeEnrollments && activeEnrollments.length > 0) {
-        console.log(`Family ${familyId} has active enrollment - skipping lead creation`)
+        console.log(`Family ${existingFamily.id} has active enrollment - skipping lead creation`)
         return new Response(
           JSON.stringify({
             success: true,
             action: 'skipped',
-            familyId,
+            familyId: existingFamily.id,
             message: 'Family already has active enrollment - not creating lead',
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
-    } else {
-      // Create a new family with status='lead'
-      const { data: newFamily, error: familyError } = await supabase
-        .from('families')
-        .insert({
-          display_name: formatFamilyName(payload.name, email),
-          primary_email: email,
-          primary_contact_name: payload.name || null,
-          status: 'lead',
-          notes: `Lead source: ${payload.lead_type}${payload.source_url ? ` from ${payload.source_url}` : ''}`,
-        })
-        .select('id')
-        .single()
 
-      if (familyError) {
-        console.error('Error creating family:', familyError)
-        throw familyError
+      // Family exists but is not an active lead and has no enrollments
+      // This could be a past customer re-engaging - update to lead status
+      console.log(`Email ${email} has existing family ${existingFamily.id}, updating to lead`)
+
+      const updateData: Record<string, unknown> = {
+        status: 'lead',
+        lead_status: 'new',
+        lead_type: payload.lead_type,
+        source_url: payload.source_url || null,
       }
 
-      familyId = newFamily.id
-      familyAction = 'created'
-      console.log(`Created new family as lead: ${familyId}`)
+      // Add waitlist-specific fields
+      if (payload.lead_type === 'waitlist') {
+        const waitlistPayload = payload as WaitlistPayload
+        updateData.num_children = waitlistPayload.num_children || null
+        updateData.children_ages = waitlistPayload.children_ages || null
+        updateData.service_interest = waitlistPayload.service_interest || null
+        if (waitlistPayload.notes) {
+          updateData.notes = waitlistPayload.notes
+        }
+      }
+
+      const { error: updateError } = await supabase
+        .from('families')
+        .update(updateData)
+        .eq('id', existingFamily.id)
+
+      if (updateError) {
+        console.error('Error updating family to lead:', updateError)
+        throw updateError
+      }
+
+      console.log(`Updated family ${existingFamily.id} to lead (${payload.lead_type})`)
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          action: 'reactivated',
+          familyId: existingFamily.id,
+          leadType: payload.lead_type,
+          message: 'Existing family reactivated as lead',
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // Build lead record
-    const leadRecord: Record<string, unknown> = {
-      email,
-      name: payload.name || null,
+    // No existing family - create a new one with status='lead'
+    const familyData: Record<string, unknown> = {
+      display_name: formatFamilyName(payload.name, email),
+      primary_email: email,
+      primary_contact_name: payload.name || null,
+      status: 'lead',
+      lead_status: 'new',
       lead_type: payload.lead_type,
-      status: 'new',
       source_url: payload.source_url || null,
-      family_id: familyId,
+      notes: `Lead source: ${payload.lead_type}${payload.source_url ? ` from ${payload.source_url}` : ''}`,
     }
 
     // Add waitlist-specific fields
     if (payload.lead_type === 'waitlist') {
       const waitlistPayload = payload as WaitlistPayload
-      leadRecord.num_children = waitlistPayload.num_children || null
-      leadRecord.children_ages = waitlistPayload.children_ages || null
-      leadRecord.preferred_days = waitlistPayload.preferred_days || null
-      leadRecord.preferred_time = waitlistPayload.preferred_time || null
-      leadRecord.service_interest = waitlistPayload.service_interest || null
-      leadRecord.notes = waitlistPayload.notes || null
+      familyData.num_children = waitlistPayload.num_children || null
+      familyData.children_ages = waitlistPayload.children_ages || null
+      familyData.service_interest = waitlistPayload.service_interest || null
+      if (waitlistPayload.notes) {
+        familyData.notes = waitlistPayload.notes
+      }
     }
 
-    // Insert lead
-    const { data: newLead, error } = await supabase
-      .from('leads')
-      .insert(leadRecord)
+    const { data: newFamily, error: familyError } = await supabase
+      .from('families')
+      .insert(familyData)
       .select('id')
       .single()
 
-    if (error) {
-      console.error('Error creating lead:', error)
-      throw error
+    if (familyError) {
+      console.error('Error creating family:', familyError)
+      throw familyError
     }
 
-    console.log(`Created lead: ${newLead.id} (${payload.lead_type})`)
+    console.log(`Created new family as lead: ${newFamily.id} (${payload.lead_type})`)
 
     return new Response(
       JSON.stringify({
         success: true,
         action: 'created',
-        leadId: newLead.id,
+        familyId: newFamily.id,
         leadType: payload.lead_type,
-        familyId,
-        familyAction,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )

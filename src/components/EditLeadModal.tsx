@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { RefreshCw, AlertCircle } from 'lucide-react'
-import { useLeadMutations, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeadMutations, type LeadFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { isValidEmail, parseIntInRange, isValidUrl } from '../lib/validation'
 import { AccessibleModal } from './ui/AccessibleModal'
 
 interface EditLeadModalProps {
-  lead: LeadWithFamily
+  lead: LeadFamily
   onClose: () => void
 }
 
@@ -15,11 +15,11 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
   const [error, setError] = useState<string | null>(null)
 
   const [formData, setFormData] = useState({
-    name: lead.name || '',
-    email: lead.email,
-    phone: lead.phone || '',
+    name: lead.primary_contact_name || '',
+    email: lead.primary_email || '',
+    phone: lead.primary_phone || '',
     lead_type: lead.lead_type,
-    status: lead.status,
+    lead_status: lead.lead_status || 'new' as LeadStatus,
     source_url: lead.source_url || '',
     num_children: lead.num_children?.toString() || '',
     service_interest: lead.service_interest || '',
@@ -64,11 +64,11 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
     try {
       await updateLead.mutateAsync({
         id: lead.id,
-        name: formData.name.trim() || null,
-        email: trimmedEmail.toLowerCase(),
-        phone: formData.phone.trim() || null,
+        primary_contact_name: formData.name.trim() || null,
+        primary_email: trimmedEmail.toLowerCase(),
+        primary_phone: formData.phone.trim() || null,
         lead_type: formData.lead_type as LeadType,
-        status: formData.status as LeadStatus,
+        lead_status: formData.lead_status as LeadStatus,
         source_url: formData.source_url.trim() || null,
         num_children: numChildren,
         service_interest: formData.service_interest.trim() || null,
@@ -161,7 +161,7 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
             </label>
             <select
               id="lead-type"
-              value={formData.lead_type}
+              value={formData.lead_type || ''}
               onChange={(e) => setFormData({ ...formData, lead_type: e.target.value as LeadType })}
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
             >
@@ -178,8 +178,8 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
             </label>
             <select
               id="lead-status"
-              value={formData.status}
-              onChange={(e) => setFormData({ ...formData, status: e.target.value as LeadStatus })}
+              value={formData.lead_status}
+              onChange={(e) => setFormData({ ...formData, lead_status: e.target.value as LeadStatus })}
               className="w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-sm focus:outline-none focus:border-blue-500"
             >
               <option value="new">New</option>

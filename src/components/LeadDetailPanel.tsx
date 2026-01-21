@@ -20,13 +20,11 @@ import {
   AlertCircle,
   Circle
 } from 'lucide-react'
-import { useLeadMutations, useLeadActivities, useLeadActivityMutations, useLeadFollowUps, useFollowUpMutations, getPriorityColor, type LeadWithFamily, type LeadStatus, type ContactType, type TaskPriority } from '../lib/hooks'
+import { useLeadMutations, useLeadActivities, useLeadActivityMutations, useLeadFollowUps, useFollowUpMutations, getPriorityColor, type LeadFamily, type LeadStatus, type ContactType, type TaskPriority } from '../lib/hooks'
 import { parseLocalDate, daysBetween, dateAtMidnight } from '../lib/dateUtils'
 import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { useToast } from '../lib/toast'
-import { AddFamilyModal } from './AddFamilyModal'
-import { formatNameLastFirst } from '../lib/utils'
 
 const engagementColors = {
   cold: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
@@ -49,7 +47,7 @@ const contactTypeLabels: Record<ContactType, string> = {
 }
 
 interface LeadDetailPanelProps {
-  lead: LeadWithFamily
+  lead: LeadFamily
   onClose: () => void
   onEdit: () => void
 }
@@ -71,7 +69,7 @@ const statusColors: Record<LeadStatus, string> = {
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
   const queryClient = useQueryClient()
   const { showError, showSuccess } = useToast()
-  const { updateLead, deleteLead, convertToFamily } = useLeadMutations()
+  const { updateLead, deleteLead, convertToCustomer } = useLeadMutations()
   const { data: activities, isLoading: activitiesLoading } = useLeadActivities(lead.id)
   const { createActivity } = useLeadActivityMutations()
   const { data: followUps, isLoading: followUpsLoading } = useLeadFollowUps(lead.id)
@@ -81,7 +79,6 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isSyncingEngagement, setIsSyncingEngagement] = useState(false)
   const [syncError, setSyncError] = useState<string | null>(null)
-  const [showConvertModal, setShowConvertModal] = useState(false)
   const [showActivityForm, setShowActivityForm] = useState(false)
   const [activityType, setActivityType] = useState<ContactType>('call')
   const [activityNotes, setActivityNotes] = useState('')
@@ -95,7 +92,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   const [isCreatingFollowUp, setIsCreatingFollowUp] = useState(false)
 
   const handleStatusChange = async (newStatus: LeadStatus) => {
-    await updateLead.mutateAsync({ id: lead.id, status: newStatus })
+    await updateLead.mutateAsync({ id: lead.id, lead_status: newStatus })
   }
 
   const handleDelete = async () => {
@@ -115,11 +112,11 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     try {
       await syncLeadToMailchimp({
         leadId: lead.id,
-        email: lead.email,
-        name: lead.name,
-        lead_type: lead.lead_type,
-        status: lead.status,
-        phone: lead.phone,
+        email: lead.primary_email || '',
+        name: lead.primary_contact_name,
+        lead_type: lead.lead_type || 'exit_intent',
+        status: lead.lead_status || undefined,
+        phone: lead.primary_phone,
       })
       // Refetch lead data to show updated mailchimp_id
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
@@ -135,7 +132,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     setIsSyncingEngagement(true)
     setSyncError(null)
     try {
-      await syncLeadEngagement(lead.id, lead.email)
+      await syncLeadEngagement(lead.id, lead.primary_email || '')
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : 'Failed to sync engagement')
@@ -144,13 +141,14 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     }
   }
 
-  const handleConvertToFamily = async (familyId: string) => {
+  const handleConvertToCustomer = async () => {
     try {
-      await convertToFamily.mutateAsync({ leadId: lead.id, familyId })
-      setShowConvertModal(false)
-      showSuccess('Lead converted to family successfully')
-      // Refresh lead data
+      await convertToCustomer.mutateAsync({ familyId: lead.id })
+      showSuccess('Lead converted to customer successfully')
+      // Refresh lead data and close the panel since they're now a customer
       await queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      await queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      onClose()
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to convert lead')
     }
@@ -160,12 +158,12 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     if (!activityType) return
     setIsLoggingActivity(true)
     // Capture current status to avoid stale closure
-    const currentStatus = lead.status
-    const leadId = lead.id
+    const currentStatus = lead.lead_status
+    const familyId = lead.id
     let activityCreated = false
     try {
       await createActivity.mutateAsync({
-        lead_id: leadId,
+        family_id: familyId,
         contact_type: activityType,
         notes: activityNotes.trim() || null,
         contacted_at: new Date().toISOString(),
@@ -173,7 +171,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       activityCreated = true
       // Auto-update status to contacted if still new (using captured value)
       if (currentStatus === 'new') {
-        await updateLead.mutateAsync({ id: leadId, status: 'contacted' })
+        await updateLead.mutateAsync({ id: familyId, lead_status: 'contacted' })
       }
       setActivityNotes('')
       setShowActivityForm(false)
@@ -197,7 +195,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
     setIsCreatingFollowUp(true)
     try {
       await createFollowUp.mutateAsync({
-        lead_id: lead.id,
+        family_id: lead.id,
         title: followUpTitle.trim(),
         description: null,
         due_date: followUpDueDate,
@@ -228,7 +226,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
   const handleDeleteFollowUp = async (id: string) => {
     if (!confirm('Delete this follow-up?')) return
     try {
-      await deleteFollowUp.mutateAsync({ id, leadId: lead.id })
+      await deleteFollowUp.mutateAsync({ id, familyId: lead.id })
       showSuccess('Follow-up deleted')
     } catch (err) {
       showError(err instanceof Error ? err.message : 'Failed to delete follow-up')
@@ -307,22 +305,24 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
         {/* Name & Email */}
         <div>
           <h3 className="text-xl font-semibold text-white">
-            {lead.name ? formatNameLastFirst(lead.name) : 'No name'}
+            {lead.display_name || 'No name'}
           </h3>
-          <a
-            href={`mailto:${lead.email}`}
-            className="text-sm text-blue-400 hover:underline flex items-center gap-1 mt-1"
-          >
-            <Mail className="w-3 h-3" />
-            {lead.email}
-          </a>
-          {lead.phone && (
+          {lead.primary_email && (
             <a
-              href={`tel:${lead.phone}`}
+              href={`mailto:${lead.primary_email}`}
+              className="text-sm text-blue-400 hover:underline flex items-center gap-1 mt-1"
+            >
+              <Mail className="w-3 h-3" />
+              {lead.primary_email}
+            </a>
+          )}
+          {lead.primary_phone && (
+            <a
+              href={`tel:${lead.primary_phone}`}
               className="text-sm text-zinc-400 hover:text-white flex items-center gap-1 mt-1"
             >
               <Phone className="w-3 h-3" />
-              {lead.phone}
+              {lead.primary_phone}
             </a>
           )}
         </div>
@@ -338,7 +338,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
                 key={status}
                 onClick={() => handleStatusChange(status)}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
-                  lead.status === status
+                  lead.lead_status === status
                     ? statusColors[status]
                     : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-600'
                 }`}
@@ -351,10 +351,12 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
 
         {/* Lead Info */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-zinc-400">Type</span>
-            <span className="text-white capitalize">{lead.lead_type.replace('_', ' ')}</span>
-          </div>
+          {lead.lead_type && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-400">Type</span>
+              <span className="text-white capitalize">{lead.lead_type.replace('_', ' ')}</span>
+            </div>
+          )}
           <div className="flex items-center justify-between text-sm">
             <span className="text-zinc-400">Created</span>
             <span className="text-white">{formatDate(lead.created_at)}</span>
@@ -381,19 +383,16 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
           )}
         </div>
 
-        {/* Converted Family */}
-        {lead.family && (
+        {/* Converted Status */}
+        {lead.lead_status === 'converted' && lead.converted_at && (
           <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-3">
             <div className="flex items-center gap-2 text-green-400 text-sm font-medium mb-1">
               <CheckCircle className="w-4 h-4" />
               Converted to Customer
             </div>
-            <p className="text-white font-medium">{lead.family.display_name}</p>
-            {lead.converted_at && (
-              <p className="text-xs text-zinc-400 mt-1">
-                {formatDate(lead.converted_at)}
-              </p>
-            )}
+            <p className="text-xs text-zinc-400 mt-1">
+              {formatDate(lead.converted_at)}
+            </p>
           </div>
         )}
 
@@ -754,31 +753,22 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
       </div>
 
       {/* Actions */}
-      {lead.status !== 'converted' && (
+      {lead.lead_status !== 'converted' && (
         <div className="p-4 border-t border-zinc-800">
           <button
-            onClick={() => setShowConvertModal(true)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            onClick={handleConvertToCustomer}
+            disabled={convertToCustomer.isPending}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
           >
-            <UserPlus className="w-4 h-4" />
+            {convertToCustomer.isPending ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <UserPlus className="w-4 h-4" />
+            )}
             Convert to Customer
           </button>
         </div>
       )}
-
-      {/* Convert to Family Modal */}
-      <AddFamilyModal
-        isOpen={showConvertModal}
-        onClose={() => setShowConvertModal(false)}
-        onSuccess={handleConvertToFamily}
-        initialData={{
-          display_name: lead.name || '',
-          primary_email: lead.email,
-          primary_phone: lead.phone || '',
-          status: 'active',
-          notes: lead.notes || '',
-        }}
-      />
     </div>
   )
 }

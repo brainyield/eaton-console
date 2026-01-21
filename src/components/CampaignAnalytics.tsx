@@ -15,7 +15,6 @@ import { useEmailCampaigns, useCampaignEngagement, type EmailCampaign } from '..
 import { syncCampaigns, syncCampaignActivity } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { useToast } from '../lib/toast'
-import { formatNameLastFirst } from '../lib/utils'
 import { SortableTableHeader, useSortState } from './ui/SortableTableHeader'
 
 // Campaign table sort fields
@@ -417,8 +416,8 @@ function CampaignDetail({
 
       switch (field) {
         case 'lead': {
-          const nameA = (a.lead?.name || a.lead?.email || '').toLowerCase()
-          const nameB = (b.lead?.name || b.lead?.email || '').toLowerCase()
+          const nameA = (a.family?.display_name || a.family?.primary_email || '').toLowerCase()
+          const nameB = (b.family?.display_name || b.family?.primary_email || '').toLowerCase()
           comparison = nameA.localeCompare(nameB)
           break
         }
@@ -571,10 +570,10 @@ function CampaignDetail({
                     <td className="px-3 py-2">
                       <div>
                         <p className="text-white">
-                          {e.lead?.name ? formatNameLastFirst(e.lead.name) : e.lead?.email || 'Unknown'}
+                          {e.family?.display_name || e.family?.primary_email || 'Unknown'}
                         </p>
-                        {e.lead?.name && (
-                          <p className="text-xs text-zinc-500">{e.lead.email}</p>
+                        {e.family?.display_name && e.family?.primary_email && (
+                          <p className="text-xs text-zinc-500">{e.family.primary_email}</p>
                         )}
                       </div>
                     </td>

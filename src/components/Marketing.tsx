@@ -21,7 +21,7 @@ import {
   ExternalLink,
   Edit
 } from 'lucide-react'
-import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, useEventLeads, getScoreLabel, getUrgencyColor, type LeadWithFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, useEventLeads, getScoreLabel, getUrgencyColor, type LeadFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { dateAtMidnight, daysBetween, parseLocalDate } from '../lib/dateUtils'
 import { useToast } from '../lib/toast'
 import { LeadDetailPanel } from './LeadDetailPanel'
@@ -96,7 +96,7 @@ export default function Marketing() {
   const { sort: eventPurchasersSort, handleSort: handleEventPurchasersSort } = useSortState<EventPurchaserSortField>('lastOrder', 'desc')
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
-  const [editingLead, setEditingLead] = useState<LeadWithFamily | null>(null)
+  const [editingLead, setEditingLead] = useState<LeadFamily | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [isBulkSyncing, setIsBulkSyncing] = useState(false)
   const [bulkSyncResult, setBulkSyncResult] = useState<{ success: number; failed: number } | null>(null)
@@ -143,23 +143,23 @@ export default function Marketing() {
 
       switch (field) {
         case 'name': {
-          const nameA = (a.name || a.email || '').toLowerCase()
-          const nameB = (b.name || b.email || '').toLowerCase()
+          const nameA = (a.display_name || a.primary_email || '').toLowerCase()
+          const nameB = (b.display_name || b.primary_email || '').toLowerCase()
           comparison = nameA.localeCompare(nameB)
           break
         }
         case 'type':
-          comparison = a.lead_type.localeCompare(b.lead_type)
+          comparison = (a.lead_type || '').localeCompare(b.lead_type || '')
           break
         case 'status':
-          comparison = a.status.localeCompare(b.status)
+          comparison = (a.lead_status || '').localeCompare(b.lead_status || '')
           break
         case 'score':
           comparison = (a.computed_score ?? 0) - (b.computed_score ?? 0)
           break
         case 'phone': {
-          const phoneA = a.phone || ''
-          const phoneB = b.phone || ''
+          const phoneA = a.primary_phone || ''
+          const phoneB = b.primary_phone || ''
           comparison = phoneA.localeCompare(phoneB)
           break
         }
@@ -209,9 +209,9 @@ export default function Marketing() {
     const nonEventLeads = (allLeads || []).filter(l => l.lead_type !== 'event')
     return {
       total: nonEventLeads.length,
-      new: nonEventLeads.filter(l => l.status === 'new').length,
-      contacted: nonEventLeads.filter(l => l.status === 'contacted').length,
-      converted: nonEventLeads.filter(l => l.status === 'converted').length,
+      new: nonEventLeads.filter(l => l.lead_status === 'new').length,
+      contacted: nonEventLeads.filter(l => l.lead_status === 'contacted').length,
+      converted: nonEventLeads.filter(l => l.lead_status === 'converted').length,
     }
   }, [allLeads])
 
@@ -223,16 +223,16 @@ export default function Marketing() {
 
       switch (field) {
         case 'name': {
-          const nameA = (a.name || a.email || '').toLowerCase()
-          const nameB = (b.name || b.email || '').toLowerCase()
+          const nameA = (a.display_name || a.primary_email || '').toLowerCase()
+          const nameB = (b.display_name || b.primary_email || '').toLowerCase()
           comparison = nameA.localeCompare(nameB)
           break
         }
         case 'email':
-          comparison = a.email.toLowerCase().localeCompare(b.email.toLowerCase())
+          comparison = (a.primary_email || '').toLowerCase().localeCompare((b.primary_email || '').toLowerCase())
           break
         case 'status':
-          comparison = a.status.localeCompare(b.status)
+          comparison = (a.lead_status || '').localeCompare(b.lead_status || '')
           break
         case 'score':
           comparison = (a.computed_score ?? 0) - (b.computed_score ?? 0)
@@ -335,7 +335,7 @@ export default function Marketing() {
 
     try {
       const results = await Promise.allSettled(
-        selectedLeadIds.map(id => updateLead.mutateAsync({ id, status: newStatus }))
+        selectedLeadIds.map(id => updateLead.mutateAsync({ id, lead_status: newStatus }))
       )
 
       const succeeded = results.filter(r => r.status === 'fulfilled').length
@@ -408,9 +408,9 @@ export default function Marketing() {
       const result = await bulkSyncLeadsToMailchimp(
         selectedLeads.map(l => ({
           id: l.id,
-          email: l.email,
-          name: l.name,
-          lead_type: l.lead_type,
+          email: l.primary_email || '',
+          name: l.primary_contact_name,
+          lead_type: l.lead_type || 'exit_intent',
         }))
       )
       setBulkSyncResult({ success: result.success, failed: result.failed })
@@ -422,7 +422,7 @@ export default function Marketing() {
             .map(d => d.email.toLowerCase())
         )
         const failedLeadIds = selectedLeads
-          .filter(l => failedEmails.has(l.email.toLowerCase()))
+          .filter(l => failedEmails.has((l.primary_email || '').toLowerCase()))
           .map(l => l.id)
         if (failedLeadIds.length > 0) {
           setSelectedIds(new Set(failedLeadIds))
@@ -516,7 +516,7 @@ export default function Marketing() {
       for (let i = 0; i < syncedLeads.length; i += batchSize) {
         const batch = syncedLeads.slice(i, i + batchSize).map(l => ({
           id: l.id,
-          email: l.email,
+          email: l.primary_email || '',
         }))
 
         const result = await bulkSyncEngagement(batch)
@@ -566,7 +566,7 @@ export default function Marketing() {
         // Limit to 50 leads for auto-refresh to avoid long waits
         const batch = staleLeads.slice(0, 50).map(l => ({
           id: l.id,
-          email: l.email,
+          email: l.primary_email || '',
         }))
 
         await bulkSyncEngagement(batch)
@@ -793,12 +793,12 @@ export default function Marketing() {
                     <button
                       onClick={() => {
                         // Search in allLeads (may be filtered) to check if lead is visible
-                        const lead = allLeads.find(l => l.id === followUp.lead_id)
+                        const lead = allLeads.find(l => l.id === followUp.family_id)
                         if (lead) {
                           setSelectedLeadId(lead.id)
                         } else {
                           // Lead exists but may be filtered out - select it anyway and notify user
-                          setSelectedLeadId(followUp.lead_id)
+                          setSelectedLeadId(followUp.family_id ?? null)
                           if (typeFilter || statusFilter || engagementFilter || search) {
                             showWarning('Lead may be hidden by current filters. Clear filters to see full details.')
                           }
@@ -1080,27 +1080,27 @@ export default function Marketing() {
                     </td>
                     <td className="px-4 py-3">
                       <div>
-                        {lead.name ? (
-                          <>
-                            <p className="text-sm font-medium text-white">
-                              {formatNameLastFirst(lead.name)}
-                            </p>
-                            <p className="text-sm text-zinc-400">{lead.email}</p>
-                          </>
-                        ) : (
-                          <p className="text-sm font-medium text-white">{lead.email}</p>
+                        <p className="text-sm font-medium text-white">
+                          {lead.display_name}
+                        </p>
+                        {lead.primary_email && (
+                          <p className="text-sm text-zinc-400">{lead.primary_email}</p>
                         )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${leadTypeColors[lead.lead_type]}`}>
-                        {leadTypeLabels[lead.lead_type]}
-                      </span>
+                      {lead.lead_type && (
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${leadTypeColors[lead.lead_type]}`}>
+                          {leadTypeLabels[lead.lead_type]}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[lead.status]}`}>
-                        {statusLabels[lead.status]}
-                      </span>
+                      {lead.lead_status && (
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[lead.lead_status]}`}>
+                          {statusLabels[lead.lead_status]}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
@@ -1111,7 +1111,7 @@ export default function Marketing() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
-                      {lead.phone || '-'}
+                      {lead.primary_phone || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-zinc-400">
                       {formatDate(lead.created_at)}
@@ -1282,23 +1282,21 @@ export default function Marketing() {
                             onClick={() => setSelectedLeadId(lead.id)}
                           >
                             <td className="px-4 py-3">
-                              {lead.name ? (
-                                <span className="font-medium text-white">{formatNameLastFirst(lead.name)}</span>
-                              ) : (
-                                <span className="font-medium text-white">{lead.email}</span>
-                              )}
+                              <span className="font-medium text-white">{lead.display_name}</span>
                             </td>
                             <td className="px-4 py-3">
-                              {lead.name && (
-                                <a href={`mailto:${lead.email}`} className="text-blue-400 hover:text-blue-300" onClick={(e) => e.stopPropagation()}>
-                                  {lead.email}
+                              {lead.primary_email && (
+                                <a href={`mailto:${lead.primary_email}`} className="text-blue-400 hover:text-blue-300" onClick={(e) => e.stopPropagation()}>
+                                  {lead.primary_email}
                                 </a>
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`px-2 py-1 text-xs font-medium rounded ${statusColors[lead.status]}`}>
-                                {statusLabels[lead.status]}
-                              </span>
+                              {lead.lead_status && (
+                                <span className={`px-2 py-1 text-xs font-medium rounded ${statusColors[lead.lead_status]}`}>
+                                  {statusLabels[lead.lead_status]}
+                                </span>
+                              )}
                             </td>
                             <td className="px-4 py-3">
                               <span className={`px-2 py-1 text-xs font-medium rounded ${scoreLabelColors[scoreLabel]}`}>

@@ -6,7 +6,7 @@ import {
   AlertTriangle,
   Loader2
 } from 'lucide-react'
-import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type Lead } from '../lib/hooks'
+import { useLeadMutations, useCheckDuplicateEmails, type LeadType, type CreateLeadInput } from '../lib/hooks'
 import { supabase } from '../lib/supabase'
 import { isValidEmail } from '../lib/validation'
 import { formatNameLastFirst } from '../lib/utils'
@@ -265,13 +265,18 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
         isExistingCustomer: existingSet.has(l.email.toLowerCase()),
       }))
 
-      // Also check for existing leads
-      const { data: existingLeads } = await supabase
-        .from('leads')
-        .select('email')
-        .in('email', emails.map(e => e.toLowerCase()))
+      // Also check for existing leads (families with status='lead')
+      const { data: existingLeadFamilies } = await supabase
+        .from('families')
+        .select('primary_email')
+        .eq('status', 'lead')
+        .not('primary_email', 'is', null)
 
-      const existingLeadEmails = new Set((existingLeads || []).map(l => l.email?.toLowerCase()))
+      const existingLeadEmails = new Set(
+        (existingLeadFamilies || [])
+          .filter(f => f.primary_email)
+          .map(f => f.primary_email!.toLowerCase())
+      )
       leads = leads.map(l => ({
         ...l,
         isDuplicate: existingLeadEmails.has(l.email.toLowerCase()),
@@ -301,22 +306,14 @@ export function ImportLeadsModal({ onClose }: ImportLeadsModalProps) {
 
     try {
       const config = sourceConfigs[source]
-      const leadsData: Omit<Lead, 'id' | 'created_at' | 'updated_at'>[] = leadsToImport.map(l => ({
-        email: l.email,
-        name: l.name,
-        phone: l.phone,
+      const leadsData: CreateLeadInput[] = leadsToImport.map(l => ({
+        display_name: l.name ? formatNameLastFirst(l.name) : l.email.split('@')[0] + ' (Lead)',
+        primary_email: l.email,
+        primary_phone: l.phone,
         lead_type: config.leadType,
-        status: 'new',
+        lead_status: 'new',
         source_url: l.source_url,
-        family_id: null,
-        converted_at: null,
-        num_children: null,
-        service_interest: null,
         notes: l.notes,
-        mailchimp_id: null,
-        mailchimp_status: null,
-        mailchimp_last_synced_at: null,
-        mailchimp_tags: null,
       }))
 
       await bulkCreateLeads.mutateAsync(leadsData)

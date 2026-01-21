@@ -1,5 +1,7 @@
 // Calendly Webhook Handler
 // Handles invitee.created and invitee.canceled events
+//
+// Leads are stored as families with status='lead' and lead_status tracking pipeline stage
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -219,12 +221,11 @@ Deno.serve(async (req) => {
       }
 
       let familyId: string | null = null
-      let leadId: string | null = null
 
       // Check for existing family
       const { data: existingFamily, error: familyQueryError } = await supabase
         .from('families')
-        .select('id')
+        .select('id, status, lead_status, lead_type, primary_phone')
         .ilike('primary_email', inviteeEmail)
         .maybeSingle()
 
@@ -236,7 +237,7 @@ Deno.serve(async (req) => {
 
       if (existingFamily) {
         familyId = existingFamily.id
-        console.log('Found existing family:', familyId)
+        console.log('Found existing family:', familyId, 'status:', existingFamily.status)
 
         const { data: enrollments, error: enrollmentsError } = await supabase
           .from('enrollments')
@@ -252,102 +253,92 @@ Deno.serve(async (req) => {
         hasActiveEnrollment = (enrollments?.length || 0) > 0
       }
 
-      // For 15min calls, create family and lead (or update existing lead)
+      // For 15min calls, create or update family as lead (if not already a customer)
       if (bookingType === '15min_call' && !hasActiveEnrollment) {
-        // Check for existing active lead with same email (case-insensitive)
-        const { data: existingLeads, error: leadsQueryError } = await supabase
-          .from('leads')
-          .select('id, status, family_id, lead_type')
-          .ilike('email', inviteeEmail)
-          .order('created_at', { ascending: false })
+        if (existingFamily) {
+          // Check if this is an active lead
+          const isActiveLead = existingFamily.status === 'lead' &&
+            (existingFamily.lead_status === 'new' || existingFamily.lead_status === 'contacted')
 
-        if (leadsQueryError) {
-          console.error('Error querying existing leads:', leadsQueryError)
-        }
+          if (isActiveLead) {
+            // Existing active lead found - update calendly info and log activity
+            console.log(`Found existing active lead for ${inviteeEmail}: ${familyId} (${existingFamily.lead_type})`)
 
-        const activeLead = existingLeads?.find(l => l.status === 'new' || l.status === 'contacted')
-
-        if (activeLead) {
-          // Existing active lead found - update it and log activity
-          console.log(`Found existing active lead for ${inviteeEmail}: ${activeLead.id} (${activeLead.lead_type})`)
-          leadId = activeLead.id
-          familyId = activeLead.family_id || familyId
-
-          // Update lead with new calendly info
-          const { error: updateError } = await supabase
-            .from('leads')
-            .update({
-              calendly_event_uri: scheduledEventUri || null,
-              calendly_invitee_uri: inviteeUri || null,
-              scheduled_at: startTime || null,
-              phone: inviteePhone || undefined, // Only update if provided
-            })
-            .eq('id', leadId)
-
-          if (updateError) {
-            console.error('Error updating existing lead:', updateError)
-          }
-
-          // Log this touchpoint as activity
-          const { error: activityError } = await supabase
-            .from('lead_activities')
-            .insert({
-              lead_id: leadId,
-              contact_type: 'other',
-              notes: `Repeat Calendly booking (${bookingType}): scheduled for ${startTime || 'unknown time'}`,
-              contacted_at: new Date().toISOString(),
-            })
-
-          if (activityError) {
-            console.error('Error logging activity for existing lead:', activityError)
-          } else {
-            console.log('Logged activity for existing lead:', leadId)
-          }
-        } else {
-          // No active lead found - create new family and lead
-          if (!familyId) {
-            const { data: newFamily, error: familyError } = await supabase
+            // Update family with calendly info
+            const { error: updateError } = await supabase
               .from('families')
-              .insert({
-                display_name: formatFamilyName(inviteeName),
-                primary_email: inviteeEmail,
-                primary_phone: inviteePhone || null,
-                primary_contact_name: inviteeName || null,
-                status: 'lead',
+              .update({
+                calendly_event_uri: scheduledEventUri || null,
+                calendly_invitee_uri: inviteeUri || null,
+                calendly_scheduled_at: startTime || null,
+                primary_phone: inviteePhone || existingFamily.primary_phone || null,
               })
-              .select('id')
-              .single()
+              .eq('id', familyId)
 
-            if (familyError) {
-              console.error('Error creating family:', familyError)
+            if (updateError) {
+              console.error('Error updating existing lead family:', updateError)
+            }
+
+            // Log this touchpoint as activity
+            const { error: activityError } = await supabase
+              .from('lead_activities')
+              .insert({
+                family_id: familyId,
+                contact_type: 'other',
+                notes: `Repeat Calendly booking (${bookingType}): scheduled for ${startTime || 'unknown time'}`,
+                contacted_at: new Date().toISOString(),
+              })
+
+            if (activityError) {
+              console.error('Error logging activity for existing lead:', activityError)
             } else {
-              familyId = newFamily.id
-              console.log('Created family:', familyId)
+              console.log('Logged activity for existing lead:', familyId)
+            }
+          } else {
+            // Family exists but not active lead - update to lead status with calendly info
+            console.log(`Updating family ${familyId} to lead with calendly info`)
+
+            const { error: updateError } = await supabase
+              .from('families')
+              .update({
+                status: 'lead',
+                lead_status: 'new',
+                lead_type: 'calendly_call',
+                calendly_event_uri: scheduledEventUri || null,
+                calendly_invitee_uri: inviteeUri || null,
+                calendly_scheduled_at: startTime || null,
+                primary_phone: inviteePhone || existingFamily.primary_phone || null,
+              })
+              .eq('id', familyId)
+
+            if (updateError) {
+              console.error('Error updating family to lead:', updateError)
             }
           }
-
-          // Create new lead
-          const { data: newLead, error: leadError } = await supabase
-            .from('leads')
+        } else {
+          // No existing family - create new one as lead
+          const { data: newFamily, error: familyError } = await supabase
+            .from('families')
             .insert({
-              email: inviteeEmail,
-              name: inviteeName || null,
-              phone: inviteePhone || null,
+              display_name: formatFamilyName(inviteeName),
+              primary_email: inviteeEmail,
+              primary_phone: inviteePhone || null,
+              primary_contact_name: inviteeName || null,
+              status: 'lead',
+              lead_status: 'new',
               lead_type: 'calendly_call',
-              status: 'new',
               calendly_event_uri: scheduledEventUri || null,
               calendly_invitee_uri: inviteeUri || null,
-              scheduled_at: startTime || null,
-              family_id: familyId,
+              calendly_scheduled_at: startTime || null,
             })
             .select('id')
             .single()
 
-          if (leadError) {
-            console.error('Error creating lead:', leadError)
+          if (familyError) {
+            console.error('Error creating family:', familyError)
           } else {
-            leadId = newLead.id
-            console.log('Created lead:', leadId)
+            familyId = newFamily.id
+            console.log('Created family as lead:', familyId)
           }
         }
       }
@@ -365,7 +356,6 @@ Deno.serve(async (req) => {
           scheduled_at: startTime || null,
           status: 'scheduled',
           family_id: familyId,
-          lead_id: leadId,
           student_name: formAnswers.studentName || null,
           student_age_group: formAnswers.studentAgeGroup || null,
           payment_method: formAnswers.paymentMethod || null,
@@ -385,7 +375,6 @@ Deno.serve(async (req) => {
           action: 'created',
           eventType: bookingType,
           familyId,
-          leadId,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )

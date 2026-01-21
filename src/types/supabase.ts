@@ -1265,18 +1265,40 @@ export type Database = {
         Row: {
           address_line1: string | null
           address_line2: string | null
+          calendly_event_uri: string | null
+          calendly_invitee_uri: string | null
+          children_ages: string | null
           city: string | null
+          converted_at: string | null
           created_at: string
           display_name: string
           id: string
           last_contact_at: string | null
+          lead_score: number | null
+          lead_status: Database["public"]["Enums"]["lead_status"] | null
+          lead_type: Database["public"]["Enums"]["lead_type"] | null
           legacy_lookup_key: string | null
+          mailchimp_clicks: number | null
+          mailchimp_engagement_score: number | null
+          mailchimp_engagement_updated_at: string | null
+          mailchimp_id: string | null
+          mailchimp_last_synced_at: string | null
+          mailchimp_opens: number | null
+          mailchimp_status: string | null
+          mailchimp_tags: string[] | null
           notes: string | null
+          num_children: number | null
           payment_gateway: string | null
+          pdf_email_sent_at: string | null
+          preferred_days: string | null
+          preferred_time: string | null
           primary_contact_name: string | null
           primary_email: string | null
           primary_phone: string | null
           reengagement_flag: boolean
+          scheduled_at: string | null
+          service_interest: string | null
+          source_url: string | null
           state: string | null
           status: Database["public"]["Enums"]["customer_status"]
           updated_at: string
@@ -1285,18 +1307,40 @@ export type Database = {
         Insert: {
           address_line1?: string | null
           address_line2?: string | null
+          calendly_event_uri?: string | null
+          calendly_invitee_uri?: string | null
+          children_ages?: string | null
           city?: string | null
+          converted_at?: string | null
           created_at?: string
           display_name: string
           id?: string
           last_contact_at?: string | null
+          lead_score?: number | null
+          lead_status?: Database["public"]["Enums"]["lead_status"] | null
+          lead_type?: Database["public"]["Enums"]["lead_type"] | null
           legacy_lookup_key?: string | null
+          mailchimp_clicks?: number | null
+          mailchimp_engagement_score?: number | null
+          mailchimp_engagement_updated_at?: string | null
+          mailchimp_id?: string | null
+          mailchimp_last_synced_at?: string | null
+          mailchimp_opens?: number | null
+          mailchimp_status?: string | null
+          mailchimp_tags?: string[] | null
           notes?: string | null
+          num_children?: number | null
           payment_gateway?: string | null
+          pdf_email_sent_at?: string | null
+          preferred_days?: string | null
+          preferred_time?: string | null
           primary_contact_name?: string | null
           primary_email?: string | null
           primary_phone?: string | null
           reengagement_flag?: boolean
+          scheduled_at?: string | null
+          service_interest?: string | null
+          source_url?: string | null
           state?: string | null
           status?: Database["public"]["Enums"]["customer_status"]
           updated_at?: string
@@ -1305,18 +1349,40 @@ export type Database = {
         Update: {
           address_line1?: string | null
           address_line2?: string | null
+          calendly_event_uri?: string | null
+          calendly_invitee_uri?: string | null
+          children_ages?: string | null
           city?: string | null
+          converted_at?: string | null
           created_at?: string
           display_name?: string
           id?: string
           last_contact_at?: string | null
+          lead_score?: number | null
+          lead_status?: Database["public"]["Enums"]["lead_status"] | null
+          lead_type?: Database["public"]["Enums"]["lead_type"] | null
           legacy_lookup_key?: string | null
+          mailchimp_clicks?: number | null
+          mailchimp_engagement_score?: number | null
+          mailchimp_engagement_updated_at?: string | null
+          mailchimp_id?: string | null
+          mailchimp_last_synced_at?: string | null
+          mailchimp_opens?: number | null
+          mailchimp_status?: string | null
+          mailchimp_tags?: string[] | null
           notes?: string | null
+          num_children?: number | null
           payment_gateway?: string | null
+          pdf_email_sent_at?: string | null
+          preferred_days?: string | null
+          preferred_time?: string | null
           primary_contact_name?: string | null
           primary_email?: string | null
           primary_phone?: string | null
           reengagement_flag?: boolean
+          scheduled_at?: string | null
+          service_interest?: string | null
+          source_url?: string | null
           state?: string | null
           status?: Database["public"]["Enums"]["customer_status"]
           updated_at?: string
@@ -1727,27 +1793,51 @@ export type Database = {
           contact_type: Database["public"]["Enums"]["contact_type"]
           contacted_at: string
           created_at: string
+          family_id: string | null
           id: string
-          lead_id: string
+          lead_id: string | null
           notes: string | null
         }
         Insert: {
           contact_type: Database["public"]["Enums"]["contact_type"]
           contacted_at?: string
           created_at?: string
+          family_id?: string | null
           id?: string
-          lead_id: string
+          lead_id?: string | null
           notes?: string | null
         }
         Update: {
           contact_type?: Database["public"]["Enums"]["contact_type"]
           contacted_at?: string
           created_at?: string
+          family_id?: string | null
           id?: string
-          lead_id?: string
+          lead_id?: string | null
           notes?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_activities_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "lead_activities_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_activities_lead_id_fkey"
             columns: ["lead_id"]
@@ -1800,10 +1890,11 @@ export type Database = {
           clicked: boolean | null
           clicked_links: Json | null
           created_at: string | null
+          family_id: string | null
           first_clicked_at: string | null
           first_opened_at: string | null
           id: string
-          lead_id: string
+          lead_id: string | null
           open_count: number | null
           opened: boolean | null
           unsubscribed: boolean | null
@@ -1817,10 +1908,11 @@ export type Database = {
           clicked?: boolean | null
           clicked_links?: Json | null
           created_at?: string | null
+          family_id?: string | null
           first_clicked_at?: string | null
           first_opened_at?: string | null
           id?: string
-          lead_id: string
+          lead_id?: string | null
           open_count?: number | null
           opened?: boolean | null
           unsubscribed?: boolean | null
@@ -1834,10 +1926,11 @@ export type Database = {
           clicked?: boolean | null
           clicked_links?: Json | null
           created_at?: string | null
+          family_id?: string | null
           first_clicked_at?: string | null
           first_opened_at?: string | null
           id?: string
-          lead_id?: string
+          lead_id?: string | null
           open_count?: number | null
           opened?: boolean | null
           unsubscribed?: boolean | null
@@ -1857,6 +1950,27 @@ export type Database = {
             columns: ["campaign_id"]
             isOneToOne: false
             referencedRelation: "email_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
           {
@@ -1911,8 +2025,9 @@ export type Database = {
           description: string | null
           due_date: string
           due_time: string | null
+          family_id: string | null
           id: string
-          lead_id: string
+          lead_id: string | null
           priority: Database["public"]["Enums"]["task_priority"] | null
           title: string
           updated_at: string | null
@@ -1924,8 +2039,9 @@ export type Database = {
           description?: string | null
           due_date: string
           due_time?: string | null
+          family_id?: string | null
           id?: string
-          lead_id: string
+          lead_id?: string | null
           priority?: Database["public"]["Enums"]["task_priority"] | null
           title: string
           updated_at?: string | null
@@ -1937,13 +2053,35 @@ export type Database = {
           description?: string | null
           due_date?: string
           due_time?: string | null
+          family_id?: string | null
           id?: string
-          lead_id?: string
+          lead_id?: string | null
           priority?: Database["public"]["Enums"]["task_priority"] | null
           title?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_follow_ups_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_follow_ups_lead_id_fkey"
             columns: ["lead_id"]
@@ -1994,8 +2132,9 @@ export type Database = {
           change_reason: string | null
           created_at: string | null
           engagement_score: number | null
+          family_id: string | null
           id: string
-          lead_id: string
+          lead_id: string | null
           previous_score: number | null
           recency_score: number | null
           score: number
@@ -2006,8 +2145,9 @@ export type Database = {
           change_reason?: string | null
           created_at?: string | null
           engagement_score?: number | null
+          family_id?: string | null
           id?: string
-          lead_id: string
+          lead_id?: string | null
           previous_score?: number | null
           recency_score?: number | null
           score: number
@@ -2018,14 +2158,36 @@ export type Database = {
           change_reason?: string | null
           created_at?: string | null
           engagement_score?: number | null
+          family_id?: string | null
           id?: string
-          lead_id?: string
+          lead_id?: string | null
           previous_score?: number | null
           recency_score?: number | null
           score?: number
           source_score?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "lead_score_history_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lead_score_history_lead_id_fkey"
             columns: ["lead_id"]

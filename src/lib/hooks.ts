@@ -4322,51 +4322,61 @@ async function recalculateRunTotals(runId: string) {
 }
 
 // =============================================================================
-// LEADS
+// LEADS (now stored as families with status='lead')
 // =============================================================================
 
 export type LeadType = 'exit_intent' | 'waitlist' | 'calendly_call' | 'event'
 export type LeadStatus = 'new' | 'contacted' | 'converted' | 'closed'
 
-export interface Lead {
+/**
+ * Lead data - now represented as a family with status='lead'
+ * The family table contains all lead-specific fields after consolidation
+ */
+export interface LeadFamily {
   id: string
-  email: string
-  name: string | null
-  phone: string | null
-  lead_type: LeadType
-  status: LeadStatus
+  // Family fields
+  display_name: string
+  primary_email: string | null
+  primary_phone: string | null
+  primary_contact_name: string | null
+  status: CustomerStatus  // Will be 'lead' for leads
+  notes: string | null
+  created_at: string
+  updated_at: string
+  // Lead-specific fields
+  lead_type: LeadType | null
+  lead_status: LeadStatus | null
   source_url: string | null
-  family_id: string | null
   converted_at: string | null
   num_children: number | null
+  children_ages: string | null
+  preferred_days: string | null
+  preferred_time: string | null
   service_interest: string | null
-  notes: string | null
+  calendly_event_uri: string | null
+  calendly_invitee_uri: string | null
+  scheduled_at: string | null
+  // Mailchimp fields
   mailchimp_id: string | null
   mailchimp_status: string | null
   mailchimp_last_synced_at: string | null
   mailchimp_tags: string[] | null
-  // Engagement fields - optional until migration is run
-  mailchimp_opens?: number | null
-  mailchimp_clicks?: number | null
-  mailchimp_engagement_score?: number | null
-  mailchimp_engagement_updated_at?: string | null
-  // Lead score - optional until migration is run
-  lead_score?: number | null
-  created_at: string
-  updated_at: string
-}
-
-export interface LeadWithFamily extends Lead {
-  family?: {
-    id: string
-    display_name: string
-  } | null
-  days_in_pipeline?: number
+  mailchimp_opens: number | null
+  mailchimp_clicks: number | null
+  mailchimp_engagement_score: number | null
+  mailchimp_engagement_updated_at: string | null
+  // Scoring
+  lead_score: number | null
+  pdf_email_sent_at: string | null
+  // Computed fields (added by useLeads)
   contact_count?: number
   last_contacted_at?: string | null
-  // Computed score (calculated client-side if not in DB)
   computed_score?: number
 }
+
+// Legacy alias for backwards compatibility during migration
+export type Lead = LeadFamily
+export type LeadWithFamily = LeadFamily
 
 /**
  * Calculate lead score client-side (fallback when DB score not available)
@@ -4423,6 +4433,7 @@ export function getScoreLabel(score: number): 'hot' | 'warm' | 'cold' {
 
 /**
  * Fetch leads with optional filters
+ * Leads are now stored as families with status='lead'
  * @param filters.limit - Maximum number of leads to fetch (default: 500)
  */
 export function useLeads(filters?: { type?: string; status?: string; search?: string; limit?: number }) {
@@ -4431,13 +4442,11 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
     queryFn: async () => {
       const limit = filters?.limit ?? 500 // Default limit to prevent unbounded fetching
 
-      // Fetch leads with family relationship
+      // Fetch lead-status families
       let query = supabase
-        .from('leads')
-        .select(`
-          *,
-          family:families(id, display_name)
-        `)
+        .from('families')
+        .select('*')
+        .eq('status', 'lead')  // Only families with lead status
         .order('created_at', { ascending: false })
         .limit(limit)
 
@@ -4445,42 +4454,42 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
         query = query.eq('lead_type', filters.type as LeadType)
       }
       if (filters?.status) {
-        query = query.eq('status', filters.status as LeadStatus)
+        // Filter by lead_status (the pipeline status: new, contacted, etc.)
+        query = query.eq('lead_status', filters.status as LeadStatus)
       }
       if (filters?.search) {
-        query = query.or(`email.ilike.%${filters.search}%,name.ilike.%${filters.search}%`)
+        query = query.or(`primary_email.ilike.%${filters.search}%,display_name.ilike.%${filters.search}%`)
       }
 
       const { data: leads, error: leadsError } = await query
       if (leadsError) throw leadsError
 
-      // Fetch activity stats only for the leads we have (not all activities)
-      const leadIds = (leads || []).map(l => l.id)
-      if (leadIds.length === 0) {
-        return [] as LeadWithFamily[]
+      // Fetch activity stats by family_id
+      const familyIds = (leads || []).map(l => l.id)
+      if (familyIds.length === 0) {
+        return [] as LeadFamily[]
       }
 
-       
       const { data: activityStats, error: statsError } = await supabase
         .from('lead_activities')
-        .select('lead_id, contacted_at')
-        .in('lead_id', leadIds)
+        .select('family_id, contacted_at')
+        .in('family_id', familyIds)
         .order('contacted_at', { ascending: false })
 
       if (statsError) {
-        // If activities table doesn't exist yet, return leads without stats
+        // If activities table query fails, return leads without stats
         console.warn('Could not fetch activity stats:', statsError)
-        return leads as LeadWithFamily[]
+        return leads as LeadFamily[]
       }
 
-      // Group stats by lead_id
+      // Group stats by family_id
       const statsMap = new Map<string, { count: number; lastContacted: string | null }>()
-      for (const activity of (activityStats || []) as { lead_id: string; contacted_at: string }[]) {
-        const existing = statsMap.get(activity.lead_id)
+      for (const activity of (activityStats || []) as { family_id: string; contacted_at: string }[]) {
+        const existing = statsMap.get(activity.family_id)
         if (existing) {
           existing.count++
         } else {
-          statsMap.set(activity.lead_id, {
+          statsMap.set(activity.family_id, {
             count: 1,
             lastContacted: activity.contacted_at,
           })
@@ -4506,64 +4515,86 @@ export function useLeads(filters?: { type?: string; status?: string; search?: st
           ...leadWithStats,
           computed_score: computedScore,
         }
-      }) as LeadWithFamily[]
+      }) as LeadFamily[]
     },
   })
 }
 
 /**
- * Fetch a single lead by ID
+ * Fetch a single lead by ID (now queries families table)
  */
 export function useLead(id: string) {
   return useQuery({
     queryKey: queryKeys.leads.detail(id),
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('leads')
-        .select(`
-          *,
-          family:families(id, display_name, primary_email, primary_phone, status)
-        `)
+        .from('families')
+        .select('*')
         .eq('id', id)
         .single()
       if (error) throw error
-      return data as LeadWithFamily
+      return data as LeadFamily
     },
     enabled: !!id,
   })
 }
 
 /**
+ * Input type for creating a lead (family with status='lead')
+ */
+export interface CreateLeadInput {
+  display_name: string
+  primary_email: string | null
+  primary_phone?: string | null
+  primary_contact_name?: string | null
+  lead_type: LeadType
+  lead_status?: LeadStatus
+  source_url?: string | null
+  num_children?: number | null
+  children_ages?: string | null
+  preferred_days?: string | null
+  preferred_time?: string | null
+  service_interest?: string | null
+  notes?: string | null
+}
+
+/**
  * Lead mutations for CRUD operations
+ * Now operates on families table with status='lead'
  */
 export function useLeadMutations() {
   const queryClient = useQueryClient()
 
   const createLead = useMutation({
-    mutationFn: async (lead: Omit<Lead, 'id' | 'created_at' | 'updated_at'>) => {
+    mutationFn: async (lead: CreateLeadInput) => {
       const { data, error } = await supabase
-        .from('leads')
-        .insert(lead)
+        .from('families')
+        .insert({
+          ...lead,
+          status: 'lead' as CustomerStatus,
+          lead_status: lead.lead_status || 'new',
+        })
         .select()
         .single()
       if (error) throw error
-      return data as Lead
+      return data as LeadFamily
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
   const updateLead = useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<Lead> & { id: string }) => {
+    mutationFn: async ({ id, ...updates }: Partial<LeadFamily> & { id: string }) => {
       const { data, error } = await supabase
-        .from('leads')
+        .from('families')
         .update(updates)
         .eq('id', id)
         .select()
         .single()
       if (error) throw error
-      return data as Lead
+      return data as LeadFamily
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
@@ -4574,7 +4605,7 @@ export function useLeadMutations() {
   const deleteLead = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from('leads')
+        .from('families')
         .delete()
         .eq('id', id)
       if (error) throw error
@@ -4582,52 +4613,69 @@ export function useLeadMutations() {
     },
     onSuccess: (id) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
-      // Clear cached detail data for the deleted lead
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
   const bulkCreateLeads = useMutation({
-    mutationFn: async (leads: Omit<Lead, 'id' | 'created_at' | 'updated_at'>[]) => {
+    mutationFn: async (leads: CreateLeadInput[]) => {
+      const familyRecords = leads.map(lead => ({
+        ...lead,
+        status: 'lead' as CustomerStatus,
+        lead_status: lead.lead_status || 'new',
+      }))
       const { data, error } = await supabase
-        .from('leads')
-        .insert(leads)
+        .from('families')
+        .insert(familyRecords)
         .select()
       if (error) throw error
-      return data as Lead[]
+      return data as LeadFamily[]
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
-  const convertToFamily = useMutation({
-    mutationFn: async ({ leadId, familyId }: { leadId: string; familyId: string }) => {
+  /**
+   * Convert a lead to a customer by updating the family status
+   * @param familyId - The family ID (same as lead ID now)
+   * @param targetStatus - The status to convert to (default: 'active')
+   */
+  const convertToCustomer = useMutation({
+    mutationFn: async ({ familyId, targetStatus = 'active' }: { familyId: string; targetStatus?: CustomerStatus }) => {
       const { data, error } = await supabase
-        .from('leads')
+        .from('families')
         .update({
-          family_id: familyId,
-          status: 'converted' as LeadStatus,
+          status: targetStatus,
+          lead_status: 'converted' as LeadStatus,
           converted_at: new Date().toISOString(),
         })
-        .eq('id', leadId)
+        .eq('id', familyId)
         .select()
         .single()
       if (error) throw error
-      return data as Lead
+      return data as LeadFamily
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(variables.leadId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(variables.familyId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
+
+  // Legacy alias for backwards compatibility
+  const convertToFamily = convertToCustomer
 
   return {
     createLead,
     updateLead,
     deleteLead,
     bulkCreateLeads,
-    convertToFamily,
+    convertToCustomer,
+    convertToFamily, // Legacy alias
   }
 }
 
@@ -4689,7 +4737,8 @@ export type ContactType = 'call' | 'email' | 'text' | 'other'
 
 export interface LeadActivity {
   id: string
-  lead_id: string
+  family_id: string  // Now uses family_id instead of lead_id
+  lead_id?: string   // Legacy field, may be null
   contact_type: ContactType
   notes: string | null
   contacted_at: string
@@ -4697,22 +4746,21 @@ export interface LeadActivity {
 }
 
 /**
- * Fetch activities for a specific lead
+ * Fetch activities for a specific lead (by family_id)
  */
-export function useLeadActivities(leadId: string | undefined) {
+export function useLeadActivities(familyId: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.leadActivities.byLead(leadId || ''),
+    queryKey: queryKeys.leadActivities.byLead(familyId || ''),
     queryFn: async () => {
-       
       const { data, error } = await supabase
         .from('lead_activities')
         .select('*')
-        .eq('lead_id', leadId!)
+        .eq('family_id', familyId!)
         .order('contacted_at', { ascending: false })
       if (error) throw error
       return data as LeadActivity[]
     },
-    enabled: !!leadId,
+    enabled: !!familyId,
   })
 }
 
@@ -4723,8 +4771,7 @@ export function useLeadActivityMutations() {
   const queryClient = useQueryClient()
 
   const createActivity = useMutation({
-    mutationFn: async (activity: Omit<LeadActivity, 'id' | 'created_at'>) => {
-       
+    mutationFn: async (activity: { family_id: string; contact_type: ContactType; notes: string | null; contacted_at: string }) => {
       const { data, error } = await supabase
         .from('lead_activities')
         .insert(activity)
@@ -4734,14 +4781,13 @@ export function useLeadActivityMutations() {
       return data as LeadActivity
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadActivities.byLead(variables.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadActivities.byLead(variables.family_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     },
   })
 
   const deleteActivity = useMutation({
-    mutationFn: async ({ id }: { id: string; leadId: string }) => {
-       
+    mutationFn: async ({ id }: { id: string; familyId: string }) => {
       const { error } = await supabase
         .from('lead_activities')
         .delete()
@@ -4749,7 +4795,7 @@ export function useLeadActivityMutations() {
       if (error) throw error
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadActivities.byLead(variables.leadId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadActivities.byLead(variables.familyId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
     },
   })
@@ -4809,16 +4855,17 @@ export function useConversionAnalytics() {
   return useQuery({
     queryKey: [...queryKeys.leads.all, 'analytics'],
     queryFn: async () => {
-      // Fetch all leads for analytics
+      // Fetch all families that were ever leads (lead_type is not null)
       const { data: leads, error } = await supabase
-        .from('leads')
-        .select('id, lead_type, status, created_at, converted_at, source_url')
+        .from('families')
+        .select('id, lead_type, lead_status, created_at, converted_at, source_url')
+        .not('lead_type', 'is', null)
         .order('created_at', { ascending: false })
 
       if (error) throw error
 
       const allLeads = leads || []
-      const convertedLeads = allLeads.filter(l => l.status === 'converted')
+      const convertedLeads = allLeads.filter(l => l.lead_status === 'converted')
 
       // Calculate average days to convert
       const daysToConvert = convertedLeads
@@ -4835,17 +4882,17 @@ export function useConversionAnalytics() {
 
       // Funnel breakdown
       const funnel = {
-        new: allLeads.filter(l => l.status === 'new').length,
-        contacted: allLeads.filter(l => l.status === 'contacted').length,
-        converted: allLeads.filter(l => l.status === 'converted').length,
-        closed: allLeads.filter(l => l.status === 'closed').length,
+        new: allLeads.filter(l => l.lead_status === 'new').length,
+        contacted: allLeads.filter(l => l.lead_status === 'contacted').length,
+        converted: allLeads.filter(l => l.lead_status === 'converted').length,
+        closed: allLeads.filter(l => l.lead_status === 'closed').length,
       }
 
       // By lead type
       const leadTypes: LeadType[] = ['event', 'calendly_call', 'waitlist', 'exit_intent']
       const byLeadType = leadTypes.map(type => {
         const typeLeads = allLeads.filter(l => l.lead_type === type)
-        const typeConverted = typeLeads.filter(l => l.status === 'converted')
+        const typeConverted = typeLeads.filter(l => l.lead_status === 'converted')
         return {
           type,
           total: typeLeads.length,
@@ -4927,7 +4974,8 @@ export type TaskPriority = 'low' | 'medium' | 'high'
 
 export interface LeadFollowUp {
   id: string
-  lead_id: string
+  family_id: string  // Now uses family_id instead of lead_id
+  lead_id?: string   // Legacy field, may be null
   title: string
   description: string | null
   due_date: string
@@ -4949,23 +4997,22 @@ export interface UpcomingFollowUp extends LeadFollowUp {
 }
 
 /**
- * Fetch follow-ups for a specific lead
+ * Fetch follow-ups for a specific lead (by family_id)
  */
-export function useLeadFollowUps(leadId: string | undefined) {
+export function useLeadFollowUps(familyId: string | undefined) {
   return useQuery({
-    queryKey: queryKeys.leadFollowUps.byLead(leadId || ''),
+    queryKey: queryKeys.leadFollowUps.byLead(familyId || ''),
     queryFn: async () => {
-       
       const { data, error } = await supabase
         .from('lead_follow_ups')
         .select('*')
-        .eq('lead_id', leadId!)
+        .eq('family_id', familyId!)
         .order('due_date', { ascending: true })
         .order('due_time', { ascending: true, nullsFirst: false })
       if (error) throw error
       return data as LeadFollowUp[]
     },
-    enabled: !!leadId,
+    enabled: !!familyId,
   })
 }
 
@@ -5005,7 +5052,7 @@ export function useFollowUpMutations() {
       return data as LeadFollowUp
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(variables.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(variables.family_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
     },
   })
@@ -5024,7 +5071,7 @@ export function useFollowUpMutations() {
     },
     onSuccess: (followUp) => {
       // Use targeted invalidations instead of broad all
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(followUp.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(followUp.family_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
     },
   })
@@ -5043,13 +5090,13 @@ export function useFollowUpMutations() {
     },
     onSuccess: (followUp) => {
       // Use targeted invalidations instead of broad all
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(followUp.lead_id) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(followUp.family_id) })
       queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
     },
   })
 
   const deleteFollowUp = useMutation({
-    mutationFn: async ({ id }: { id: string; leadId: string }) => {
+    mutationFn: async ({ id }: { id: string; familyId: string }) => {
        
       const { error } = await supabase
         .from('lead_follow_ups')
@@ -5058,7 +5105,7 @@ export function useFollowUpMutations() {
       if (error) throw error
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(variables.leadId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.byLead(variables.familyId) })
       queryClient.invalidateQueries({ queryKey: queryKeys.leadFollowUps.upcoming() })
     },
   })
@@ -5135,7 +5182,8 @@ export interface EmailCampaign {
 
 export interface LeadCampaignEngagement {
   id: string
-  lead_id: string
+  family_id: string  // Now uses family_id instead of lead_id
+  lead_id?: string   // Legacy field, may be null
   campaign_id: string
   was_sent: boolean
   opened: boolean
@@ -5150,12 +5198,12 @@ export interface LeadCampaignEngagement {
   created_at: string
   updated_at: string
   // Joined data
-  lead?: {
+  family?: {
     id: string
-    email: string
-    name: string | null
-    lead_type: string
-    status: string
+    primary_email: string | null
+    display_name: string
+    lead_type: LeadType | null
+    lead_status: LeadStatus | null
   }
   campaign?: {
     id: string
@@ -5193,12 +5241,12 @@ export function useCampaignEngagement(campaignId: string) {
   return useQuery({
     queryKey: queryKeys.leadCampaignEngagement.byCampaign(campaignId),
     queryFn: async () => {
-       
+
       const { data, error } = await supabase
         .from('lead_campaign_engagement')
         .select(`
           *,
-          lead:leads(id, email, name, lead_type, status)
+          family:families(id, primary_email, display_name, lead_type, lead_status)
         `)
         .eq('campaign_id', campaignId)
         .order('open_count', { ascending: false })
@@ -5211,27 +5259,27 @@ export function useCampaignEngagement(campaignId: string) {
 }
 
 /**
- * Fetch campaign engagement for a specific lead
+ * Fetch campaign engagement for a specific lead (family)
  * Note: Requires MIGRATION_CAMPAIGN_ANALYTICS.sql to be run first
  */
-export function useLeadCampaignEngagement(leadId: string) {
+export function useLeadCampaignEngagement(familyId: string) {
   return useQuery({
-    queryKey: queryKeys.leadCampaignEngagement.byLead(leadId),
+    queryKey: queryKeys.leadCampaignEngagement.byLead(familyId),
     queryFn: async () => {
-       
+
       const { data, error } = await supabase
         .from('lead_campaign_engagement')
         .select(`
           *,
           campaign:email_campaigns(id, campaign_name, subject_line, send_time)
         `)
-        .eq('lead_id', leadId)
+        .eq('family_id', familyId)
         .order('created_at', { ascending: false })
 
       if (error) throw error
       return (data || []) as LeadCampaignEngagement[]
     },
-    enabled: !!leadId,
+    enabled: !!familyId,
   })
 }
 
