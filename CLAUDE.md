@@ -101,6 +101,32 @@ queryKeys.families.detail(id)
 - Regenerate with: `npm run db:types`
 - Custom types go in `src/types/database.ts` or `src/lib/hooks.ts`
 
+### Leads - Stored as Families
+
+Leads are stored in the `families` table with `status='lead'`, NOT in a separate `leads` table (which is deprecated). Key patterns:
+
+```typescript
+// Querying leads
+const { data: leads } = useLeads() // Returns families with status='lead'
+
+// Creating a new lead (in hooks or edge functions)
+await supabase.from('families').insert({
+  status: 'lead',
+  lead_status: 'new',           // Pipeline stage: new, contacted, converted, closed
+  lead_type: 'exit_intent',     // Source: exit_intent, waitlist, calendly_call, event
+  primary_email: email,
+  display_name: formatFamilyName(name, email),
+  // ... other lead fields
+})
+
+// Converting a lead to customer - just update status
+await supabase.from('families')
+  .update({ status: 'active', lead_status: 'converted', converted_at: new Date().toISOString() })
+  .eq('id', familyId)
+```
+
+Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engagement`) use `family_id` as the primary reference.
+
 ---
 
 ## Naming Conventions
@@ -133,9 +159,9 @@ queryKeys.families.detail(id)
 - **DON'T** use `Partial<T>` for mutation inputs - use the insert types (`FamilyInsert`, `StudentInsert`, `EnrollmentInsert`, `TeacherInsert`) which specify required fields and make optional fields partial. This avoids `as any` casts and provides proper type checking.
 - **DON'T** create families with `status: 'lead'` for paying customers - families with 'lead' status are excluded from Directory search and cannot be invoiced. Event purchases (Step Up, Stripe) should always create families with `status: 'active'`.
 - **DON'T** use `.eq()` for email lookups - emails may have case variations. Use `.ilike()` for case-insensitive matching: `.ilike('primary_email', email.toLowerCase())`.
-- **DON'T** create leads in webhooks without checking for duplicates - always check for existing active leads (status 'new' or 'contacted') with the same email before creating. If exists, log as activity instead. See `ingest-lead` and `calendly-webhook` for the pattern.
+- **DON'T** create leads without checking for duplicates - always check for existing families with the same email before creating. If a family exists with `status='lead'` and `lead_status` in ('new', 'contacted'), log as activity instead of creating. If family has active enrollments, skip lead creation. See `ingest-lead` and `calendly-webhook` edge functions for the pattern.
 - **DON'T** assume all data creation happens in application code - Supabase database triggers (like `process_class_registration`) can create students and enrollments automatically when event_attendees or event_orders are inserted/updated. Check Supabase Dashboard → Database → Triggers when debugging unexpected data creation. Trigger functions are in `supabase/migrations/` but may have been created directly in Dashboard.
-- **DON'T** use BEFORE INSERT triggers that reference the new row via foreign key - the row doesn't exist yet, causing FK violations. Use AFTER INSERT triggers when you need to insert related records that have a foreign key back to the triggering table (e.g., `lead_score_history.lead_id → leads.id`).
+- **DON'T** use BEFORE INSERT triggers that reference the new row via foreign key - the row doesn't exist yet, causing FK violations. Use AFTER INSERT triggers when you need to insert related records that have a foreign key back to the triggering table.
 - **DON'T** forget that `enrollments` and `teacher_assignments` have separate `hours_per_week` fields - when editing enrollment hours in a modal, you must update BOTH records. The `EditEnrollmentModal` handles this, but any new edit flows must sync both tables. Active Roster and Teachers views display `teacher_assignments.hours_per_week`, while invoicing uses `enrollments.hours_per_week`.
 - **DON'T** assume `revenue_records` links to enrollments - the table tracks revenue by `family_id`, `student_id`, `service_id` separately with no `enrollment_id` FK. For location-based revenue reporting, `location_id` was added directly to `revenue_records`.
 - **DON'T** use only `contentStyle` for Recharts tooltips in dark mode - the inner text will be invisible. Must also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}` for visible text.
