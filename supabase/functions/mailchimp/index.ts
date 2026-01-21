@@ -5,6 +5,8 @@
 // - MAILCHIMP_API_KEY: Your Mailchimp API key
 // - MAILCHIMP_SERVER_PREFIX: Your server prefix (e.g., 'us14')
 // - MAILCHIMP_LIST_ID: Your audience/list ID
+//
+// Note: Leads are stored in the families table with status='lead'
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { crypto } from 'https://deno.land/std@0.224.0/crypto/mod.ts'
@@ -67,7 +69,7 @@ async function syncLead(config: MailchimpConfig, lead: {
   email: string
   name?: string | null
   lead_type: string
-  status?: string
+  lead_status?: string
   phone?: string | null
 }): Promise<{ success: boolean; mailchimpId: string; action: string }> {
   const subscriberHash = await md5(lead.email)
@@ -90,7 +92,7 @@ async function syncLead(config: MailchimpConfig, lead: {
 
   // Build tags based on lead type
   const tags = [lead.lead_type.replace('_', '-')] // e.g., 'exit-intent', 'calendly-call'
-  if (lead.status) tags.push(`status-${lead.status}`)
+  if (lead.lead_status) tags.push(`status-${lead.lead_status}`)
 
   // Use PUT for upsert behavior
   const response = await mailchimpRequest(config, endpoint, 'PUT', {
@@ -301,20 +303,20 @@ Deno.serve(async (req) => {
         }
         result = await syncLead(config, payload)
 
-        // Update the lead record in Supabase with Mailchimp info
-        if (payload.leadId) {
+        // Update the family record in Supabase with Mailchimp info
+        if (payload.familyId) {
           const supabaseService = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           )
           await supabaseService
-            .from('leads')
+            .from('families')
             .update({
               mailchimp_id: (result as { mailchimpId: string }).mailchimpId,
               mailchimp_status: 'synced',
               mailchimp_last_synced_at: new Date().toISOString(),
             })
-            .eq('id', payload.leadId)
+            .eq('id', payload.familyId)
         }
         break
 
@@ -343,27 +345,27 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Update leads in database with mailchimp_id for successful syncs
+        // Update families in database with mailchimp_id for successful syncs
         const supabaseService = createClient(
           Deno.env.get('SUPABASE_URL')!,
           Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
         )
         const successfulSyncs = allResults
           .map((r, i) => ({
-            leadId: payload.leads[i].id,
+            familyId: payload.leads[i].id,
             result: r.status === 'fulfilled' ? r.value : null,
           }))
-          .filter(s => s.result && s.leadId)
+          .filter(s => s.result && s.familyId)
 
         for (const sync of successfulSyncs) {
           await supabaseService
-            .from('leads')
+            .from('families')
             .update({
               mailchimp_id: sync.result!.mailchimpId,
               mailchimp_status: 'synced',
               mailchimp_last_synced_at: new Date().toISOString(),
             })
-            .eq('id', sync.leadId)
+            .eq('id', sync.familyId)
         }
 
         result = {
@@ -401,15 +403,15 @@ Deno.serve(async (req) => {
         break
 
       case 'sync_engagement':
-        // Sync engagement data for a single lead
-        if (!payload?.email || !payload?.leadId) {
-          throw new Error('email and leadId are required')
+        // Sync engagement data for a single lead (family with status='lead')
+        if (!payload?.email || !payload?.familyId) {
+          throw new Error('email and familyId are required')
         }
         {
           const activityResult = await getSubscriberActivity(config, payload.email) as { activity: ActivityItem[] }
           const engagement = calculateEngagement(activityResult.activity || [])
 
-          // Update lead with engagement data
+          // Update family with engagement data
           const supabaseEngagement = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -423,26 +425,26 @@ Deno.serve(async (req) => {
             mailchimp_engagement_updated_at: new Date().toISOString(),
           }
 
-          // Auto-advance status from 'new' to 'contacted' if they engaged with emails
+          // Auto-advance lead_status from 'new' to 'contacted' if they engaged with emails
           let statusAdvanced = false
           if (engagement.opens > 0) {
-            // Check current status
-            const { data: currentLead } = await supabaseEngagement
-              .from('leads')
-              .select('status')
-              .eq('id', payload.leadId)
+            // Check current lead_status
+            const { data: currentFamily } = await supabaseEngagement
+              .from('families')
+              .select('lead_status')
+              .eq('id', payload.familyId)
               .single()
 
-            if (currentLead?.status === 'new') {
-              updatePayload.status = 'contacted'
+            if (currentFamily?.lead_status === 'new') {
+              updatePayload.lead_status = 'contacted'
               statusAdvanced = true
             }
           }
 
           await supabaseEngagement
-            .from('leads')
+            .from('families')
             .update(updatePayload)
-            .eq('id', payload.leadId)
+            .eq('id', payload.familyId)
 
           result = {
             ...engagement,
@@ -453,27 +455,29 @@ Deno.serve(async (req) => {
         break
 
       case 'bulk_sync_engagement':
-        // Sync engagement for multiple leads
+        // Sync engagement for multiple leads (families with status='lead')
         if (!Array.isArray(payload?.leads)) {
           throw new Error('leads array is required (each with email and id)')
         }
         {
-          const engagementResults: { leadId: string; email: string; opens: number; clicks: number; score: number; statusAdvanced?: boolean; error?: string }[] = []
+          const engagementResults: { familyId: string; email: string; opens: number; clicks: number; score: number; statusAdvanced?: boolean; error?: string }[] = []
           const supabaseBulk = createClient(
             Deno.env.get('SUPABASE_URL')!,
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           )
 
-          // Fetch current status for all leads to check for auto-advance
-          const leadIds = payload.leads.filter((l: { id?: string }) => l.id).map((l: { id: string }) => l.id)
-          const { data: currentLeads } = await supabaseBulk
-            .from('leads')
-            .select('id, status')
-            .in('id', leadIds)
+          // Fetch current lead_status for all families to check for auto-advance
+          const familyIds = payload.leads.filter((l: { id?: string }) => l.id).map((l: { id: string }) => l.id)
+          const { data: currentFamilies } = await supabaseBulk
+            .from('families')
+            .select('id, lead_status')
+            .in('id', familyIds)
 
-          const leadStatusMap = new Map<string, string>()
-          for (const lead of currentLeads || []) {
-            leadStatusMap.set(lead.id, lead.status)
+          const familyStatusMap = new Map<string, string>()
+          for (const family of currentFamilies || []) {
+            if (family.lead_status) {
+              familyStatusMap.set(family.id, family.lead_status)
+            }
           }
 
           // Process in batches to avoid rate limits
@@ -487,7 +491,7 @@ Deno.serve(async (req) => {
               try {
                 if (!lead.email || !lead.id) {
                   engagementResults.push({
-                    leadId: lead.id || 'unknown',
+                    familyId: lead.id || 'unknown',
                     email: lead.email || 'unknown',
                     opens: 0,
                     clicks: 0,
@@ -508,27 +512,27 @@ Deno.serve(async (req) => {
                   mailchimp_engagement_updated_at: new Date().toISOString(),
                 }
 
-                // Auto-advance status from 'new' to 'contacted' if they engaged
+                // Auto-advance lead_status from 'new' to 'contacted' if they engaged
                 let statusAdvanced = false
-                if (eng.opens > 0 && leadStatusMap.get(lead.id) === 'new') {
-                  updatePayload.status = 'contacted'
+                if (eng.opens > 0 && familyStatusMap.get(lead.id) === 'new') {
+                  updatePayload.lead_status = 'contacted'
                   statusAdvanced = true
                 }
 
                 await supabaseBulk
-                  .from('leads')
+                  .from('families')
                   .update(updatePayload)
                   .eq('id', lead.id)
 
                 engagementResults.push({
-                  leadId: lead.id,
+                  familyId: lead.id,
                   email: lead.email,
                   ...eng,
                   statusAdvanced,
                 })
               } catch (err) {
                 engagementResults.push({
-                  leadId: lead.id,
+                  familyId: lead.id,
                   email: lead.email,
                   opens: 0,
                   clicks: 0,
@@ -671,19 +675,23 @@ Deno.serve(async (req) => {
             Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
           )
 
-          // Get all leads with their emails for matching
-          const { data: leads, error: leadsError } = await supabaseActivity
-            .from('leads')
-            .select('id, email')
+          // Get all lead families with their emails for matching
+          // Leads are families with status='lead' OR have a lead_type set
+          const { data: leadFamilies, error: familiesError } = await supabaseActivity
+            .from('families')
+            .select('id, primary_email')
+            .or('status.eq.lead,lead_type.not.is.null')
 
-          if (leadsError) {
-            throw new Error(`Failed to fetch leads: ${leadsError.message}`)
+          if (familiesError) {
+            throw new Error(`Failed to fetch lead families: ${familiesError.message}`)
           }
 
-          // Create email -> lead_id map (lowercase for matching)
-          const emailToLeadId = new Map<string, string>()
-          for (const lead of leads || []) {
-            emailToLeadId.set(lead.email.toLowerCase(), lead.id)
+          // Create email -> family_id map (lowercase for matching)
+          const emailToFamilyId = new Map<string, string>()
+          for (const family of leadFamilies || []) {
+            if (family.primary_email) {
+              emailToFamilyId.set(family.primary_email.toLowerCase(), family.id)
+            }
           }
 
           // Fetch email activity from Mailchimp (paginated)
@@ -692,7 +700,7 @@ Deno.serve(async (req) => {
           let totalProcessed = 0
           let totalMatched = 0
           const engagementRecords: Array<{
-            lead_id: string
+            family_id: string
             campaign_id: string
             was_sent: boolean
             opened: boolean
@@ -721,9 +729,9 @@ Deno.serve(async (req) => {
 
             for (const subscriber of activityPage.emails) {
               totalProcessed++
-              const leadId = emailToLeadId.get(subscriber.email_address.toLowerCase())
+              const familyId = emailToFamilyId.get(subscriber.email_address.toLowerCase())
 
-              if (!leadId) continue // Not a lead in our system
+              if (!familyId) continue // Not a lead in our system
               totalMatched++
 
               // Process activity
@@ -751,7 +759,7 @@ Deno.serve(async (req) => {
               }
 
               engagementRecords.push({
-                lead_id: leadId,
+                family_id: familyId,
                 campaign_id: payload.dbCampaignId,
                 was_sent: true,
                 opened,
@@ -780,7 +788,7 @@ Deno.serve(async (req) => {
             const { error: upsertError } = await supabaseActivity
               .from('lead_campaign_engagement')
               .upsert(batch, {
-                onConflict: 'lead_id,campaign_id',
+                onConflict: 'family_id,campaign_id',
               })
 
             if (upsertError) {
