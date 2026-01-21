@@ -5023,13 +5023,68 @@ export function useUpcomingFollowUps() {
   return useQuery({
     queryKey: queryKeys.leadFollowUps.upcoming(),
     queryFn: async () => {
-       
       const { data, error } = await supabase
-        .from('upcoming_follow_ups')
-        .select('*')
+        .from('lead_follow_ups')
+        .select(`
+          *,
+          family:families!lead_follow_ups_family_id_fkey (
+            id,
+            display_name,
+            primary_email,
+            primary_phone,
+            lead_type,
+            lead_status
+          )
+        `)
+        .eq('completed', false)
+        .order('due_date', { ascending: true })
         .limit(50)
       if (error) throw error
-      return data as UpcomingFollowUp[]
+
+      // Calculate urgency and transform to UpcomingFollowUp format
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+      const tomorrow = new Date(today)
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      const weekFromNow = new Date(today)
+      weekFromNow.setDate(weekFromNow.getDate() + 7)
+
+      return (data || []).map(item => {
+        const dueDate = new Date(item.due_date)
+        dueDate.setHours(0, 0, 0, 0)
+
+        let urgency: UpcomingFollowUp['urgency']
+        if (dueDate < today) {
+          urgency = 'overdue'
+        } else if (dueDate.getTime() === today.getTime()) {
+          urgency = 'today'
+        } else if (dueDate.getTime() === tomorrow.getTime()) {
+          urgency = 'tomorrow'
+        } else if (dueDate < weekFromNow) {
+          urgency = 'this_week'
+        } else {
+          urgency = 'later'
+        }
+
+        const family = item.family as {
+          id: string
+          display_name: string | null
+          primary_email: string | null
+          primary_phone: string | null
+          lead_type: LeadType | null
+          lead_status: LeadStatus | null
+        } | null
+
+        return {
+          ...item,
+          lead_name: family?.display_name || null,
+          lead_email: family?.primary_email || '',
+          lead_phone: family?.primary_phone || null,
+          lead_type: family?.lead_type || 'exit_intent',
+          lead_status: family?.lead_status || 'new',
+          urgency,
+        } as UpcomingFollowUp
+      })
     },
   })
 }

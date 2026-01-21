@@ -193,11 +193,12 @@ function useDashboardStats() {
           .select('id', { count: 'exact', head: true })
           .eq('reengagement_flag', true),
 
-        // Leads by type (new/contacted only)
+        // Leads by type (new/contacted only) - leads are now families with status='lead'
         supabase
-          .from('leads')
+          .from('families')
           .select('lead_type')
-          .in('status', ['new', 'contacted']),
+          .eq('status', 'lead')
+          .in('lead_status', ['new', 'contacted']),
 
         // Upcoming Calendly bookings
         supabase

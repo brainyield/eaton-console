@@ -209,7 +209,6 @@ export type Database = {
           invitee_name: string | null
           invitee_phone: string | null
           invoice_id: string | null
-          lead_id: string | null
           notes: string | null
           payment_method: string | null
           raw_payload: Json | null
@@ -234,7 +233,6 @@ export type Database = {
           invitee_name?: string | null
           invitee_phone?: string | null
           invoice_id?: string | null
-          lead_id?: string | null
           notes?: string | null
           payment_method?: string | null
           raw_payload?: Json | null
@@ -259,7 +257,6 @@ export type Database = {
           invitee_name?: string | null
           invitee_phone?: string | null
           invoice_id?: string | null
-          lead_id?: string | null
           notes?: string | null
           payment_method?: string | null
           raw_payload?: Json | null
@@ -318,48 +315,6 @@ export type Database = {
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "overdue_invoices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
             referencedColumns: ["id"]
           },
           {
@@ -1795,7 +1750,6 @@ export type Database = {
           created_at: string
           family_id: string | null
           id: string
-          lead_id: string | null
           notes: string | null
         }
         Insert: {
@@ -1804,7 +1758,6 @@ export type Database = {
           created_at?: string
           family_id?: string | null
           id?: string
-          lead_id?: string | null
           notes?: string | null
         }
         Update: {
@@ -1813,7 +1766,6 @@ export type Database = {
           created_at?: string
           family_id?: string | null
           id?: string
-          lead_id?: string | null
           notes?: string | null
         }
         Relationships: [
@@ -1838,48 +1790,6 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_activities_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
-            referencedColumns: ["id"]
-          },
         ]
       }
       lead_campaign_engagement: {
@@ -1894,7 +1804,6 @@ export type Database = {
           first_clicked_at: string | null
           first_opened_at: string | null
           id: string
-          lead_id: string | null
           open_count: number | null
           opened: boolean | null
           unsubscribed: boolean | null
@@ -1912,7 +1821,6 @@ export type Database = {
           first_clicked_at?: string | null
           first_opened_at?: string | null
           id?: string
-          lead_id?: string | null
           open_count?: number | null
           opened?: boolean | null
           unsubscribed?: boolean | null
@@ -1930,7 +1838,6 @@ export type Database = {
           first_clicked_at?: string | null
           first_opened_at?: string | null
           id?: string
-          lead_id?: string | null
           open_count?: number | null
           opened?: boolean | null
           unsubscribed?: boolean | null
@@ -1938,13 +1845,6 @@ export type Database = {
           was_sent?: boolean | null
         }
         Relationships: [
-          {
-            foreignKeyName: "lead_campaign_engagement_campaign_id_fkey"
-            columns: ["campaign_id"]
-            isOneToOne: false
-            referencedRelation: "campaign_performance_summary"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "lead_campaign_engagement_campaign_id_fkey"
             columns: ["campaign_id"]
@@ -1973,48 +1873,6 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_campaign_engagement_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
-            referencedColumns: ["id"]
-          },
         ]
       }
       lead_follow_ups: {
@@ -2027,7 +1885,6 @@ export type Database = {
           due_time: string | null
           family_id: string | null
           id: string
-          lead_id: string | null
           priority: Database["public"]["Enums"]["task_priority"] | null
           title: string
           updated_at: string | null
@@ -2041,7 +1898,6 @@ export type Database = {
           due_time?: string | null
           family_id?: string | null
           id?: string
-          lead_id?: string | null
           priority?: Database["public"]["Enums"]["task_priority"] | null
           title: string
           updated_at?: string | null
@@ -2055,7 +1911,6 @@ export type Database = {
           due_time?: string | null
           family_id?: string | null
           id?: string
-          lead_id?: string | null
           priority?: Database["public"]["Enums"]["task_priority"] | null
           title?: string
           updated_at?: string | null
@@ -2082,48 +1937,6 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
-            referencedColumns: ["id"]
-          },
         ]
       }
       lead_score_history: {
@@ -2134,7 +1947,6 @@ export type Database = {
           engagement_score: number | null
           family_id: string | null
           id: string
-          lead_id: string | null
           previous_score: number | null
           recency_score: number | null
           score: number
@@ -2147,7 +1959,6 @@ export type Database = {
           engagement_score?: number | null
           family_id?: string | null
           id?: string
-          lead_id?: string | null
           previous_score?: number | null
           recency_score?: number | null
           score: number
@@ -2160,7 +1971,6 @@ export type Database = {
           engagement_score?: number | null
           family_id?: string | null
           id?: string
-          lead_id?: string | null
           previous_score?: number | null
           recency_score?: number | null
           score?: number
@@ -2183,169 +1993,6 @@ export type Database = {
           },
           {
             foreignKeyName: "lead_score_history_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "family_overview"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_score_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_score_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_score_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_score_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_score_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_score_history_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      leads: {
-        Row: {
-          calendly_event_uri: string | null
-          calendly_invitee_uri: string | null
-          children_ages: string | null
-          converted_at: string | null
-          created_at: string
-          email: string
-          family_id: string | null
-          id: string
-          lead_score: number | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          mailchimp_clicks: number | null
-          mailchimp_engagement_score: number | null
-          mailchimp_engagement_updated_at: string | null
-          mailchimp_id: string | null
-          mailchimp_last_synced_at: string | null
-          mailchimp_opens: number | null
-          mailchimp_status: string | null
-          mailchimp_tags: string[] | null
-          name: string | null
-          notes: string | null
-          num_children: number | null
-          pdf_email_sent_at: string | null
-          phone: string | null
-          preferred_days: string | null
-          preferred_time: string | null
-          scheduled_at: string | null
-          service_interest: string | null
-          source_url: string | null
-          status: Database["public"]["Enums"]["lead_status"]
-          updated_at: string
-        }
-        Insert: {
-          calendly_event_uri?: string | null
-          calendly_invitee_uri?: string | null
-          children_ages?: string | null
-          converted_at?: string | null
-          created_at?: string
-          email: string
-          family_id?: string | null
-          id?: string
-          lead_score?: number | null
-          lead_type?: Database["public"]["Enums"]["lead_type"] | null
-          mailchimp_clicks?: number | null
-          mailchimp_engagement_score?: number | null
-          mailchimp_engagement_updated_at?: string | null
-          mailchimp_id?: string | null
-          mailchimp_last_synced_at?: string | null
-          mailchimp_opens?: number | null
-          mailchimp_status?: string | null
-          mailchimp_tags?: string[] | null
-          name?: string | null
-          notes?: string | null
-          num_children?: number | null
-          pdf_email_sent_at?: string | null
-          phone?: string | null
-          preferred_days?: string | null
-          preferred_time?: string | null
-          scheduled_at?: string | null
-          service_interest?: string | null
-          source_url?: string | null
-          status?: Database["public"]["Enums"]["lead_status"]
-          updated_at?: string
-        }
-        Update: {
-          calendly_event_uri?: string | null
-          calendly_invitee_uri?: string | null
-          children_ages?: string | null
-          converted_at?: string | null
-          created_at?: string
-          email?: string
-          family_id?: string | null
-          id?: string
-          lead_score?: number | null
-          lead_type?: Database["public"]["Enums"]["lead_type"] | null
-          mailchimp_clicks?: number | null
-          mailchimp_engagement_score?: number | null
-          mailchimp_engagement_updated_at?: string | null
-          mailchimp_id?: string | null
-          mailchimp_last_synced_at?: string | null
-          mailchimp_opens?: number | null
-          mailchimp_status?: string | null
-          mailchimp_tags?: string[] | null
-          name?: string | null
-          notes?: string | null
-          num_children?: number | null
-          pdf_email_sent_at?: string | null
-          phone?: string | null
-          preferred_days?: string | null
-          preferred_time?: string | null
-          scheduled_at?: string | null
-          service_interest?: string | null
-          source_url?: string | null
-          status?: Database["public"]["Enums"]["lead_status"]
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "event_leads"
-            referencedColumns: ["family_id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "families"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
             columns: ["family_id"]
             isOneToOne: false
             referencedRelation: "family_overview"
@@ -3378,27 +3025,6 @@ export type Database = {
       }
     }
     Views: {
-      campaign_performance_summary: {
-        Row: {
-          campaign_name: string | null
-          click_rate: number | null
-          emails_sent: number | null
-          id: string | null
-          is_ab_test: boolean | null
-          last_synced_at: string | null
-          leads_clicked: number | null
-          leads_opened: number | null
-          leads_sent: number | null
-          mailchimp_campaign_id: string | null
-          open_rate: number | null
-          send_time: string | null
-          subject_line: string | null
-          unique_clicks: number | null
-          unique_opens: number | null
-          winning_variant: string | null
-        }
-        Relationships: []
-      }
       checkin_period_summary: {
         Row: {
           closes_at: string | null
@@ -3646,219 +3272,6 @@ export type Database = {
         }
         Relationships: []
       }
-      lead_campaign_summary: {
-        Row: {
-          campaigns_clicked: number | null
-          campaigns_opened: number | null
-          campaigns_received: number | null
-          email: string | null
-          last_clicked_at: string | null
-          last_opened_at: string | null
-          lead_id: string | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          name: string | null
-          status: Database["public"]["Enums"]["lead_status"] | null
-          total_clicks: number | null
-          total_opens: number | null
-        }
-        Relationships: []
-      }
-      lead_score_trends: {
-        Row: {
-          current_score: number | null
-          email: string | null
-          history_count: number | null
-          last_score_change: string | null
-          lead_id: string | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          name: string | null
-          previous_score: number | null
-          score_change: number | null
-          status: Database["public"]["Enums"]["lead_status"] | null
-        }
-        Insert: {
-          current_score?: number | null
-          email?: string | null
-          history_count?: never
-          last_score_change?: never
-          lead_id?: string | null
-          lead_type?: Database["public"]["Enums"]["lead_type"] | null
-          name?: string | null
-          previous_score?: never
-          score_change?: never
-          status?: Database["public"]["Enums"]["lead_status"] | null
-        }
-        Update: {
-          current_score?: number | null
-          email?: string | null
-          history_count?: never
-          last_score_change?: never
-          lead_id?: string | null
-          lead_type?: Database["public"]["Enums"]["lead_type"] | null
-          name?: string | null
-          previous_score?: never
-          score_change?: never
-          status?: Database["public"]["Enums"]["lead_status"] | null
-        }
-        Relationships: []
-      }
-      leads_pipeline: {
-        Row: {
-          created_at: string | null
-          days_in_pipeline: number | null
-          email: string | null
-          family_id: string | null
-          family_name: string | null
-          id: string | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          mailchimp_id: string | null
-          mailchimp_status: string | null
-          mailchimp_tags: string[] | null
-          name: string | null
-          notes: string | null
-          num_children: number | null
-          phone: string | null
-          scheduled_at: string | null
-          service_interest: string | null
-          source_url: string | null
-          status: Database["public"]["Enums"]["lead_status"] | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "event_leads"
-            referencedColumns: ["family_id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "families"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "family_overview"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      leads_with_activity: {
-        Row: {
-          calendly_event_uri: string | null
-          calendly_invitee_uri: string | null
-          children_ages: string | null
-          contact_count: number | null
-          converted_at: string | null
-          created_at: string | null
-          email: string | null
-          family_id: string | null
-          id: string | null
-          last_contacted_at: string | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          mailchimp_id: string | null
-          mailchimp_last_synced_at: string | null
-          mailchimp_status: string | null
-          mailchimp_tags: string[] | null
-          name: string | null
-          notes: string | null
-          num_children: number | null
-          phone: string | null
-          preferred_days: string | null
-          preferred_time: string | null
-          scheduled_at: string | null
-          service_interest: string | null
-          source_url: string | null
-          status: Database["public"]["Enums"]["lead_status"] | null
-          updated_at: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "event_leads"
-            referencedColumns: ["family_id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "families"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "family_overview"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      leads_with_scores: {
-        Row: {
-          calculated_score: number | null
-          calendly_event_uri: string | null
-          calendly_invitee_uri: string | null
-          children_ages: string | null
-          contact_count: number | null
-          converted_at: string | null
-          created_at: string | null
-          email: string | null
-          family_id: string | null
-          id: string | null
-          last_contacted_at: string | null
-          lead_score: number | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          mailchimp_clicks: number | null
-          mailchimp_engagement_score: number | null
-          mailchimp_engagement_updated_at: string | null
-          mailchimp_id: string | null
-          mailchimp_last_synced_at: string | null
-          mailchimp_opens: number | null
-          mailchimp_status: string | null
-          mailchimp_tags: string[] | null
-          name: string | null
-          notes: string | null
-          num_children: number | null
-          phone: string | null
-          preferred_days: string | null
-          preferred_time: string | null
-          scheduled_at: string | null
-          service_interest: string | null
-          source_url: string | null
-          status: Database["public"]["Enums"]["lead_status"] | null
-          updated_at: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "event_leads"
-            referencedColumns: ["family_id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "families"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "leads_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "family_overview"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       monthly_revenue_by_service: {
         Row: {
           month: string | null
@@ -4002,170 +3415,6 @@ export type Database = {
             columns: ["teacher_id"]
             isOneToOne: false
             referencedRelation: "teachers"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      upcoming_calendly_bookings: {
-        Row: {
-          event_type:
-            | Database["public"]["Enums"]["calendly_booking_type"]
-            | null
-          family_id: string | null
-          family_name: string | null
-          hub_session_id: string | null
-          id: string | null
-          invitee_email: string | null
-          invitee_name: string | null
-          invitee_phone: string | null
-          lead_id: string | null
-          payment_method: string | null
-          scheduled_at: string | null
-          status: Database["public"]["Enums"]["calendly_booking_status"] | null
-          student_age_group: string | null
-          student_name: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "calendly_bookings_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "event_leads"
-            referencedColumns: ["family_id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "families"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_family_id_fkey"
-            columns: ["family_id"]
-            isOneToOne: false
-            referencedRelation: "family_overview"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_hub_session_id_fkey"
-            columns: ["hub_session_id"]
-            isOneToOne: false
-            referencedRelation: "hub_sessions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_hub_session_id_fkey"
-            columns: ["hub_session_id"]
-            isOneToOne: false
-            referencedRelation: "unbilled_hub_sessions"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "calendly_bookings_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      upcoming_follow_ups: {
-        Row: {
-          completed: boolean | null
-          completed_at: string | null
-          created_at: string | null
-          description: string | null
-          due_date: string | null
-          due_time: string | null
-          id: string | null
-          lead_email: string | null
-          lead_id: string | null
-          lead_name: string | null
-          lead_phone: string | null
-          lead_status: Database["public"]["Enums"]["lead_status"] | null
-          lead_type: Database["public"]["Enums"]["lead_type"] | null
-          priority: Database["public"]["Enums"]["task_priority"] | null
-          title: string | null
-          updated_at: string | null
-          urgency: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_campaign_summary"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "lead_score_trends"
-            referencedColumns: ["lead_id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_pipeline"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_activity"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "lead_follow_ups_lead_id_fkey"
-            columns: ["lead_id"]
-            isOneToOne: false
-            referencedRelation: "leads_with_scores"
             referencedColumns: ["id"]
           },
         ]
