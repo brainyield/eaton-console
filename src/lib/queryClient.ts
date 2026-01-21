@@ -280,4 +280,11 @@ export const queryKeys = {
     responseWithResources: (inviteId: string) => ['checkins', 'response', inviteId, 'resources'] as const,
     teacherStudents: (teacherId: string) => ['checkins', 'teacherStudents', teacherId] as const,
   },
+
+  // Admin utilities
+  admin: {
+    all: ['admin'] as const,
+    potentialDuplicates: () => ['admin', 'potential-duplicates'] as const,
+    familyMergeLog: () => ['admin', 'family-merge-log'] as const,
+  },
 }

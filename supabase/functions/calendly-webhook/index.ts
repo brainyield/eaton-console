@@ -222,22 +222,90 @@ Deno.serve(async (req) => {
 
       let familyId: string | null = null
 
-      // Check for existing family
-      const { data: existingFamily, error: familyQueryError } = await supabase
+      // Check for existing family by email (primary or secondary)
+      let existingFamily: { id: string; status: string; lead_status: string | null; lead_type: string | null; primary_phone: string | null; primary_email: string | null } | null = null
+      let matchedBy = 'email'
+
+      const { data: emailMatch, error: familyQueryError } = await supabase
         .from('families')
-        .select('id, status, lead_status, lead_type, primary_phone')
-        .ilike('primary_email', inviteeEmail)
+        .select('id, status, lead_status, lead_type, primary_phone, primary_email')
+        .or(`primary_email.ilike.${inviteeEmail},secondary_email.ilike.${inviteeEmail}`)
+        .order('status', { ascending: true }) // 'active' before 'lead'
+        .limit(1)
         .maybeSingle()
 
       if (familyQueryError) {
-        console.error('Error querying existing family:', familyQueryError)
+        console.error('Error querying existing family by email:', familyQueryError)
+      }
+
+      if (emailMatch) {
+        existingFamily = emailMatch
+      }
+
+      // If no email match AND name has first and last name, try name-based matching
+      if (!existingFamily && inviteeName && inviteeName.trim().includes(' ')) {
+        const normalizedName = formatFamilyName(inviteeName).toLowerCase()
+
+        // Only match if name is in "Last, First" format (has comma)
+        if (normalizedName.includes(',')) {
+          const { data: nameMatch, error: nameQueryError } = await supabase
+            .from('families')
+            .select('id, status, lead_status, lead_type, primary_phone, primary_email')
+            .ilike('display_name', normalizedName)
+            .in('status', ['active', 'lead'])
+            .order('status', { ascending: true }) // 'active' before 'lead'
+            .limit(1)
+            .maybeSingle()
+
+          if (nameQueryError) {
+            console.error('Error querying family by name:', nameQueryError)
+          }
+
+          if (nameMatch) {
+            console.log(`Name-based match found for "${inviteeName}": family ${nameMatch.id} (${nameMatch.primary_email})`)
+            existingFamily = nameMatch
+            matchedBy = 'name'
+
+            // Log the name-based match for audit
+            const { error: logError } = await supabase
+              .from('family_merge_log')
+              .insert({
+                family_id: nameMatch.id,
+                matched_by: 'name',
+                original_email: nameMatch.primary_email,
+                new_email: inviteeEmail,
+                purchaser_name: inviteeName,
+                source: 'calendly_webhook',
+                source_id: scheduledEventUri || null,
+              })
+
+            if (logError) {
+              console.error('Error logging name match:', logError)
+            }
+
+            // Store new email as secondary if not already stored
+            if (nameMatch.primary_email?.toLowerCase() !== inviteeEmail) {
+              const { error: updateError } = await supabase
+                .from('families')
+                .update({ secondary_email: inviteeEmail })
+                .eq('id', nameMatch.id)
+                .is('secondary_email', null)
+
+              if (updateError) {
+                console.error('Error updating secondary email:', updateError)
+              } else {
+                console.log(`Stored secondary email ${inviteeEmail} on family ${nameMatch.id}`)
+              }
+            }
+          }
+        }
       }
 
       let hasActiveEnrollment = false
 
       if (existingFamily) {
         familyId = existingFamily.id
-        console.log('Found existing family:', familyId, 'status:', existingFamily.status)
+        console.log('Found existing family:', familyId, 'status:', existingFamily.status, 'matched by:', matchedBy)
 
         const { data: enrollments, error: enrollmentsError } = await supabase
           .from('enrollments')

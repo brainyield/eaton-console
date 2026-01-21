@@ -290,6 +290,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "calendly_bookings_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+          {
             foreignKeyName: "calendly_bookings_hub_session_id_fkey"
             columns: ["hub_session_id"]
             isOneToOne: false
@@ -592,6 +606,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "communications_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "communications_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+          {
             foreignKeyName: "communications_workflow_run_id_fkey"
             columns: ["workflow_run_id"]
             isOneToOne: false
@@ -851,6 +879,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enrollments_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "enrollments_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
           },
           {
             foreignKeyName: "enrollments_location_id_fkey"
@@ -1171,6 +1213,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+          {
             foreignKeyName: "event_orders_invoice_id_fkey"
             columns: ["invoice_id"]
             isOneToOne: false
@@ -1252,6 +1308,7 @@ export type Database = {
           primary_phone: string | null
           reengagement_flag: boolean
           scheduled_at: string | null
+          secondary_email: string | null
           service_interest: string | null
           source_url: string | null
           state: string | null
@@ -1294,6 +1351,7 @@ export type Database = {
           primary_phone?: string | null
           reengagement_flag?: boolean
           scheduled_at?: string | null
+          secondary_email?: string | null
           service_interest?: string | null
           source_url?: string | null
           state?: string | null
@@ -1336,6 +1394,7 @@ export type Database = {
           primary_phone?: string | null
           reengagement_flag?: boolean
           scheduled_at?: string | null
+          secondary_email?: string | null
           service_interest?: string | null
           source_url?: string | null
           state?: string | null
@@ -1398,6 +1457,92 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "family_contacts_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "family_contacts_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+        ]
+      }
+      family_merge_log: {
+        Row: {
+          created_at: string
+          family_id: string | null
+          id: string
+          matched_by: string
+          new_email: string | null
+          original_email: string | null
+          purchaser_name: string | null
+          source: string
+          source_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          family_id?: string | null
+          id?: string
+          matched_by: string
+          new_email?: string | null
+          original_email?: string | null
+          purchaser_name?: string | null
+          source: string
+          source_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          family_id?: string | null
+          id?: string
+          matched_by?: string
+          new_email?: string | null
+          original_email?: string | null
+          purchaser_name?: string | null
+          source?: string
+          source_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "family_merge_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "family_merge_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "family_merge_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "family_merge_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "family_merge_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
       }
       family_tags: {
@@ -1437,6 +1582,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "family_tags_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "family_tags_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
           },
           {
             foreignKeyName: "family_tags_tag_id_fkey"
@@ -1741,6 +1900,20 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
       }
       lead_activities: {
@@ -1789,6 +1962,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_activities_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "lead_activities_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
           },
         ]
       }
@@ -1873,6 +2060,20 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lead_campaign_engagement_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "lead_campaign_engagement_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
       }
       lead_follow_ups: {
@@ -1937,6 +2138,20 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "lead_follow_ups_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "lead_follow_ups_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
       }
       lead_score_history: {
@@ -1997,6 +2212,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "lead_score_history_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
           },
         ]
       }
@@ -2398,6 +2627,20 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "revenue_records_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "revenue_records_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+          {
             foreignKeyName: "revenue_records_location_id_fkey"
             columns: ["location_id"]
             isOneToOne: false
@@ -2642,6 +2885,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "students_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "students_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
           },
         ]
       }
@@ -3100,6 +3357,20 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
       }
       event_leads: {
@@ -3183,6 +3454,20 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
       }
       event_stepup_pending: {
@@ -3222,6 +3507,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "event_orders_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
           },
         ]
       }
@@ -3342,7 +3641,37 @@ export type Database = {
             referencedRelation: "family_overview"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "invoices_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
         ]
+      }
+      potential_duplicate_families: {
+        Row: {
+          created_at_1: string | null
+          created_at_2: string | null
+          display_name: string | null
+          email_1: string | null
+          email_2: string | null
+          family_1_id: string | null
+          family_2_id: string | null
+          secondary_email_1: string | null
+          secondary_email_2: string | null
+          status_1: Database["public"]["Enums"]["customer_status"] | null
+          status_2: Database["public"]["Enums"]["customer_status"] | null
+        }
+        Relationships: []
       }
       teacher_earnings_summary: {
         Row: {
@@ -3431,9 +3760,54 @@ export type Database = {
         Returns: number
       }
       derive_age_group: { Args: { age: number }; Returns: string }
+      find_or_create_family_for_purchase: {
+        Args: {
+          p_create_as_active?: boolean
+          p_email: string
+          p_name: string
+          p_phone?: string
+          p_source?: string
+          p_source_id?: string
+        }
+        Returns: string
+      }
       generate_invoice_number: { Args: never; Returns: string }
       generate_public_id: { Args: never; Returns: string }
+      get_family_merge_log: {
+        Args: { limit_count?: number }
+        Returns: {
+          created_at: string
+          family_id: string
+          id: string
+          matched_by: string
+          new_email: string
+          original_email: string
+          purchaser_name: string
+          source: string
+          source_id: string
+        }[]
+      }
+      get_potential_duplicate_families: {
+        Args: never
+        Returns: {
+          created_at_1: string
+          created_at_2: string
+          display_name: string
+          email_1: string
+          email_2: string
+          family_1_id: string
+          family_2_id: string
+          secondary_email_1: string
+          secondary_email_2: string
+          status_1: string
+          status_2: string
+        }[]
+      }
       mark_overdue_invoices: { Args: never; Returns: undefined }
+      merge_family: {
+        Args: { p_delete_id: string; p_keep_id: string; p_reason?: string }
+        Returns: undefined
+      }
       normalize_name_to_last_first: { Args: { name: string }; Returns: string }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

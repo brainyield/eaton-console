@@ -6880,3 +6880,87 @@ export function useBulkAction<T = void, R = void>(options: UseBulkActionOptions<
     reset,
   }
 }
+
+// =============================================================================
+// ADMIN UTILITIES - DUPLICATE DETECTION
+// =============================================================================
+
+export interface PotentialDuplicateFamily {
+  family_1_id: string
+  display_name: string
+  email_1: string
+  secondary_email_1: string | null
+  family_2_id: string
+  email_2: string
+  secondary_email_2: string | null
+  status_1: string
+  status_2: string
+  created_at_1: string
+  created_at_2: string
+}
+
+/**
+ * Hook to fetch potential duplicate families for admin review.
+ * Returns families with matching names but different emails.
+ * Note: Requires 20260121_add_duplicate_detection_view.sql migration to be applied.
+ */
+export function usePotentialDuplicates() {
+  return useQuery({
+    queryKey: queryKeys.admin.potentialDuplicates(),
+    queryFn: async () => {
+      // Using raw SQL query since the view/function may not be in generated types yet
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)('get_potential_duplicate_families')
+
+      if (error) {
+        // If the function doesn't exist, return empty array
+        if (error.message?.includes('does not exist')) {
+          console.warn('get_potential_duplicate_families function not found - migration may not be applied')
+          return [] as PotentialDuplicateFamily[]
+        }
+        throw error
+      }
+      return (data || []) as PotentialDuplicateFamily[]
+    },
+    staleTime: 5 * 60 * 1000, // 5 minutes - not frequently changing
+  })
+}
+
+export interface FamilyMergeLogEntry {
+  id: string
+  family_id: string | null
+  matched_by: string
+  original_email: string | null
+  new_email: string | null
+  purchaser_name: string | null
+  source: string
+  source_id: string | null
+  created_at: string
+}
+
+/**
+ * Hook to fetch family merge log for audit review.
+ * Shows history of name-based matches and manual merges.
+ * Note: Requires 20260121_add_duplicate_prevention_schema.sql migration to be applied.
+ */
+export function useFamilyMergeLog() {
+  return useQuery({
+    queryKey: queryKeys.admin.familyMergeLog(),
+    queryFn: async () => {
+      // Using raw SQL query since the table/function may not be in generated types yet
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)('get_family_merge_log', { limit_count: 100 })
+
+      if (error) {
+        // If the function doesn't exist, return empty array
+        if (error.message?.includes('does not exist')) {
+          console.warn('get_family_merge_log function not found - migration may not be applied')
+          return [] as FamilyMergeLogEntry[]
+        }
+        throw error
+      }
+      return (data || []) as FamilyMergeLogEntry[]
+    },
+    staleTime: 60 * 1000, // 1 minute
+  })
+}
