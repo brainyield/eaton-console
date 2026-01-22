@@ -71,8 +71,8 @@ const SERVICE_ONBOARDING_CONFIG: Record<string, ServiceOnboardingConfig> = {
   },
 }
 
-// Google Forms base URL
-const GOOGLE_FORMS_BASE_URL = 'https://docs.google.com/forms/d/e'
+// Google Forms base URL (using edit ID format, not published ID)
+const GOOGLE_FORMS_BASE_URL = 'https://docs.google.com/forms/d'
 
 // Compliance folder ID for document storage
 const COMPLIANCE_FOLDER_ID = '1Zz5Olq4sRM6QyU6xMMr3zHr8jVHh-gII'
