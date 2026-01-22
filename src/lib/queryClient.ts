@@ -103,16 +103,19 @@ export const queryKeys = {
   // Enrollments
   enrollments: {
     all: ['enrollments'] as const,
-    list: (filters?: { status?: string; serviceId?: string }) => 
+    list: (filters?: { status?: string; serviceId?: string }) =>
       ['enrollments', 'list', filters] as const,
     detail: (id: string) => ['enrollments', 'detail', id] as const,
     byFamily: (familyId: string) => ['enrollments', 'byFamily', familyId] as const,
     byStudent: (studentId: string) => ['enrollments', 'byStudent', studentId] as const,
     // NEW: For billable enrollments in invoice generation
-    billable: (serviceFilter?: string) => 
-      serviceFilter 
-        ? ['enrollments', 'billable', serviceFilter] as const 
+    billable: (serviceFilter?: string) =>
+      serviceFilter
+        ? ['enrollments', 'billable', serviceFilter] as const
         : ['enrollments', 'billable'] as const,
+    // Onboarding forms/documents tracking
+    onboarding: (enrollmentId: string) =>
+      ['enrollments', 'onboarding', enrollmentId] as const,
   },
   
   // Teacher Assignments

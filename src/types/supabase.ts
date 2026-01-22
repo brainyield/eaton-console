@@ -745,6 +745,80 @@ export type Database = {
         }
         Relationships: []
       }
+      enrollment_onboarding: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          document_id: string | null
+          document_url: string | null
+          enrollment_id: string
+          form_id: string | null
+          form_url: string | null
+          id: string
+          item_key: string
+          item_name: string
+          item_type: string
+          last_reminder_at: string | null
+          merge_data: Json | null
+          reminder_count: number
+          sent_at: string | null
+          sent_to: string | null
+          status: string
+          updated_at: string
+          workflow_execution_id: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          document_id?: string | null
+          document_url?: string | null
+          enrollment_id: string
+          form_id?: string | null
+          form_url?: string | null
+          id?: string
+          item_key: string
+          item_name: string
+          item_type: string
+          last_reminder_at?: string | null
+          merge_data?: Json | null
+          reminder_count?: number
+          sent_at?: string | null
+          sent_to?: string | null
+          status?: string
+          updated_at?: string
+          workflow_execution_id?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          document_id?: string | null
+          document_url?: string | null
+          enrollment_id?: string
+          form_id?: string | null
+          form_url?: string | null
+          id?: string
+          item_key?: string
+          item_name?: string
+          item_type?: string
+          last_reminder_at?: string | null
+          merge_data?: Json | null
+          reminder_count?: number
+          sent_at?: string | null
+          sent_to?: string | null
+          status?: string
+          updated_at?: string
+          workflow_execution_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrollment_onboarding_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       enrollments: {
         Row: {
           annual_fee: number | null

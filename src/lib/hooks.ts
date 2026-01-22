@@ -207,6 +207,84 @@ export interface InvoiceEmail {
   created_at: string
 }
 
+// Enrollment Onboarding - tracking forms and documents sent to families
+export type OnboardingItemType = 'form' | 'document'
+export type OnboardingItemStatus = 'pending' | 'sent' | 'completed'
+
+export interface EnrollmentOnboarding {
+  id: string
+  enrollment_id: string
+  item_type: OnboardingItemType
+  item_key: string
+  item_name: string
+  form_url: string | null
+  form_id: string | null
+  document_url: string | null
+  document_id: string | null
+  merge_data: Record<string, unknown> | null
+  status: OnboardingItemStatus
+  sent_at: string | null
+  sent_to: string | null
+  reminder_count: number
+  last_reminder_at: string | null
+  completed_at: string | null
+  workflow_execution_id: string | null
+  created_at: string
+  updated_at: string
+}
+
+// Service onboarding configuration - which forms/documents each service requires
+export interface OnboardingItemConfig {
+  key: string
+  name: string
+  formId?: string      // For Google Forms
+  templateId?: string  // For Google Docs
+}
+
+export interface ServiceOnboardingConfig {
+  forms: OnboardingItemConfig[]
+  documents: OnboardingItemConfig[]
+  mergeFields: string[]  // Fields needed for document merge
+}
+
+// Configuration mapping service codes to their onboarding requirements
+// Service codes must match the 'code' column in the services table
+export const SERVICE_ONBOARDING_CONFIG: Record<string, ServiceOnboardingConfig> = {
+  learning_pod: {
+    forms: [
+      { key: 'lp_tos', name: 'Learning Pod Terms of Service Agreement', formId: '1Ayv9FEbeRsTI_gsMf8UWfQz13vFP5ZdoYeKSwZ4lv48' },
+      { key: 'lp_enrollment', name: 'Learning Pod Enrollment Form', formId: '1IMbBq8aCNVnm6vdgiX-BQepAJG2iR5BPjJHWbuLlU8' },
+      { key: 'lp_allergy', name: 'Learning Pod Allergy Notification Form', formId: '1vbfQKgbpWLV1MgLL5myzHWM62DfkQrMJyPfq1LX3sTI' },
+      { key: 'lp_photo', name: 'Learning Pod Student Photo/Video Release', formId: '1Xe-LSy_fK8NepAXFjyPT0t4yYZmSAi53KeIKFG_BfMg' },
+    ],
+    documents: [],
+    mergeFields: [],
+  },
+  consulting: {
+    forms: [
+      { key: 'hc_questionnaire', name: 'Homeschool Consulting Questionnaire', formId: '19m98i8Ax86VwRXg3ydgqTaUe751Or69Nfrabx3fv0J0' },
+    ],
+    documents: [
+      { key: 'hc_agreement', name: 'Homeschool Consultation Agreement', templateId: '1rf816Hln05S55_zXonHmiMy13K_xkuJl3DUsB6ucIqI' },
+    ],
+    mergeFields: ['annual_fee', 'monthly_fee'],
+  },
+  academic_coaching: {
+    forms: [],
+    documents: [
+      { key: 'ac_agreement', name: 'Academic Coach Hours Agreement', templateId: '1AAiZqXYOBcBcE7izmOdpKaBYXfO1WzgfAiio91LwgNo' },
+    ],
+    mergeFields: ['hourly_rate', 'hours_per_week'],
+  },
+  eaton_online: {
+    forms: [],
+    documents: [
+      { key: 'eo_tos', name: 'Eaton Online Terms of Service', templateId: '1i_izsqCuNITYF5of4kHqQmaPr7g7MNiMhdTNPc4vu3o' },
+    ],
+    mergeFields: ['eo_program', 'eo_weekly_rate'],
+  },
+}
+
 // =============================================================================
 // TEACHER LOAD TYPES (NEW)
 // =============================================================================
@@ -1212,6 +1290,117 @@ export function useEnrollmentMutations() {
   })
 
   return { createEnrollment, updateEnrollment, deleteEnrollment }
+}
+
+// =============================================================================
+// ENROLLMENT ONBOARDING HOOKS
+// =============================================================================
+
+/**
+ * Fetch all onboarding items for an enrollment
+ */
+export function useEnrollmentOnboarding(enrollmentId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.enrollments.onboarding(enrollmentId || ''),
+    queryFn: async () => {
+      if (!enrollmentId) return []
+      const { data, error } = await supabase
+        .from('enrollment_onboarding')
+        .select('*')
+        .eq('enrollment_id', enrollmentId)
+        .order('item_type', { ascending: true })
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+      return data as EnrollmentOnboarding[]
+    },
+    enabled: !!enrollmentId,
+  })
+}
+
+/**
+ * Mutations for enrollment onboarding (send forms, update status, etc.)
+ */
+export function useOnboardingMutations() {
+  const queryClient = useQueryClient()
+
+  // Send onboarding forms/documents via the edge function
+  const sendOnboarding = useMutation({
+    mutationFn: async ({
+      enrollmentId,
+      itemKeys,
+      mergeData,
+    }: {
+      enrollmentId: string
+      itemKeys: string[]
+      mergeData?: Record<string, unknown>
+    }) => {
+      const { data, error } = await supabase.functions.invoke('send-onboarding', {
+        body: {
+          enrollment_id: enrollmentId,
+          item_keys: itemKeys,
+          merge_data: mergeData,
+        },
+      })
+      if (error) throw error
+      return data as { success: boolean; items: EnrollmentOnboarding[]; warnings?: string[] }
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.enrollments.onboarding(variables.enrollmentId),
+      })
+    },
+  })
+
+  // Manually refresh onboarding status (check form responses)
+  const refreshOnboardingStatus = useMutation({
+    mutationFn: async ({ enrollmentId }: { enrollmentId: string }) => {
+      const { data, error } = await supabase.functions.invoke('check-onboarding-status', {
+        body: { enrollment_id: enrollmentId },
+      })
+      if (error) throw error
+      return data as { success: boolean; updated: number }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.enrollments.onboarding(variables.enrollmentId),
+      })
+    },
+  })
+
+  // Update a single onboarding item (for manual status changes)
+  const updateOnboardingItem = useMutation({
+    mutationFn: async ({
+      id,
+      updates,
+    }: {
+      id: string
+      updates: {
+        status?: OnboardingItemStatus
+        completed_at?: string | null
+        sent_at?: string | null
+        sent_to?: string | null
+        reminder_count?: number
+        last_reminder_at?: string | null
+      }
+    }) => {
+      const { data: item, error } = await supabase
+        .from('enrollment_onboarding')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single()
+      if (error) throw error
+      return item as EnrollmentOnboarding
+    },
+    onSuccess: (item) => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.enrollments.onboarding(item.enrollment_id),
+      })
+    },
+  })
+
+  return { sendOnboarding, refreshOnboardingStatus, updateOnboardingItem }
 }
 
 // =============================================================================

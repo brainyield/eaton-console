@@ -12,11 +12,24 @@ import {
   UserMinus,
   ArrowRightLeft,
   MoreVertical,
-  AlertCircle
+  AlertCircle,
+  FileText,
+  ClipboardList,
+  Check,
+  Send,
+  RefreshCw,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react';
-import { useTeacherAssignmentsByEnrollment } from '../lib/hooks';
+import {
+  useTeacherAssignmentsByEnrollment,
+  useEnrollmentOnboarding,
+  useOnboardingMutations,
+  SERVICE_ONBOARDING_CONFIG,
+} from '../lib/hooks';
 import { EmailHistory } from './email';
-import { parseLocalDate } from '../lib/dateUtils';
+import { SendFormsModal } from './SendFormsModal';
+import { parseLocalDate, formatDateLocal } from '../lib/dateUtils';
 import { multiplyMoney } from '../lib/moneyUtils';
 import { calculateAge } from '../lib/utils';
 
@@ -28,6 +41,11 @@ interface Service {
   code: string;
   name: string;
   billing_frequency: string;
+  default_customer_rate: number | null;
+  default_teacher_rate: number | null;
+  requires_teacher: boolean;
+  description: string | null;
+  is_active: boolean;
 }
 
 interface Student {
@@ -70,18 +88,25 @@ interface Enrollment {
   family_id: string;
   student_id: string | null;
   service_id: string;
+  location_id: string | null;
   status: EnrollmentStatus;
   start_date: string | null;
   end_date: string | null;
+  enrollment_period: string | null;
+  annual_fee: number | null;
   monthly_rate: number | null;
   weekly_tuition: number | null;
   hourly_rate_customer: number | null;
   hours_per_week: number | null;
   daily_rate: number | null;
   billing_frequency: string | null;
+  curriculum: string | null;
+  program_type: string | null;
   class_title: string | null;
   schedule_notes: string | null;
   notes: string | null;
+  created_at: string;
+  updated_at: string;
   service: Service;
   student: Student | null;
   family: Family;
@@ -109,14 +134,27 @@ export function EnrollmentDetailPanel({
   onTransferTeacher,
   onEndEnrollment,
 }: EnrollmentDetailPanelProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'billing' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'schedule' | 'billing' | 'forms' | 'history'>('overview');
   const [showActionsMenu, setShowActionsMenu] = useState(false);
+  const [showSendFormsModal, setShowSendFormsModal] = useState(false);
 
   // React Query - fetch teacher assignments for this enrollment
-  const { 
-    data: assignments = [], 
-    isLoading: loadingAssignments 
+  const {
+    data: assignments = [],
+    isLoading: loadingAssignments
   } = useTeacherAssignmentsByEnrollment(enrollment.id);
+
+  // React Query - fetch onboarding items for this enrollment
+  const {
+    data: onboardingItems = [],
+    isLoading: loadingOnboarding,
+  } = useEnrollmentOnboarding(enrollment.id);
+
+  const { refreshOnboardingStatus, updateOnboardingItem } = useOnboardingMutations();
+
+  // Get service configuration for forms
+  const serviceCode = enrollment.service?.code || '';
+  const onboardingConfig = SERVICE_ONBOARDING_CONFIG[serviceCode];
 
   function formatRate(): string {
     if (enrollment.hourly_rate_customer && enrollment.hours_per_week) {
@@ -288,7 +326,7 @@ export function EnrollmentDetailPanel({
         {/* Tabs */}
         <div className="border-b border-gray-700 px-6">
           <div className="flex gap-1">
-            {(['overview', 'schedule', 'billing', 'history'] as const).map(tab => (
+            {(['overview', 'schedule', 'billing', 'forms', 'history'] as const).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -539,6 +577,206 @@ export function EnrollmentDetailPanel({
             </div>
           )}
 
+          {activeTab === 'forms' && (
+            <div className="space-y-6">
+              {/* Header with Send Forms button */}
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-medium text-gray-400 uppercase tracking-wider">
+                  Onboarding Forms & Documents
+                </h3>
+                <div className="flex items-center gap-2">
+                  {onboardingItems.length > 0 && (
+                    <button
+                      onClick={() => refreshOnboardingStatus.mutate({ enrollmentId: enrollment.id })}
+                      disabled={refreshOnboardingStatus.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors disabled:opacity-50"
+                    >
+                      {refreshOnboardingStatus.isPending ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4" />
+                      )}
+                      <span>Refresh Status</span>
+                    </button>
+                  )}
+                  {onboardingConfig && (
+                    <button
+                      onClick={() => setShowSendFormsModal(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
+                    >
+                      <Send className="w-4 h-4" />
+                      <span>Send Forms</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* No onboarding configured for this service */}
+              {!onboardingConfig && (
+                <div className="text-center py-12">
+                  <FileText className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-400">No onboarding forms configured for this service.</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Service: {enrollment.service?.name || 'Unknown'}
+                  </p>
+                </div>
+              )}
+
+              {/* Loading state */}
+              {onboardingConfig && loadingOnboarding && (
+                <div className="text-center py-8 text-gray-400">
+                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
+                  <p>Loading onboarding status...</p>
+                </div>
+              )}
+
+              {/* No forms sent yet */}
+              {onboardingConfig && !loadingOnboarding && onboardingItems.length === 0 && (
+                <div className="text-center py-12">
+                  <ClipboardList className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                  <p className="text-gray-400">No forms have been sent yet.</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Click "Send Forms" to send onboarding forms to the customer.
+                  </p>
+                </div>
+              )}
+
+              {/* Onboarding items list */}
+              {onboardingConfig && !loadingOnboarding && onboardingItems.length > 0 && (
+                <div className="space-y-3">
+                  {onboardingItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className={`bg-gray-800 rounded-lg p-4 border ${
+                        item.status === 'completed'
+                          ? 'border-green-500/30'
+                          : item.status === 'sent'
+                          ? 'border-amber-500/30'
+                          : 'border-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-3">
+                          <div className={`p-2 rounded-lg ${
+                            item.item_type === 'form'
+                              ? 'bg-purple-500/20'
+                              : 'bg-amber-500/20'
+                          }`}>
+                            {item.item_type === 'form' ? (
+                              <ClipboardList className={`w-5 h-5 ${
+                                item.status === 'completed' ? 'text-green-400' : 'text-purple-400'
+                              }`} />
+                            ) : (
+                              <FileText className={`w-5 h-5 ${
+                                item.status === 'completed' ? 'text-green-400' : 'text-amber-400'
+                              }`} />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-white font-medium">{item.item_name}</p>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {item.item_type === 'form' ? 'Google Form' : 'Agreement Document'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Status badge */}
+                        <div className="flex items-center gap-2">
+                          {item.status === 'completed' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-500/20 text-green-400 rounded-full">
+                              <Check className="w-3 h-3" />
+                              Completed
+                            </span>
+                          ) : item.status === 'sent' ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-amber-500/20 text-amber-400 rounded-full">
+                              <Clock className="w-3 h-3" />
+                              Pending
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 text-xs font-medium bg-gray-700 text-gray-400 rounded-full">
+                              Not Sent
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Details */}
+                      <div className="mt-3 pt-3 border-t border-gray-700 grid grid-cols-2 gap-3 text-sm">
+                        {item.sent_at && (
+                          <div>
+                            <p className="text-xs text-gray-500">Sent</p>
+                            <p className="text-gray-300">
+                              {formatDateLocal(new Date(item.sent_at))}
+                            </p>
+                          </div>
+                        )}
+                        {item.sent_to && (
+                          <div>
+                            <p className="text-xs text-gray-500">Sent To</p>
+                            <p className="text-gray-300 truncate" title={item.sent_to}>
+                              {item.sent_to}
+                            </p>
+                          </div>
+                        )}
+                        {item.completed_at && (
+                          <div>
+                            <p className="text-xs text-gray-500">Completed</p>
+                            <p className="text-green-400">
+                              {formatDateLocal(new Date(item.completed_at))}
+                            </p>
+                          </div>
+                        )}
+                        {item.status === 'sent' && item.reminder_count > 0 && (
+                          <div>
+                            <p className="text-xs text-gray-500">Reminders Sent</p>
+                            <p className="text-gray-300">{item.reminder_count}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* View document link and Mark as Reviewed button */}
+                      {item.item_type === 'document' && (item.document_url || item.status === 'sent') && (
+                        <div className="mt-3 pt-3 border-t border-gray-700 flex items-center justify-between">
+                          {item.document_url && (
+                            <a
+                              href={item.document_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 text-sm text-blue-400 hover:text-blue-300"
+                            >
+                              <ExternalLink className="w-4 h-4" />
+                              View Document
+                            </a>
+                          )}
+                          {item.status === 'sent' && (
+                            <button
+                              onClick={() => updateOnboardingItem.mutate({
+                                id: item.id,
+                                updates: {
+                                  status: 'completed',
+                                  completed_at: new Date().toISOString(),
+                                },
+                              })}
+                              disabled={updateOnboardingItem.isPending}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm text-green-400 hover:text-green-300 hover:bg-green-500/10 rounded-lg transition-colors disabled:opacity-50"
+                            >
+                              {updateOnboardingItem.isPending ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Check className="w-4 h-4" />
+                              )}
+                              Mark as Reviewed
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {activeTab === 'history' && (
             <EmailHistory
               email={enrollment.family.primary_email}
@@ -547,6 +785,14 @@ export function EnrollmentDetailPanel({
           )}
         </div>
       </div>
+
+      {/* Send Forms Modal */}
+      <SendFormsModal
+        isOpen={showSendFormsModal}
+        enrollment={enrollment}
+        existingItems={onboardingItems}
+        onClose={() => setShowSendFormsModal(false)}
+      />
     </>
   );
 }
