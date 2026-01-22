@@ -171,6 +171,8 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** silently swallow errors in secondary operations - mutations with secondary steps (e.g., syncing event_orders after invoice payment, sending webhook emails) should return `{ data, warnings: string[] }`. Callers can then show warnings to users about partial failures. See `updateInvoice`, `recordPayment`, `createPayrollRun`, and check-in mutations for examples of this pattern.
 - **DON'T** forget to invalidate `stats.dashboard()` in mutations that affect Command Center metrics - the dashboard has a 60-second `staleTime`, so without explicit invalidation, metrics won't update immediately. Any mutation affecting invoices (outstanding balance), enrollments (student counts), or families should include `queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })` in its `onSuccess` handler.
 - **DON'T** pass empty strings to Supabase for nullable fields - PostgreSQL cannot convert `''` to date/timestamp types. Always use `value || null` pattern when saving form data: `due_date: dueDate || null`. This applies to all nullable date, timestamp, and optional string fields.
+- **DON'T** enable RLS on new tables - this internal admin app doesn't use Row Level Security. Other tables like `families`, `enrollments` have RLS disabled. If you create a new table, leave RLS disabled to match the existing pattern.
+- **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/viewform`) - use the edit ID format (`/forms/d/{id}/viewform`). The form IDs in our config are edit IDs from the form's edit URL, not the longer published IDs from the "Send" dialog.
 
 ---
 
