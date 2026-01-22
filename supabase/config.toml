@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.form-submitted]
 verify_jwt = false
+
+[functions.get-pending-onboarding]
+verify_jwt = false

@@ -22,7 +22,7 @@ When a family submits a Google Form, an Apps Script trigger sends a notification
 // Eaton Onboarding Form Submission Webhook
 // This script notifies the Eaton system when the form is submitted
 
-const WEBHOOK_URL = 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/form-submitted';
+const  WEBHOOK_URL = 'https://lxebvngzgabuqfugyqfj.supabase.co/functions/v1/form-submitted';
 
 function onFormSubmit(e) {
   try {

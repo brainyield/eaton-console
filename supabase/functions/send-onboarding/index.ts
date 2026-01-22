@@ -516,6 +516,7 @@ Deno.serve(async (req) => {
         }))
 
         const nudgePayload = {
+          enrollment_id: payload.enrollment_id,
           base: {
             customer_email: familyEmail,
             customer_name: parentFullName,

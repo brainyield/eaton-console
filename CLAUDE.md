@@ -173,6 +173,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** pass empty strings to Supabase for nullable fields - PostgreSQL cannot convert `''` to date/timestamp types. Always use `value || null` pattern when saving form data: `due_date: dueDate || null`. This applies to all nullable date, timestamp, and optional string fields.
 - **DON'T** enable RLS on new tables - this internal admin app doesn't use Row Level Security. Other tables like `families`, `enrollments` have RLS disabled. If you create a new table, leave RLS disabled to match the existing pattern.
 - **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/viewform`) - use the edit ID format (`/forms/d/{id}/viewform`). The form IDs in our config are edit IDs from the form's edit URL, not the longer published IDs from the "Send" dialog.
+- **DON'T** try to query Supabase directly from N8N workflows - N8N's free/starter plans don't support environment variables for credentials. Instead, create a helper edge function (like `get-pending-onboarding`) that N8N can call via HTTP. The edge function has automatic access to Supabase credentials and returns the data N8N needs.
 
 ---
 
