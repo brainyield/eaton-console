@@ -218,7 +218,7 @@ Deno.serve(async (req) => {
         family_id,
         student_id,
         service_id,
-        hourly_rate,
+        hourly_rate_customer,
         hours_per_week,
         service:services(id, code, name),
         student:students(id, full_name),
@@ -295,8 +295,8 @@ Deno.serve(async (req) => {
     }
 
     // Fall back to enrollment data if not in payload
-    if (!baseMergeData.HOURLY_RATE && enrollment.hourly_rate) {
-      baseMergeData.HOURLY_RATE = `$${enrollment.hourly_rate}/hr`
+    if (!baseMergeData.HOURLY_RATE && enrollment.hourly_rate_customer) {
+      baseMergeData.HOURLY_RATE = `$${enrollment.hourly_rate_customer}/hr`
     }
     if (!baseMergeData.HOURS_PER_WEEK && enrollment.hours_per_week) {
       baseMergeData.HOURS_PER_WEEK = String(enrollment.hours_per_week)
