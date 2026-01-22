@@ -1,5 +1,5 @@
 // Send Onboarding Forms/Documents API
-// Creates enrollment_onboarding records and sends emails via N8N Gmail webhook
+// Creates enrollment_onboarding records and sends emails via N8N Send Onboarding Email workflow
 //
 // Expected payload:
 // {
@@ -9,7 +9,7 @@
 // }
 //
 // Required env vars:
-// - N8N_GMAIL_WEBHOOK_URL: e.g., https://eatonacademic.app.n8n.cloud/webhook/gmail-send
+// - N8N_SEND_EMAIL_WEBHOOK_URL: e.g., https://eatonacademic.app.n8n.cloud/webhook/send-onboarding-email
 // - N8N_CREATE_DOCUMENT_WEBHOOK_URL: e.g., https://eatonacademic.app.n8n.cloud/webhook/create-document
 // - N8N_NUDGE_WEBHOOK_URL: e.g., https://eatonacademic.app.n8n.cloud/webhook/start-nudge
 
@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
-    const gmailWebhookUrl = Deno.env.get('N8N_GMAIL_WEBHOOK_URL')
+    const sendEmailWebhookUrl = Deno.env.get('N8N_SEND_EMAIL_WEBHOOK_URL')
     const createDocumentWebhookUrl = Deno.env.get('N8N_CREATE_DOCUMENT_WEBHOOK_URL')
     const nudgeWebhookUrl = Deno.env.get('N8N_NUDGE_WEBHOOK_URL')
 
@@ -257,7 +257,7 @@ Deno.serve(async (req) => {
 
     // Extract names
     const parentFullName = enrollment.family?.primary_contact_name || enrollment.family?.display_name || ''
-    const parentFirstName = getFirstName(parentFullName)
+    const _parentFirstName = getFirstName(parentFullName) // N8N workflow extracts first name from customer_name
     const studentFullName = enrollment.student?.full_name || ''
     const studentFirstName = getFirstName(studentFullName)
     const familyId = enrollment.family_id || ''
@@ -453,89 +453,57 @@ Deno.serve(async (req) => {
     }
     const serviceName = serviceDisplayNames[serviceCode] || 'Eaton Academic'
 
-    // Service-specific greetings with correct branding
-    const serviceGreetings: Record<string, string> = {
-      learning_pod: 'Welcome to the Eaton Academic Learning Pod!',
-      consulting: 'Welcome to Eaton Academic Homeschool Consulting!',
-      academic_coaching: 'Welcome to Eaton Academic Coaching!',
-      eaton_online: 'Welcome to Eaton Online!',
-    }
-    const greeting = serviceGreetings[serviceCode] || 'Welcome to Eaton Academic!'
-
-    // Build form links section
+    // Build items array for email
     const forms = insertedItems?.filter(item => item.item_type === 'form') || []
     const documents = insertedItems?.filter(item => item.item_type === 'document') || []
 
-    let formSection = ''
-    if (forms.length > 0) {
-      formSection = '\n\nREQUIRED FORMS\nPlease complete the following forms at your earliest convenience:\n'
-      for (const form of forms) {
-        formSection += `- ${form.item_name}: ${form.form_url}\n`
+    const emailItems: Array<{ name: string; url: string; type: 'form' | 'document' }> = []
+
+    for (const form of forms) {
+      if (form.form_url) {
+        emailItems.push({ name: form.item_name, url: form.form_url, type: 'form' })
       }
     }
 
-    let docSection = ''
-    if (documents.length > 0) {
-      const docsWithUrls = documents.filter(d => d.document_url)
-      const docsWithoutUrls = documents.filter(d => !d.document_url)
-
-      if (docsWithUrls.length > 0) {
-        docSection = `\n\nAGREEMENT DOCUMENTS\nPlease review the following agreement documents. They have been customized for ${studentFirstName}:\n`
-        for (const doc of docsWithUrls) {
-          docSection += `- ${doc.item_name}: ${doc.document_url}\n`
-        }
-      }
-
-      if (docsWithoutUrls.length > 0) {
-        docSection += '\n\nNote: Some documents are still being prepared and will be sent separately.\n'
+    for (const doc of documents) {
+      if (doc.document_url) {
+        emailItems.push({ name: doc.item_name, url: doc.document_url, type: 'document' })
       }
     }
 
-    const emailSubject = `Welcome to ${serviceName} - Action Required`
-    const emailBody = `${greeting}
-
-Hi ${parentFirstName},
-
-Thank you for choosing Eaton Academic for ${studentFirstName}'s education. We're excited to have you join our community!
-
-To complete the enrollment process, please complete the items below:
-${formSection}${docSection}
-
-If you have any questions, please don't hesitate to reach out.
-
-Best regards,
-The Eaton Team
-
----
-Eaton Academic | https://eatonacademic.com`
-
-    // Send email via N8N Gmail webhook
-    if (gmailWebhookUrl) {
+    // Send email via N8N Send Onboarding Email workflow
+    if (sendEmailWebhookUrl) {
       try {
-        const emailResponse = await fetch(gmailWebhookUrl, {
+        const emailPayload = {
+          to: familyEmail,
+          email_type: 'initial',
+          customer_name: parentFullName,
+          student_name: studentFirstName,
+          service_name: serviceName,
+          items: emailItems,
+        }
+
+        console.log('Sending onboarding email via N8N workflow')
+        const emailResponse = await fetch(sendEmailWebhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            to: familyEmail,
-            subject: emailSubject,
-            body: emailBody,
-          }),
+          body: JSON.stringify(emailPayload),
         })
 
         if (!emailResponse.ok) {
           const errorText = await emailResponse.text()
-          console.error('Gmail webhook failed:', errorText)
+          console.error('Send email webhook failed:', errorText)
           warnings.push('Failed to send email - forms recorded but emails may not have been sent')
         } else {
           const result = await emailResponse.json()
           console.log('Email sent successfully, messageId:', result.messageId)
         }
       } catch (emailError) {
-        console.error('Gmail webhook error:', emailError)
+        console.error('Send email webhook error:', emailError)
         warnings.push('Failed to send email - forms recorded but emails may not have been sent')
       }
     } else {
-      console.log('Gmail webhook URL not configured - skipping email')
+      console.log('Send email webhook URL not configured - skipping email')
       warnings.push('Email not configured - forms recorded but no emails sent')
     }
 
