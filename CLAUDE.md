@@ -52,6 +52,21 @@ src/
 
 ---
 
+## Admin Access Control
+
+Admin routes are protected by a client-side password gate (`AdminGate.tsx`). This prevents accidental access but is not cryptographically secure.
+
+**Protected routes:** `/`, `/directory`, `/roster`, `/events`, `/marketing`, `/invoicing`, `/payroll`, `/teachers`, `/reports`, `/settings`
+
+**Public routes (no password):** `/desk/:token`, `/desk/:token/checkin/:periodId`, `/invoice/:publicId`
+
+**Configuration:**
+- Set `VITE_ADMIN_PASSWORD` in `.env.local` (local) and Vercel env vars (production)
+- Auth persists in localStorage for 30 days
+- To logout: `localStorage.removeItem('eaton_admin_auth')`
+
+---
+
 ## Critical Patterns
 
 ### Dates - ALWAYS Use Timezone-Safe Utilities

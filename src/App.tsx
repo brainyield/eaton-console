@@ -15,6 +15,7 @@ import Events from './components/Events'
 import Marketing from './components/Marketing'
 import Reports from './components/Reports'
 import Settings from './components/Settings'
+import AdminGate from './components/AdminGate'
 
 // Wrapper component that provides navigation context
 function AppContent() {
@@ -42,83 +43,113 @@ function AppContent() {
   }
 
   return (
-    <>
-      <CommandPalette onSelect={handleSearchSelect} />
-      <Routes>
-        {/* Admin routes - wrapped in Layout */}
-        <Route path="/" element={
+    <Routes>
+      {/* Public routes - NO Layout wrapper, NO AdminGate */}
+      <Route path="/invoice/:publicId" element={<PublicInvoiceWrapper />} />
+      <Route path="/desk/:token" element={<TeacherDeskWrapper />} />
+      <Route path="/desk/:token/checkin/:periodId" element={<CheckinFormWrapper />} />
+
+      {/* Admin routes - wrapped in AdminGate and Layout */}
+      <Route path="/" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <CommandCenter />
           </Layout>
-        } />
-        <Route path="/directory" element={
+        </AdminGate>
+      } />
+      <Route path="/directory" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/directory" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Directory
               selectedFamilyId={selectedFamilyId}
               onSelectFamily={setSelectedFamilyId}
             />
           </Layout>
-        } />
-        <Route path="/roster" element={
+        </AdminGate>
+      } />
+      <Route path="/roster" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/roster" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <ActiveRoster />
           </Layout>
-        } />
-        <Route path="/events" element={
+        </AdminGate>
+      } />
+      <Route path="/events" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/events" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Events />
           </Layout>
-        } />
-        <Route path="/marketing" element={
+        </AdminGate>
+      } />
+      <Route path="/marketing" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/marketing" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Marketing />
           </Layout>
-        } />
-        <Route path="/invoicing" element={
+        </AdminGate>
+      } />
+      <Route path="/invoicing" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/invoicing" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Invoicing />
           </Layout>
-        } />
-        <Route path="/payroll" element={
+        </AdminGate>
+      } />
+      <Route path="/payroll" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/payroll" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Payroll />
           </Layout>
-        } />
-        <Route path="/teachers" element={
+        </AdminGate>
+      } />
+      <Route path="/teachers" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/teachers" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Teachers
               selectedTeacherId={selectedTeacherId}
               onSelectTeacher={setSelectedTeacherId}
             />
           </Layout>
-        } />
-        <Route path="/reports" element={
+        </AdminGate>
+      } />
+      <Route path="/reports" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/reports" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Reports />
           </Layout>
-        } />
-        <Route path="/settings" element={
+        </AdminGate>
+      } />
+      <Route path="/settings" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/settings" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Settings />
           </Layout>
-        } />
+        </AdminGate>
+      } />
 
-        {/* Public routes - NO Layout wrapper */}
-        <Route path="/invoice/:publicId" element={<PublicInvoiceWrapper />} />
-        <Route path="/desk/:token" element={<TeacherDeskWrapper />} />
-        <Route path="/desk/:token/checkin/:periodId" element={<CheckinFormWrapper />} />
-
-        {/* Catch-all redirect to directory */}
-        <Route path="*" element={
+      {/* Catch-all redirect to directory */}
+      <Route path="*" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/directory" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Directory
               selectedFamilyId={selectedFamilyId}
               onSelectFamily={setSelectedFamilyId}
             />
           </Layout>
-        } />
-      </Routes>
-    </>
+        </AdminGate>
+      } />
+    </Routes>
   )
 }
 
