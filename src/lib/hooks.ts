@@ -6065,7 +6065,8 @@ export function useCheckinMutations() {
       if (error) throw error
 
       // Send emails via n8n webhook for each invite with an email
-      const baseUrl = window.location.origin
+      // Use VITE_APP_URL in production to avoid localhost URLs in emails
+      const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
       for (const invite of invites) {
         if (invite.teacher?.email && invite.teacher?.desk_token) {
           try {
@@ -6137,7 +6138,8 @@ export function useCheckinMutations() {
       }
 
       // Send reminder emails via n8n webhook for each invite with an email
-      const baseUrl = window.location.origin
+      // Use VITE_APP_URL in production to avoid localhost URLs in emails
+      const baseUrl = import.meta.env.VITE_APP_URL || window.location.origin
       for (const invite of invites) {
         if (invite.teacher?.email && invite.teacher?.desk_token) {
           try {

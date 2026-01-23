@@ -175,6 +175,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/viewform`) - use the edit ID format (`/forms/d/{id}/viewform`). The form IDs in our config are edit IDs from the form's edit URL, not the longer published IDs from the "Send" dialog.
 - **DON'T** try to query Supabase directly from N8N workflows - N8N's free/starter plans don't support environment variables for credentials. Instead, create a helper edge function (like `get-pending-onboarding`) that N8N can call via HTTP. The edge function has automatic access to Supabase credentials and returns the data N8N needs.
 - **DON'T** leave database triggers that reference deprecated tables/columns - triggers can silently fail while the main operation succeeds. After schema changes that remove tables/columns, audit triggers in Supabase Dashboard → Database → Triggers and drop any that reference removed objects. Example: `trigger_update_lead_score_on_activity` referenced the deprecated `leads` table, causing webhooks to partially succeed (family created, but lead_activities insert failed silently).
+- **DON'T** use `window.location.origin` for URLs sent in emails - when sending from localhost, emails will contain localhost URLs that recipients can't access. Use `import.meta.env.VITE_APP_URL || window.location.origin` and set `VITE_APP_URL` in production (Vercel env vars). The fallback allows local testing while ensuring production emails have correct URLs.
 
 ---
 
