@@ -3824,15 +3824,6 @@ export type Database = {
       }
     }
     Functions: {
-      calculate_lead_score: {
-        Args: {
-          p_contact_count: number
-          p_created_at: string
-          p_engagement_score: number
-          p_lead_type: string
-        }
-        Returns: number
-      }
       derive_age_group: { Args: { age: number }; Returns: string }
       find_or_create_family_for_purchase: {
         Args: {
