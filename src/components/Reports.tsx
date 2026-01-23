@@ -172,12 +172,9 @@ export default function Reports() {
   } = useQuery({
     queryKey: queryKeys.reports.revenue(startDate),
     queryFn: async () => {
-      // Fetch revenue records
-      const { data: revenueData, error: revenueErr } = await supabase
-        .from('revenue_records')
-        .select('period_start, revenue, service_id')
-        .gte('period_start', startDate)
-        .order('period_start', { ascending: true })
+      // Use database function to aggregate revenue (avoids 1000 row limit)
+      const { data: aggregatedData, error: revenueErr } = await supabase
+        .rpc('get_revenue_by_month', { p_start_date: startDate })
 
       if (revenueErr) throw revenueErr
 
@@ -195,7 +192,7 @@ export default function Reports() {
         }
       })
 
-      const records = revenueData || []
+      const records = aggregatedData || []
 
       // Group by month (total)
       const monthlyData: Record<string, number> = {}
@@ -203,10 +200,9 @@ export default function Reports() {
       const monthlyByService: Record<string, Record<string, number>> = {}
       const allServices = new Set<string>()
 
-      records.forEach((rec: { period_start: string; revenue: number | null; service_id: string | null }) => {
-        const [year, month] = rec.period_start.split('-')
-        const monthKey = `${year}-${month}`
-        const revenue = Number(rec.revenue) || 0
+      records.forEach((rec: { month: string; service_id: string | null; total_revenue: number | null }) => {
+        const monthKey = rec.month
+        const revenue = Number(rec.total_revenue) || 0
         const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'unknown'
 
         // Total by month
@@ -459,80 +455,24 @@ export default function Reports() {
     error: locationErrorMsg,
     refetch: refetchLocation
   } = useQuery({
-    queryKey: ['reports', 'revenueByLocation', startDate],
+    queryKey: queryKeys.reports.location(startDate),
     queryFn: async () => {
-      // Fetch revenue records with direct location join
-      const { data: revenueData, error: revenueErr } = await supabase
-        .from('revenue_records')
-        .select(`
-          revenue,
-          location_id,
-          location:locations (
-            id,
-            name,
-            code
-          )
-        `)
-        .gte('period_start', startDate)
+      // Use database function to aggregate revenue by location (avoids 1000 row limit)
+      const { data: aggregatedData, error: revenueErr } = await supabase
+        .rpc('get_revenue_by_location', { p_start_date: startDate })
 
       if (revenueErr) throw revenueErr
 
-      // Fetch locations for reference (including those with no revenue yet)
-      const { data: locationsData } = await supabase
-        .from('locations')
-        .select('id, name, code')
-        .eq('is_active', true)
-
-      // Group by location
-      const locationData: Record<string, { name: string; code: string; revenue: number; records: number }> = {}
-
-      // Initialize with all locations
-      ;(locationsData || []).forEach((loc: { id: string; name: string; code: string }) => {
-        locationData[loc.id] = {
-          name: loc.name,
-          code: loc.code,
-          revenue: 0,
-          records: 0,
-        }
-      })
-
-      // Add a "No Location" bucket for academic coaching, etc.
-      locationData['none'] = {
-        name: 'No Location',
-        code: 'none',
-        revenue: 0,
-        records: 0,
-      }
-
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ;(revenueData || []).forEach((rec: any) => {
-        const revenue = Number(rec.revenue) || 0
-        const location = rec.location
-        const locationId = rec.location_id || 'none'
-
-        if (!locationData[locationId]) {
-          locationData[locationId] = {
-            name: location?.name || 'Unknown',
-            code: location?.code || 'unknown',
-            revenue: 0,
-            records: 0,
-          }
-        }
-
-        locationData[locationId].revenue += revenue
-        locationData[locationId].records++
-      })
-
-      // Convert to array for chart
-      const chartData: RevenueByLocation[] = Object.values(locationData)
-        .filter((loc) => loc.revenue > 0)
-        .map((loc) => ({
-          name: loc.name,
-          code: loc.code,
-          revenue: Math.round(loc.revenue),
-          enrollments: loc.records, // Using records count instead of enrollments
+      // Convert to chart format
+      const chartData: RevenueByLocation[] = (aggregatedData || [])
+        .map((rec: { location_id: string | null; location_name: string | null; location_code: string | null; total_revenue: number; record_count: number }) => ({
+          name: rec.location_name || 'No Location',
+          code: rec.location_code || 'none',
+          revenue: Math.round(Number(rec.total_revenue) || 0),
+          enrollments: Number(rec.record_count) || 0,
         }))
-        .sort((a, b) => b.revenue - a.revenue)
+        .filter((loc: RevenueByLocation) => loc.revenue > 0)
+        .sort((a: RevenueByLocation, b: RevenueByLocation) => b.revenue - a.revenue)
 
       return {
         locationData: chartData,

@@ -269,6 +269,7 @@ export const queryKeys = {
     enrollments: () => ['reports', 'enrollments'] as const,
     balances: () => ['reports', 'balances'] as const,
     payroll: (startDate: string) => ['reports', 'payroll', startDate] as const,
+    location: (startDate: string) => ['reports', 'location', startDate] as const,
   },
 
   // Check-ins (Teacher's Desk)

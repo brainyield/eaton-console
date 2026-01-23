@@ -3868,6 +3868,24 @@ export type Database = {
           status_2: string
         }[]
       }
+      get_revenue_by_location: {
+        Args: { p_start_date: string }
+        Returns: {
+          location_code: string
+          location_id: string
+          location_name: string
+          record_count: number
+          total_revenue: number
+        }[]
+      }
+      get_revenue_by_month: {
+        Args: { p_start_date: string }
+        Returns: {
+          month: string
+          service_id: string
+          total_revenue: number
+        }[]
+      }
       mark_overdue_invoices: { Args: never; Returns: undefined }
       merge_family: {
         Args: { p_delete_id: string; p_keep_id: string; p_reason?: string }

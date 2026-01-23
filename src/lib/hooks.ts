@@ -1233,6 +1233,8 @@ export function useEnrollmentMutations() {
         queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byStudent(enrollment.student_id) })
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.billable() })
+      // Invalidate reports - enrollments by service chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.enrollments() })
     },
   })
 
@@ -1258,6 +1260,8 @@ export function useEnrollmentMutations() {
         queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byStudent(enrollment.student_id) })
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.billable() })
+      // Invalidate reports - enrollments by service chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.enrollments() })
     },
   })
 
@@ -1286,6 +1290,8 @@ export function useEnrollmentMutations() {
         queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.byStudent(enrollment.student_id) })
       }
       queryClient.invalidateQueries({ queryKey: queryKeys.enrollments.billable() })
+      // Invalidate reports - enrollments by service chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.enrollments() })
     },
   })
 
@@ -2625,6 +2631,9 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       // Invalidate dashboard stats so outstanding balance updates when invoices are sent
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate reports - balance aging and revenue charts
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.balances() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
     },
     // Suppress global error toast - callers handle errors explicitly
     onError: (error) => {
@@ -2732,6 +2741,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       // Invalidate dashboard stats so outstanding balance updates
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate reports - balance aging chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.balances() })
     },
   })
 
@@ -2756,6 +2767,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       // Invalidate dashboard stats so outstanding balance updates
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate reports - balance aging chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.balances() })
     },
   })
 
@@ -2776,6 +2789,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       // Invalidate dashboard stats so outstanding balance updates
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate reports - balance aging chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.balances() })
     },
   })
 
@@ -2797,6 +2812,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       // Invalidate dashboard stats so outstanding balance updates
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      // Invalidate reports - balance aging chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.balances() })
     },
   })
 
@@ -2895,6 +2912,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoicePayments.byInvoice(variables.invoiceId) })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate all reports - payments affect revenue (via DB trigger), balance aging, and location revenue
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
     },
   })
 
@@ -4172,6 +4191,8 @@ export function usePayrollMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.pendingAdjustments() })
+      // Invalidate reports - payroll by month chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
     },
   })
 
@@ -4214,6 +4235,8 @@ export function usePayrollMutations() {
       // so TeacherDetailPanel's payroll tab updates automatically
       if (variables.status === 'paid') {
         queryClient.invalidateQueries({ queryKey: ['payroll', 'teacher'] })
+        // Invalidate reports - payroll by month chart
+        queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
       }
     },
   })
