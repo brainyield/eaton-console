@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Trash2 } from 'lucide-react'
 import { useTeacherMutations, useTeacherAssignments, useTeacherPaymentsByTeacher } from '../lib/hooks'
 import type { Teacher, EmployeeStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
 import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 
 interface EditTeacherModalProps {
   isOpen: boolean
@@ -415,33 +415,16 @@ export function EditTeacherModal({
             </div>
           </div>
 
-          <div className="flex justify-between items-center pt-4 border-t border-zinc-700">
-            <button
-              type="button"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="flex items-center gap-2 px-4 py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
-            >
-              <Trash2 className="w-4 h-4" aria-hidden="true" />
-              Delete Teacher
-            </button>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={updateTeacher.isPending}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-              >
-                {updateTeacher.isPending ? 'Saving...' : 'Save Changes'}
-              </button>
-            </div>
-          </div>
+          <ModalFooter
+            onCancel={onClose}
+            isSubmitting={updateTeacher.isPending}
+            submitText="Save Changes"
+            loadingText="Saving..."
+            deleteConfig={{
+              onDelete: () => setShowDeleteConfirm(true),
+              text: 'Delete Teacher',
+            }}
+          />
         </form>
       </AccessibleModal>
 

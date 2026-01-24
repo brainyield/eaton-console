@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { Loader2, UserMinus, AlertCircle } from 'lucide-react';
+import { UserMinus, AlertCircle } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AccessibleModal } from './ui/AccessibleModal';
+import { ModalFooter } from './ui/ModalFooter';
 import {
   useEnrollmentMutations,
   useTeacherAssignmentMutations,
@@ -159,32 +160,15 @@ export function EndEnrollmentModal({
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                Ending...
-              </>
-            ) : (
-              <>
-                <UserMinus className="w-4 h-4" aria-hidden="true" />
-                End Enrollment
-              </>
-            )}
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={handleClose}
+          isSubmitting={isSubmitting}
+          submitText="End Enrollment"
+          loadingText="Ending..."
+          submitVariant="danger"
+          showSpinner={true}
+          submitIcon={<UserMinus className="w-4 h-4" aria-hidden="true" />}
+        />
       </form>
     </AccessibleModal>
   );

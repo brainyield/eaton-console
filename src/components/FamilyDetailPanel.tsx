@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, ExternalLink, MessageSquare } from 'lucide-react'
-import { useEnrollmentsByFamily, useInvoicesByFamily, type Family, type Student, type CustomerStatus, type EnrollmentStatus, type InvoiceStatus } from '../lib/hooks'
+import { useEnrollmentsByFamily, useInvoicesByFamily, type Family, type Student, type EnrollmentStatus, type InvoiceStatus } from '../lib/hooks'
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
@@ -10,6 +10,11 @@ import { SmsComposeModal } from './sms/SmsComposeModal'
 import { calculateAge } from '../lib/utils'
 import { parseLocalDate } from '../lib/dateUtils'
 import { isValidPhone } from '../lib/phoneUtils'
+import {
+  CUSTOMER_STATUS_COLORS_WITH_BORDER,
+  ENROLLMENT_STATUS_COLORS,
+  INVOICE_STATUS_COLORS,
+} from './ui/StatusBadge'
 
 interface FamilyWithStudents extends Family {
   students: Student[]
@@ -19,30 +24,6 @@ interface FamilyDetailPanelProps {
   family: FamilyWithStudents
   onClose: () => void
   onFamilyUpdated?: () => void
-}
-
-const STATUS_COLORS: Record<CustomerStatus, string> = {
-  lead: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-  active: 'bg-green-500/20 text-green-400 border-green-500/30',
-  trial: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  paused: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  churned: 'bg-red-500/20 text-red-400 border-red-500/30',
-}
-
-const ENROLLMENT_STATUS_COLORS: Record<EnrollmentStatus, string> = {
-  active: 'bg-green-500/20 text-green-400',
-  trial: 'bg-blue-500/20 text-blue-400',
-  paused: 'bg-amber-500/20 text-amber-400',
-  ended: 'bg-zinc-500/20 text-zinc-400',
-}
-
-const INVOICE_STATUS_COLORS: Record<InvoiceStatus, string> = {
-  draft: 'bg-zinc-500/20 text-zinc-400',
-  sent: 'bg-blue-500/20 text-blue-400',
-  paid: 'bg-green-500/20 text-green-400',
-  partial: 'bg-amber-500/20 text-amber-400',
-  overdue: 'bg-red-500/20 text-red-400',
-  void: 'bg-zinc-500/20 text-zinc-500 line-through',
 }
 
 
@@ -155,7 +136,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
         <div className="px-6 py-4 border-b border-zinc-800">
           <div className="flex items-start justify-between mb-3">
             <h2 className="text-xl font-semibold text-white">{family.display_name}</h2>
-            <span className={`text-sm font-medium rounded-full px-3 py-1 border ${STATUS_COLORS[family.status]}`}>
+            <span className={`text-sm font-medium rounded-full px-3 py-1 border ${CUSTOMER_STATUS_COLORS_WITH_BORDER[family.status]}`}>
               {family.status}
             </span>
           </div>

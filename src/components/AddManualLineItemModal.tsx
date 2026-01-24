@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { DollarSign, Clock, AlertCircle } from 'lucide-react'
 import { AccessibleModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 import { useActiveTeachers, usePayrollMutations } from '../lib/hooks'
 import { multiplyMoney } from '../lib/moneyUtils'
 import type { Teacher } from '../lib/hooks'
@@ -217,21 +218,13 @@ export default function AddManualLineItemModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-zinc-700">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-zinc-300 hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? 'Adding...' : 'Add Line Item'}
-          </button>
+        <div className="px-6 py-4">
+          <ModalFooter
+            onCancel={onClose}
+            isSubmitting={isSubmitting}
+            submitText="Add Line Item"
+            loadingText="Adding..."
+          />
         </div>
       </form>
     </AccessibleModal>

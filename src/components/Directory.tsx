@@ -19,18 +19,11 @@ import {
 import { FamilyDetailPanel } from './FamilyDetailPanel'
 import { AddFamilyModal } from './AddFamilyModal'
 import { calculateAge } from '../lib/utils'
+import { CUSTOMER_STATUS_COLORS } from './ui/StatusBadge'
 
 interface DirectoryProps {
   selectedFamilyId?: string | null
   onSelectFamily?: (id: string | null) => void
-}
-
-const STATUS_COLORS: Record<CustomerStatus, string> = {
-  lead: 'bg-violet-500/20 text-violet-400',
-  active: 'bg-green-500/20 text-green-400',
-  trial: 'bg-blue-500/20 text-blue-400',
-  paused: 'bg-amber-500/20 text-amber-400',
-  churned: 'bg-red-500/20 text-red-400',
 }
 
 // Hook to fetch a single family by ID (for external selection)
@@ -558,7 +551,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[family.status]}`}>
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${CUSTOMER_STATUS_COLORS[family.status]}`}>
                         {family.status}
                       </span>
                     </td>

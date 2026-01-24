@@ -33,6 +33,12 @@ import { SortableTableHeader, useSortState } from './ui/SortableTableHeader'
 import { bulkSyncLeadsToMailchimp, bulkSyncEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { formatNameLastFirst } from '../lib/utils'
+import {
+  LEAD_ENGAGEMENT_COLORS,
+  LEAD_TYPE_COLORS,
+  LEAD_STATUS_COLORS,
+  LEAD_STATUS_LABELS,
+} from './ui/StatusBadge'
 
 type EngagementFilter = '' | 'cold' | 'warm' | 'hot'
 type TabType = 'leads' | 'event_leads' | 'campaigns' | 'analytics'
@@ -48,38 +54,11 @@ type EventPurchaserSortField = 'family' | 'email' | 'phone' | 'orders' | 'spend'
 
 const LEADS_PAGE_SIZE = 50 // Number of leads per page
 
-const scoreLabelColors: Record<'hot' | 'warm' | 'cold', string> = {
-  hot: 'bg-red-500/20 text-red-400',
-  warm: 'bg-orange-500/20 text-orange-400',
-  cold: 'bg-zinc-500/20 text-zinc-400',
-}
-
 const leadTypeLabels: Record<LeadType, string> = {
   exit_intent: 'Exit Intent',
   waitlist: 'Waitlist',
   calendly_call: 'Calendly',
   event: 'Event',
-}
-
-const leadTypeColors: Record<LeadType, string> = {
-  exit_intent: 'bg-purple-500/20 text-purple-400',
-  waitlist: 'bg-green-500/20 text-green-400',
-  calendly_call: 'bg-blue-500/20 text-blue-400',
-  event: 'bg-orange-500/20 text-orange-400',
-}
-
-const statusLabels: Record<LeadStatus, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  converted: 'Converted',
-  closed: 'Closed',
-}
-
-const statusColors: Record<LeadStatus, string> = {
-  new: 'bg-yellow-500/20 text-yellow-400',
-  contacted: 'bg-blue-500/20 text-blue-400',
-  converted: 'bg-green-500/20 text-green-400',
-  closed: 'bg-zinc-500/20 text-zinc-400',
 }
 
 export default function Marketing() {
@@ -1090,21 +1069,21 @@ export default function Marketing() {
                     </td>
                     <td className="px-4 py-3">
                       {lead.lead_type && (
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${leadTypeColors[lead.lead_type]}`}>
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${LEAD_TYPE_COLORS[lead.lead_type]}`}>
                           {leadTypeLabels[lead.lead_type]}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       {lead.lead_status && (
-                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${statusColors[lead.lead_status]}`}>
-                          {statusLabels[lead.lead_status]}
+                        <span className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${LEAD_STATUS_COLORS[lead.lead_status]}`}>
+                          {LEAD_STATUS_LABELS[lead.lead_status]}
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
-                        className={`inline-flex px-2 py-1 text-xs font-medium rounded ${scoreLabelColors[getScoreLabel(lead.computed_score ?? 0)]}`}
+                        className={`inline-flex px-2 py-1 text-xs font-medium rounded ${LEAD_ENGAGEMENT_COLORS[getScoreLabel(lead.computed_score ?? 0)]}`}
                         title={`Score: ${lead.computed_score ?? 0}`}
                       >
                         {getScoreLabel(lead.computed_score ?? 0).toUpperCase()}
@@ -1293,13 +1272,13 @@ export default function Marketing() {
                             </td>
                             <td className="px-4 py-3">
                               {lead.lead_status && (
-                                <span className={`px-2 py-1 text-xs font-medium rounded ${statusColors[lead.lead_status]}`}>
-                                  {statusLabels[lead.lead_status]}
+                                <span className={`px-2 py-1 text-xs font-medium rounded ${LEAD_STATUS_COLORS[lead.lead_status]}`}>
+                                  {LEAD_STATUS_LABELS[lead.lead_status]}
                                 </span>
                               )}
                             </td>
                             <td className="px-4 py-3">
-                              <span className={`px-2 py-1 text-xs font-medium rounded ${scoreLabelColors[scoreLabel]}`}>
+                              <span className={`px-2 py-1 text-xs font-medium rounded ${LEAD_ENGAGEMENT_COLORS[scoreLabel]}`}>
                                 {scoreLabel.charAt(0).toUpperCase() + scoreLabel.slice(1)}
                               </span>
                             </td>

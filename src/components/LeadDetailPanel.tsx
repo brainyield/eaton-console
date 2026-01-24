@@ -25,12 +25,11 @@ import { parseLocalDate, daysBetween, dateAtMidnight } from '../lib/dateUtils'
 import { syncLeadToMailchimp, syncLeadEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { useToast } from '../lib/toast'
-
-const engagementColors = {
-  cold: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-  warm: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  hot: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
-}
+import {
+  LEAD_ENGAGEMENT_COLORS_WITH_BORDER,
+  LEAD_STATUS_COLORS_WITH_BORDER,
+  LEAD_STATUS_LABELS,
+} from './ui/StatusBadge'
 
 const contactTypeIcons: Record<ContactType, typeof Phone> = {
   call: PhoneCall,
@@ -50,20 +49,6 @@ interface LeadDetailPanelProps {
   lead: LeadFamily
   onClose: () => void
   onEdit: () => void
-}
-
-const statusLabels: Record<LeadStatus, string> = {
-  new: 'New',
-  contacted: 'Contacted',
-  converted: 'Converted',
-  closed: 'Closed',
-}
-
-const statusColors: Record<LeadStatus, string> = {
-  new: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  contacted: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  converted: 'bg-green-500/20 text-green-400 border-green-500/30',
-  closed: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
 }
 
 export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps) {
@@ -339,11 +324,11 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
                 onClick={() => handleStatusChange(status)}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg border transition-colors ${
                   lead.lead_status === status
-                    ? statusColors[status]
+                    ? LEAD_STATUS_COLORS_WITH_BORDER[status]
                     : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:border-zinc-600'
                 }`}
               >
-                {statusLabels[status]}
+                {LEAD_STATUS_LABELS[status]}
               </button>
             ))}
           </div>
@@ -705,7 +690,7 @@ export function LeadDetailPanel({ lead, onClose, onEdit }: LeadDetailPanelProps)
                   </button>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${engagementColors[getEngagementLevel(lead.mailchimp_engagement_score)]}`}>
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full border ${LEAD_ENGAGEMENT_COLORS_WITH_BORDER[getEngagementLevel(lead.mailchimp_engagement_score)]}`}>
                     {getEngagementLevel(lead.mailchimp_engagement_score).toUpperCase()}
                   </span>
                   <span className="text-xs text-zinc-400">

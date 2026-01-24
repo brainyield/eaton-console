@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Loader2, Plus, AlertCircle, Search } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { AccessibleSlidePanel } from './ui/AccessibleSlidePanel';
+import { ModalFooter } from './ui/ModalFooter';
 import {
   useFamiliesWithStudents,
   useActiveServices,
@@ -924,32 +925,15 @@ export function AddEnrollmentModal({
           )}
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                  Creating...
-                </>
-              ) : (
-                <>
-                  <Plus className="w-4 h-4" aria-hidden="true" />
-                  Create Enrollment
-                </>
-              )}
-            </button>
-          </div>
+          <ModalFooter
+            onCancel={handleClose}
+            isSubmitting={isSubmitting}
+            submitText="Create Enrollment"
+            loadingText="Creating..."
+            submitVariant="success"
+            showSpinner
+            submitIcon={<Plus className="w-4 h-4" aria-hidden="true" />}
+          />
         </form>
       )}
     </AccessibleSlidePanel>

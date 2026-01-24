@@ -30,6 +30,17 @@ import {
   AlertCircle,
   Info,
 } from 'lucide-react'
+import {
+  CHART_COLORS,
+  PIE_COLORS,
+  SERVICE_COLORS,
+  LOCATION_COLORS,
+  TOOLTIP_STYLE,
+  TOOLTIP_ITEM_STYLE,
+  TOOLTIP_LABEL_STYLE,
+  BAR_RADIUS_TOP,
+  BAR_RADIUS_RIGHT,
+} from '../lib/chartTheme'
 
 // Supabase response types
 interface EnrollmentRow {
@@ -88,42 +99,6 @@ interface RevenueByLocation {
   code: string
   revenue: number
   enrollments: number
-}
-
-// Color palette for dark mode
-const COLORS = {
-  primary: '#3b82f6',
-  secondary: '#10b981',
-  accent: '#f59e0b',
-  danger: '#ef4444',
-  purple: '#8b5cf6',
-  pink: '#ec4899',
-  cyan: '#06b6d4',
-}
-
-const PIE_COLORS = [
-  COLORS.primary,
-  COLORS.secondary,
-  COLORS.accent,
-  COLORS.purple,
-  COLORS.pink,
-  COLORS.cyan,
-  COLORS.danger,
-]
-
-const SERVICE_COLORS: Record<string, string> = {
-  academic_coaching: COLORS.primary,
-  learning_pod: COLORS.secondary,
-  consulting: COLORS.accent,
-  eaton_online: COLORS.pink,
-  eaton_hub: COLORS.cyan,
-  elective_classes: '#f97316',
-}
-
-const LOCATION_COLORS: Record<string, string> = {
-  kendall: COLORS.secondary,
-  homestead: COLORS.primary,
-  remote: COLORS.purple,
 }
 
 // Date range options
@@ -510,22 +485,6 @@ export default function Reports() {
 
   const locationData = locationResult?.locationData ?? []
 
-  // Custom tooltip styles for dark mode
-  const tooltipStyle = {
-    backgroundColor: '#1f2937',
-    border: '1px solid #374151',
-    borderRadius: '8px',
-    color: '#e5e7eb',
-  }
-
-  const tooltipItemStyle = {
-    color: '#e5e7eb',
-  }
-
-  const tooltipLabelStyle = {
-    color: '#9ca3af',
-  }
-
   // Pie chart data (memoized for performance)
   const pieData = useMemo(
     () => (enrollmentResult?.enrollmentData ?? []).map(({ name, value }) => ({ name, value })),
@@ -651,12 +610,12 @@ export default function Reports() {
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
                 <Tooltip 
-                  contentStyle={tooltipStyle}
-                  itemStyle={tooltipItemStyle}
-                  labelStyle={tooltipLabelStyle}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
                   formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
                 />
-                <Bar dataKey="revenue" name="Revenue" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.primary} radius={BAR_RADIUS_TOP} />
               </BarChart>
             </ResponsiveContainer>
           )}
@@ -688,9 +647,9 @@ export default function Reports() {
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
                 <Tooltip
-                  contentStyle={tooltipStyle}
-                  itemStyle={tooltipItemStyle}
-                  labelStyle={tooltipLabelStyle}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
                   formatter={(value, name) => [`$${Number(value).toLocaleString()}`, serviceNameMap[name as string] || name]}
                 />
                 <Legend 
@@ -702,7 +661,7 @@ export default function Reports() {
                     key={key} 
                     dataKey={key} 
                     stackId="a" 
-                    fill={SERVICE_COLORS[key] || COLORS.primary} 
+                    fill={SERVICE_COLORS[key] || CHART_COLORS.primary} 
                   />
                 ))}
               </BarChart>
@@ -748,7 +707,7 @@ export default function Reports() {
                       <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={tooltipStyle} itemStyle={tooltipItemStyle} labelStyle={tooltipLabelStyle} />
+                  <Tooltip contentStyle={TOOLTIP_STYLE} itemStyle={TOOLTIP_ITEM_STYLE} labelStyle={TOOLTIP_LABEL_STYLE} />
                 </PieChart>
               </ResponsiveContainer>
               <div className="w-40 space-y-2">
@@ -793,23 +752,23 @@ export default function Reports() {
                 <XAxis dataKey="bucket" stroke="#9ca3af" tick={{ fill: '#9ca3af', fontSize: 12 }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
                 <Tooltip
-                  contentStyle={tooltipStyle}
-                  itemStyle={tooltipItemStyle}
-                  labelStyle={tooltipLabelStyle}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
                   formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Amount']}
                 />
-                <Bar dataKey="amount" name="Amount" radius={[4, 4, 0, 0]}>
+                <Bar dataKey="amount" name="Amount" radius={BAR_RADIUS_TOP}>
                   {balanceData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={
                         entry.bucket === 'Current'
-                          ? COLORS.secondary
+                          ? CHART_COLORS.secondary
                           : entry.bucket === '1-30 Days'
-                          ? COLORS.accent
+                          ? CHART_COLORS.accent
                           : entry.bucket === '31-60 Days'
                           ? '#f97316'
-                          : COLORS.danger
+                          : CHART_COLORS.danger
                       }
                     />
                   ))}
@@ -846,16 +805,16 @@ export default function Reports() {
                   <XAxis type="number" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
                   <YAxis dataKey="name" type="category" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} width={100} />
                   <Tooltip
-                    contentStyle={tooltipStyle}
-                    itemStyle={tooltipItemStyle}
-                    labelStyle={tooltipLabelStyle}
+                    contentStyle={TOOLTIP_STYLE}
+                    itemStyle={TOOLTIP_ITEM_STYLE}
+                    labelStyle={TOOLTIP_LABEL_STYLE}
                     formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
                   />
-                  <Bar dataKey="revenue" radius={[0, 4, 4, 0]}>
+                  <Bar dataKey="revenue" radius={BAR_RADIUS_RIGHT}>
                     {locationData.map((entry) => (
                       <Cell
                         key={`cell-${entry.code}`}
-                        fill={LOCATION_COLORS[entry.code] || COLORS.primary}
+                        fill={LOCATION_COLORS[entry.code] || CHART_COLORS.primary}
                       />
                     ))}
                   </Bar>
@@ -866,7 +825,7 @@ export default function Reports() {
                   <div key={entry.code} className="flex items-center gap-3">
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: LOCATION_COLORS[entry.code] || COLORS.primary }}
+                      style={{ backgroundColor: LOCATION_COLORS[entry.code] || CHART_COLORS.primary }}
                     />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-gray-300 truncate">{entry.name}</p>
@@ -906,9 +865,9 @@ export default function Reports() {
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
                 <Tooltip
-                  contentStyle={tooltipStyle}
-                  itemStyle={tooltipItemStyle}
-                  labelStyle={tooltipLabelStyle}
+                  contentStyle={TOOLTIP_STYLE}
+                  itemStyle={TOOLTIP_ITEM_STYLE}
+                  labelStyle={TOOLTIP_LABEL_STYLE}
                   formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Payroll']}
                 />
                 <Legend wrapperStyle={{ color: '#9ca3af' }} />
@@ -916,9 +875,9 @@ export default function Reports() {
                   type="monotone"
                   dataKey="amount"
                   name="Payroll"
-                  stroke={COLORS.purple}
+                  stroke={CHART_COLORS.purple}
                   strokeWidth={2}
-                  dot={{ fill: COLORS.purple, strokeWidth: 2 }}
+                  dot={{ fill: CHART_COLORS.purple, strokeWidth: 2 }}
                   activeDot={{ r: 6 }}
                 />
               </LineChart>

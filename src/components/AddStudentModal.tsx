@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { AccessibleModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 import { useStudentMutations } from '../lib/hooks'
 import { formatNameLastFirst, getAgeGroup, AGE_GROUP_OPTIONS } from '../lib/utils'
 
@@ -220,22 +221,12 @@ export function AddStudentModal({
           />
         </div>
 
-        <div className="flex justify-end gap-2 pt-4 border-t border-zinc-700">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={createStudent.isPending}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {createStudent.isPending ? 'Adding...' : 'Add Student'}
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={onClose}
+          isSubmitting={createStudent.isPending}
+          submitText="Add Student"
+          loadingText="Adding..."
+        />
       </form>
     </AccessibleModal>
   )

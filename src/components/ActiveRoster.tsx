@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react'
 import { useEnrollments, useActiveServices, useActiveLocations } from '../lib/hooks'
-import type { Service, Enrollment, Location } from '../lib/hooks'
+import type { Service, Enrollment, Location, EnrollmentStatus } from '../lib/hooks'
 import { queryKeys } from '../lib/queryClient'
 import { getTodayString, formatDateLocal } from '../lib/dateUtils'
 import { calculateAge, getAgeGroupSortValue } from '../lib/utils'
@@ -32,9 +32,9 @@ import { AddEnrollmentModal } from './AddEnrollmentModal'
 import { EditEnrollmentModal } from './EditEnrollmentModal'
 import { TransferTeacherModal } from './TransferTeacherModal'
 import { EndEnrollmentModal } from './EndEnrollmentModal'
+import { ENROLLMENT_STATUS_COLORS } from './ui/StatusBadge'
 
 // Types
-type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended'
 type SortField = 'student' | 'family' | 'teacher' | 'hours' | 'rate' | 'status' | 'grade' | 'class' | 'age_group'
 type SortDirection = 'asc' | 'desc'
 
@@ -95,13 +95,6 @@ interface EnrollmentWithRelations extends Enrollment {
   family: Family
   teacher_assignments: TeacherAssignment[]
   location: Location | null
-}
-
-const STATUS_COLORS: Record<EnrollmentStatus, string> = {
-  active: 'bg-green-500/20 text-green-400',
-  trial: 'bg-blue-500/20 text-blue-400',
-  paused: 'bg-amber-500/20 text-amber-400',
-  ended: 'bg-zinc-500/20 text-zinc-400',
 }
 
 // Service icons
@@ -855,7 +848,7 @@ export default function ActiveRoster() {
 
                               {/* Status */}
                               <div className="w-20">
-                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${STATUS_COLORS[enrollment.status]}`}>
+                                <span className={`px-2 py-0.5 rounded text-xs font-medium ${ENROLLMENT_STATUS_COLORS[enrollment.status as EnrollmentStatus]}`}>
                                   {enrollment.status}
                                 </span>
                               </div>

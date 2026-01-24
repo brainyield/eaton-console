@@ -26,15 +26,16 @@ import {
   useEnrollmentOnboarding,
   useOnboardingMutations,
   SERVICE_ONBOARDING_CONFIG,
+  type EnrollmentStatus,
 } from '../lib/hooks';
 import { EmailHistory } from './email';
 import { SendFormsModal } from './SendFormsModal';
 import { parseLocalDate, formatDateLocal } from '../lib/dateUtils';
 import { multiplyMoney, subtractMoney } from '../lib/moneyUtils';
 import { calculateAge } from '../lib/utils';
+import { ENROLLMENT_STATUS_COLORS_WITH_BORDER } from './ui/StatusBadge';
 
 // Types
-type EnrollmentStatus = 'trial' | 'active' | 'paused' | 'ended';
 
 interface Service {
   id: string;
@@ -119,13 +120,6 @@ interface EnrollmentDetailPanelProps {
   onTransferTeacher: (assignment: TeacherAssignment) => void;
   onEndEnrollment: () => void;
 }
-
-const STATUS_COLORS: Record<EnrollmentStatus, string> = {
-  active: 'bg-green-500/20 text-green-400 border-green-500/30',
-  trial: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-  paused: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  ended: 'bg-zinc-500/20 text-zinc-400 border-zinc-500/30',
-};
 
 export function EnrollmentDetailPanel({ 
   enrollment, 
@@ -275,7 +269,7 @@ export function EnrollmentDetailPanel({
                 <p className="text-sm text-gray-400">{enrollment.class_title}</p>
               )}
             </div>
-            <span className={`ml-auto text-sm font-medium rounded-full px-3 py-1 border ${STATUS_COLORS[enrollment.status]}`}>
+            <span className={`ml-auto text-sm font-medium rounded-full px-3 py-1 border ${ENROLLMENT_STATUS_COLORS_WITH_BORDER[enrollment.status]}`}>
               {enrollment.status}
             </span>
           </div>

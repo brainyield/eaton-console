@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { AccessibleModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 import { useCheckinMutations, useCheckinPeriods } from '../lib/hooks'
 import { useToast } from '../lib/toast'
 
@@ -222,22 +223,13 @@ export default function CreatePeriodModal({ isOpen, onClose }: CreatePeriodModal
         )}
 
         {/* Actions */}
-        <div className="flex justify-end gap-2 pt-4 border-t border-zinc-700">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 text-zinc-400 hover:text-zinc-100 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={createPeriod.isPending || (!useCustom && !selectedPeriod)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            {createPeriod.isPending ? 'Creating...' : 'Create Period'}
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={handleClose}
+          isSubmitting={createPeriod.isPending}
+          submitDisabled={!useCustom && !selectedPeriod}
+          submitText="Create Period"
+          loadingText="Creating..."
+        />
       </form>
     </AccessibleModal>
   )
