@@ -7249,8 +7249,7 @@ export function useSmsMessages(filters?: SmsMessageFilters) {
   return useQuery({
     queryKey: queryKeys.sms.messages(filters),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let query = (supabase.from as any)('sms_messages')
+      let query = supabase.from('sms_messages')
         .select(`
           *,
           family:families(display_name, primary_email)
@@ -7303,8 +7302,7 @@ export function useSmsByFamily(familyId: string) {
   return useQuery({
     queryKey: queryKeys.sms.byFamily(familyId),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from as any)('sms_messages')
+      const { data, error } = await supabase.from('sms_messages')
         .select('*')
         .eq('family_id', familyId)
         .order('created_at', { ascending: false })
@@ -7329,8 +7327,7 @@ export function useSmsByInvoice(invoiceId: string) {
   return useQuery({
     queryKey: queryKeys.sms.byInvoice(invoiceId),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from as any)('sms_messages')
+      const { data, error } = await supabase.from('sms_messages')
         .select('*')
         .eq('invoice_id', invoiceId)
         .order('created_at', { ascending: false })
@@ -7433,8 +7430,7 @@ export function useSmsMedia() {
   return useQuery({
     queryKey: queryKeys.smsMedia.list(),
     queryFn: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const { data, error } = await (supabase.from as any)('sms_media')
+      const { data, error } = await supabase.from('sms_media')
         .select('*')
         .order('created_at', { ascending: false })
 

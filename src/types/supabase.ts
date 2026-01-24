@@ -1384,6 +1384,8 @@ export type Database = {
           scheduled_at: string | null
           secondary_email: string | null
           service_interest: string | null
+          sms_opt_out: boolean
+          sms_opt_out_at: string | null
           source_url: string | null
           state: string | null
           status: Database["public"]["Enums"]["customer_status"]
@@ -1427,6 +1429,8 @@ export type Database = {
           scheduled_at?: string | null
           secondary_email?: string | null
           service_interest?: string | null
+          sms_opt_out?: boolean
+          sms_opt_out_at?: string | null
           source_url?: string | null
           state?: string | null
           status?: Database["public"]["Enums"]["customer_status"]
@@ -1470,6 +1474,8 @@ export type Database = {
           scheduled_at?: string | null
           secondary_email?: string | null
           service_interest?: string | null
+          sms_opt_out?: boolean
+          sms_opt_out_at?: string | null
           source_url?: string | null
           state?: string | null
           status?: Database["public"]["Enums"]["customer_status"]
@@ -2843,6 +2849,166 @@ export type Database = {
           requires_teacher?: boolean
         }
         Relationships: []
+      }
+      sms_media: {
+        Row: {
+          content_type: string | null
+          created_at: string
+          file_size: number | null
+          id: string
+          name: string | null
+          public_url: string
+          sms_message_id: string
+          storage_path: string
+        }
+        Insert: {
+          content_type?: string | null
+          created_at?: string
+          file_size?: number | null
+          id?: string
+          name?: string | null
+          public_url: string
+          sms_message_id: string
+          storage_path: string
+        }
+        Update: {
+          content_type?: string | null
+          created_at?: string
+          file_size?: number | null
+          id?: string
+          name?: string | null
+          public_url?: string
+          sms_message_id?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_media_sms_message_id_fkey"
+            columns: ["sms_message_id"]
+            isOneToOne: false
+            referencedRelation: "sms_messages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_messages: {
+        Row: {
+          campaign_name: string | null
+          created_at: string
+          delivered_at: string | null
+          error_code: string | null
+          error_message: string | null
+          failed_at: string | null
+          family_id: string | null
+          from_phone: string
+          id: string
+          invoice_id: string | null
+          merge_data: Json | null
+          message_body: string
+          message_type: string
+          sent_at: string | null
+          sent_by: string | null
+          status: string
+          template_key: string | null
+          to_phone: string
+          twilio_sid: string | null
+          updated_at: string
+        }
+        Insert: {
+          campaign_name?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          family_id?: string | null
+          from_phone: string
+          id?: string
+          invoice_id?: string | null
+          merge_data?: Json | null
+          message_body: string
+          message_type: string
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          template_key?: string | null
+          to_phone: string
+          twilio_sid?: string | null
+          updated_at?: string
+        }
+        Update: {
+          campaign_name?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          failed_at?: string | null
+          family_id?: string | null
+          from_phone?: string
+          id?: string
+          invoice_id?: string | null
+          merge_data?: Json | null
+          message_body?: string
+          message_type?: string
+          sent_at?: string | null
+          sent_by?: string | null
+          status?: string
+          template_key?: string | null
+          to_phone?: string
+          twilio_sid?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_messages_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "sms_messages_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "sms_messages_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+          {
+            foreignKeyName: "sms_messages_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "overdue_invoices"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       stripe_invoice_webhooks: {
         Row: {
