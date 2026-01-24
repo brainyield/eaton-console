@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { DollarSign, Clock, AlertCircle } from 'lucide-react'
 import { AccessibleModal } from './ui/AccessibleModal'
 import { useActiveTeachers, usePayrollMutations } from '../lib/hooks'
+import { multiplyMoney } from '../lib/moneyUtils'
 import type { Teacher } from '../lib/hooks'
 
 interface Props {
@@ -85,7 +86,7 @@ export default function AddManualLineItemModal({
     const h = parseFloat(hours)
     const r = parseFloat(hourlyRate)
     if (!Number.isNaN(h) && !Number.isNaN(r) && h > 0 && r > 0) {
-      return h * r
+      return multiplyMoney(h, r)
     }
     return 0
   })()

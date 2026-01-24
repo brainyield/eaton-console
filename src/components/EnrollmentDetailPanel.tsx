@@ -30,7 +30,7 @@ import {
 import { EmailHistory } from './email';
 import { SendFormsModal } from './SendFormsModal';
 import { parseLocalDate, formatDateLocal } from '../lib/dateUtils';
-import { multiplyMoney } from '../lib/moneyUtils';
+import { multiplyMoney, subtractMoney } from '../lib/moneyUtils';
 import { calculateAge } from '../lib/utils';
 
 // Types
@@ -554,7 +554,7 @@ export function EnrollmentDetailPanel({
                       <div>
                         <p className="text-xs text-gray-500">Weekly Cost</p>
                         <p className="text-lg font-medium text-amber-400">
-                          ${(activeAssignment.hourly_rate_teacher || 0) * (activeAssignment.hours_per_week || 0)}
+                          ${multiplyMoney(activeAssignment.hourly_rate_teacher || 0, activeAssignment.hours_per_week || 0)}
                         </p>
                       </div>
                     )}
@@ -569,7 +569,7 @@ export function EnrollmentDetailPanel({
                   <div className="flex items-center justify-between">
                     <span className="text-gray-400">Revenue - Cost</span>
                     <span className="text-xl font-bold text-emerald-400">
-                      ${((enrollment.hourly_rate_customer - activeAssignment.hourly_rate_teacher) * enrollment.hours_per_week).toFixed(2)}
+                      ${multiplyMoney(subtractMoney(enrollment.hourly_rate_customer, activeAssignment.hourly_rate_teacher), enrollment.hours_per_week).toFixed(2)}
                     </span>
                   </div>
                 </div>

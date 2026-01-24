@@ -4323,7 +4323,7 @@ export function usePayrollMutations() {
       const hours = actualHours ?? current.actual_hours
       const adjustment = adjustmentAmount ?? current.adjustment_amount
       const calculatedAmount = multiplyMoney(hours, current.hourly_rate)
-      const finalAmount = calculatedAmount + adjustment
+      const finalAmount = addMoney(calculatedAmount, adjustment)
 
       const { data, error } = await payrollDb.from('payroll_line_item')
         .update({
@@ -4436,7 +4436,7 @@ export function usePayrollMutations() {
       // Update each line item with new hours
       const updates = lineItems.map((item: { id: string; hourly_rate: number; adjustment_amount: number }) => {
         const calculatedAmount = multiplyMoney(hours, item.hourly_rate)
-        const finalAmount = calculatedAmount + (item.adjustment_amount || 0)
+        const finalAmount = addMoney(calculatedAmount, item.adjustment_amount || 0)
         return payrollDb.from('payroll_line_item')
           .update({
             actual_hours: hours,
