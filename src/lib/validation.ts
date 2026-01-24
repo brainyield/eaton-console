@@ -78,8 +78,20 @@ export function parseIntInRange(
  */
 export function isValidDateString(dateStr: string): boolean {
   if (!dateStr) return false
-  const date = new Date(dateStr)
-  return !Number.isNaN(date.getTime())
+  // Use regex to validate YYYY-MM-DD format, then verify date is real
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr)
+  if (!match) return false
+  const year = parseInt(match[1], 10)
+  const month = parseInt(match[2], 10)
+  const day = parseInt(match[3], 10)
+  // Check month and day ranges
+  if (month < 1 || month > 12) return false
+  if (day < 1 || day > 31) return false
+  // Verify the date is real (handles Feb 30, etc.)
+  const testDate = new Date(year, month - 1, day)
+  return testDate.getFullYear() === year &&
+    testDate.getMonth() === month - 1 &&
+    testDate.getDate() === day
 }
 
 /**
@@ -87,10 +99,10 @@ export function isValidDateString(dateStr: string): boolean {
  */
 export function isValidDateRange(startDate: string, endDate: string): boolean {
   if (!startDate || !endDate) return true // If either is empty, skip range check
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false
-  return start <= end
+  // Validate format first
+  if (!isValidDateString(startDate) || !isValidDateString(endDate)) return false
+  // Compare as strings (YYYY-MM-DD format sorts correctly)
+  return startDate <= endDate
 }
 
 /**

@@ -804,7 +804,7 @@ function PayrollTab({
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '—'
-  const date = new Date(dateStr)
+  const date = parseLocalDate(dateStr)
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -814,8 +814,8 @@ function formatDate(dateStr: string): string {
 
 function formatDateRange(start: string, end: string): string {
   if (!start || !end) return '—'
-  const startDate = new Date(start)
-  const endDate = new Date(end)
+  const startDate = parseLocalDate(start)
+  const endDate = parseLocalDate(end)
 
   const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })

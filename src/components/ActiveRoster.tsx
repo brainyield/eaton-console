@@ -25,7 +25,7 @@ import {
 import { useEnrollments, useActiveServices, useActiveLocations } from '../lib/hooks'
 import type { Service, Enrollment, Location } from '../lib/hooks'
 import { queryKeys } from '../lib/queryClient'
-import { getTodayString } from '../lib/dateUtils'
+import { getTodayString, formatDateLocal } from '../lib/dateUtils'
 import { calculateAge, getAgeGroupSortValue } from '../lib/utils'
 import { EnrollmentDetailPanel } from './EnrollmentDetailPanel'
 import { AddEnrollmentModal } from './AddEnrollmentModal'
@@ -125,7 +125,8 @@ export default function ActiveRoster() {
   const monthStart = useMemo(() => {
     if (!newThisMonth) return undefined
     const now = new Date()
-    return new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+    const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+    return formatDateLocal(firstOfMonth)
   }, [newThisMonth])
 
   // Filters
