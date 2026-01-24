@@ -37,21 +37,35 @@ src/
 │   ├── hooks.ts         # All React Query hooks + type definitions
 │   ├── queryClient.ts   # React Query config + query key factory
 │   ├── dateUtils.ts     # Timezone-safe date utilities
+│   ├── enrollmentPeriod.ts # Semester/school year period logic
+│   ├── gmail.ts         # Gmail API integration (via n8n webhooks)
+│   ├── invoicePdf.ts    # Invoice PDF generation (jsPDF)
+│   ├── mailchimp.ts     # Mailchimp integration (via Edge Function)
 │   ├── moneyUtils.ts    # Floating-point safe money operations
 │   ├── phoneUtils.ts    # Phone normalization, validation, formatting
 │   ├── smsTemplates.ts  # SMS templates with merge fields, segment calculation
-│   ├── validation.ts    # Input validation
 │   ├── toast.tsx        # Toast context provider
-│   └── utils.ts         # Name formatting, age calculation
-├── pages/               # Full-page components (SmsLog, QuickSend)
+│   ├── utils.ts         # Name formatting, age calculation
+│   └── validation.ts    # Input validation
+├── pages/               # Standalone pages (SmsLog, QuickSend)
 ├── components/
 │   ├── Layout.tsx       # Main layout wrapper
 │   ├── Sidebar.tsx      # Navigation
 │   ├── CommandPalette.tsx
-│   ├── *DetailPanel.tsx # Right-side read-only panels
-│   ├── *Modal.tsx       # CRUD modal dialogs
+│   ├── *DetailPanel.tsx # Right-side read-only panels (6 total)
+│   ├── *Modal.tsx       # CRUD modal dialogs (26 total)
+│   ├── *.tsx            # Page-like components (Directory, Events, etc.)
+│   ├── email/           # Email compose & history components
+│   ├── sms/             # SMS compose & history components
 │   └── ui/              # Reusable UI components
+│       ├── AccessibleModal.tsx
+│       ├── AccessibleSlidePanel.tsx
+│       ├── FamilyItemGroup.tsx
+│       ├── SmsStatusBadge.tsx
+│       └── SortableTableHeader.tsx
 ```
+
+> **Note:** Most route components (Directory, Events, Invoicing, etc.) live in `components/`, not `pages/`. The `pages/` directory is reserved for components that don't fit the standard layout pattern.
 
 ---
 
