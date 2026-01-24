@@ -1,15 +1,15 @@
 import { useState, useMemo } from 'react'
 import {
-  X,
   Plus,
   Trash2,
   Upload,
   Loader2,
   Search,
   Check,
-  History,
   AlertCircle,
+  X,
 } from 'lucide-react'
+import { AccessibleModal } from './ui/AccessibleModal'
 import { useFamiliesWithStudents, useInvoiceMutations } from '../lib/hooks'
 import type { Family } from '../lib/hooks'
 import { getTodayString } from '../lib/dateUtils'
@@ -200,38 +200,15 @@ export default function ImportHistoricalInvoiceModal({ onClose, onSuccess }: Pro
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-      <div className="flex min-h-full items-center justify-center p-4">
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-
-        {/* Modal */}
-        <div className="relative bg-zinc-900 rounded-xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-500/20 rounded-lg">
-                <History className="w-5 h-5 text-amber-400" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-white">
-                  Import Historical Invoice
-                </h2>
-                <p className="text-sm text-zinc-400">
-                  Import an invoice from your previous system (Wave/Google Sheets)
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={onClose}
-              className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Content */}
-          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
+    <AccessibleModal
+      isOpen={true}
+      onClose={onClose}
+      title="Import Historical Invoice"
+      subtitle="Import an invoice from your previous system (Wave/Google Sheets)"
+      size="2xl"
+    >
+      {/* Content */}
+      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-6">
             {/* Error message */}
             {error && (
               <div className="flex items-center gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400">
@@ -637,8 +614,6 @@ export default function ImportHistoricalInvoiceModal({ onClose, onSuccess }: Pro
               )}
             </button>
           </div>
-        </div>
-      </div>
-    </div>
+    </AccessibleModal>
   )
 }

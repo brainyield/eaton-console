@@ -1,6 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
-  X,
   AlertTriangle,
   Check,
   Loader2,
@@ -8,7 +7,9 @@ import {
   ChevronDown,
   Edit2,
   Link2,
+  X,
 } from 'lucide-react'
+import { AccessibleModal } from './ui/AccessibleModal'
 import {
   useBillableEnrollments,
   useExistingInvoicesForPeriod,
@@ -919,25 +920,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
   const showSessionsControl = invoiceType === 'monthly' && (serviceFilter === 'learning_pod' || (!serviceFilter && hasLearningPod))
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto">
-      <div className="flex min-h-full items-center justify-center p-4">
-        {/* Backdrop */}
-        <div className="fixed inset-0 bg-black/60" onClick={onClose} />
-
-        {/* Modal */}
-        <div className="relative bg-zinc-900 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700">
-            <h2 className="text-xl font-semibold text-white">Generate Invoice Drafts</h2>
-            <button
-              onClick={onClose}
-              className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Configuration */}
+    <>
+      <AccessibleModal
+        isOpen={true}
+        onClose={onClose}
+        title="Generate Invoice Drafts"
+        size="2xl"
+      >
+        {/* Configuration */}
           <div className="px-6 py-4 border-b border-zinc-800 bg-zinc-800/30">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {/* Invoice Type */}
@@ -1615,8 +1605,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
               </button>
             </div>
           </div>
-        </div>
-      </div>
+      </AccessibleModal>
 
       {/* Link Event Orders Modal */}
       <LinkEventOrdersModal
@@ -1633,7 +1622,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         onSuccess={() => setIsHubLinkModalOpen(false)}
         unlinkedBookings={unlinkedHubBookings}
       />
-    </div>
+    </>
   )
 }
 

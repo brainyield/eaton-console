@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
-import { X, DollarSign, Calendar, AlertCircle } from 'lucide-react'
+import { DollarSign, Calendar, AlertCircle } from 'lucide-react'
 import { useTeacherAssignmentsByTeacher, useTeacherPaymentMutations } from '../lib/hooks'
+import { AccessibleModal } from './ui/AccessibleModal'
 import type { Teacher } from '../lib/hooks'
 import { multiplyMoney } from '../lib/moneyUtils'
 import { formatDateLocal } from '../lib/dateUtils'
@@ -174,34 +175,16 @@ export function RecordTeacherPaymentModal({
     }
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/60" 
-        onClick={onClose}
-      />
-      
-      {/* Modal */}
-      <div className="relative w-full max-w-2xl max-h-[90vh] bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex-shrink-0 flex items-center justify-between p-4 border-b border-zinc-700">
-          <div>
-            <h2 className="text-lg font-semibold text-zinc-100">Record Payment</h2>
-            <p className="text-sm text-zinc-400">{teacher.display_name}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-zinc-800 rounded-md"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Content */}
-        <form onSubmit={handleSubmit} className="flex-1 overflow-auto">
+    <AccessibleModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title="Record Payment"
+      subtitle={teacher.display_name}
+      size="2xl"
+    >
+      {/* Content */}
+      <form onSubmit={handleSubmit} className="flex-1 overflow-auto">
           <div className="p-4 space-y-4">
             {error && (
               <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded">
@@ -362,25 +345,24 @@ export function RecordTeacherPaymentModal({
             </div>
           </div>
 
-          {/* Footer */}
-          <div className="flex-shrink-0 flex items-center justify-end gap-3 p-4 border-t border-zinc-700 bg-zinc-800/20">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={saving || totalAmount === 0}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {saving ? 'Recording...' : `Record Payment ($${totalAmount.toFixed(2)})`}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {/* Footer */}
+        <div className="flex-shrink-0 flex items-center justify-end gap-3 p-4 border-t border-zinc-700 bg-zinc-800/20">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving || totalAmount === 0}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {saving ? 'Recording...' : `Record Payment ($${totalAmount.toFixed(2)})`}
+          </button>
+        </div>
+      </form>
+    </AccessibleModal>
   )
 }
