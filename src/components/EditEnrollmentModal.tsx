@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Loader2, Save, AlertCircle, User } from 'lucide-react';
+import { Save, AlertCircle, User } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   useEnrollmentMutations,
@@ -18,6 +18,7 @@ import { queryKeys } from '../lib/queryClient';
 import { getPeriodOptions, getDefaultPeriod, type ServiceCode } from '../lib/enrollmentPeriod';
 import { getTodayString } from '../lib/dateUtils';
 import { AccessibleModal } from './ui/AccessibleModal';
+import { ModalFooter } from './ui/ModalFooter';
 
 // Services that require a physical location
 const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes'];
@@ -677,33 +678,13 @@ export function EditEnrollmentModal({
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex justify-end gap-3 pt-4 border-t border-gray-800">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg transition-colors"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" aria-hidden="true" />
-                Save Changes
-              </>
-            )}
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={handleClose}
+          isSubmitting={isSubmitting}
+          submitText="Save Changes"
+          loadingText="Saving..."
+          submitIcon={<Save className="w-4 h-4" aria-hidden="true" />}
+        />
       </form>
     </AccessibleModal>
   );

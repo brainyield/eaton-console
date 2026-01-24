@@ -4,6 +4,8 @@ import type { ReactNode } from 'react'
 interface ModalFooterProps {
   /** Called when Cancel button is clicked */
   onCancel: () => void
+  /** Called when Submit button is clicked. If provided, button uses type="button" with onClick instead of type="submit" */
+  onSubmit?: () => void
   /** Whether the form is currently submitting */
   isSubmitting?: boolean
   /** Additional disabled condition for submit button (combined with isSubmitting) */
@@ -34,6 +36,7 @@ interface ModalFooterProps {
  */
 export function ModalFooter({
   onCancel,
+  onSubmit,
   isSubmitting = false,
   submitDisabled = false,
   submitText = 'Save',
@@ -79,7 +82,8 @@ export function ModalFooter({
           Cancel
         </button>
         <button
-          type="submit"
+          type={onSubmit ? 'button' : 'submit'}
+          onClick={onSubmit}
           disabled={isSubmitting || submitDisabled}
           className={`flex items-center gap-2 px-4 py-2 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${submitVariantClasses[submitVariant]}`}
         >

@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Search, User, ArrowRight } from 'lucide-react';
 import { AccessibleModal } from './ui/AccessibleModal';
+import { ModalFooter } from './ui/ModalFooter';
 import {
   useActiveTeachers,
   useTeacherAssignmentMutations,
@@ -291,23 +292,14 @@ export function TransferTeacherModal({
           )}
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-zinc-800">
-          <button
-            type="button"
-            onClick={handleClose}
-            className="px-4 py-2 text-sm font-medium text-zinc-400 hover:text-white transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={!selectedTeacherId || isSubmitting}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSubmitting ? 'Transferring...' : currentAssignment ? 'Transfer Teacher' : 'Assign Teacher'}
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={handleClose}
+          isSubmitting={isSubmitting}
+          submitDisabled={!selectedTeacherId}
+          submitText={currentAssignment ? 'Transfer Teacher' : 'Assign Teacher'}
+          loadingText="Transferring..."
+          className="px-6 py-4"
+        />
       </form>
     </AccessibleModal>
   );

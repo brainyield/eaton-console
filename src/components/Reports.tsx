@@ -27,9 +27,9 @@ import {
   Users,
   Calendar,
   RefreshCw,
-  AlertCircle,
   Info,
 } from 'lucide-react'
+import { ChartContainer } from './ui/ChartContainer'
 import {
   CHART_COLORS,
   PIE_COLORS,
@@ -590,26 +590,19 @@ export default function Reports() {
             <BarChart3 className="w-5 h-5 text-blue-500" />
             Revenue by Month
           </h3>
-          {loadingRevenue ? (
-            <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
-            </div>
-          ) : revenueError ? (
-            <div className="h-64 flex items-center justify-center text-red-400">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {revenueErrorMsg instanceof Error ? revenueErrorMsg.message : 'Failed to load revenue data'}
-            </div>
-          ) : revenueData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              No revenue data for this period
-            </div>
-          ) : (
+          <ChartContainer
+            isLoading={loadingRevenue}
+            isError={revenueError}
+            error={revenueErrorMsg}
+            isEmpty={revenueData.length === 0}
+            emptyMessage="No revenue data for this period"
+          >
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={revenueData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
                 <XAxis dataKey="month" stroke="#9ca3af" tick={{ fill: '#9ca3af' }} />
                 <YAxis stroke="#9ca3af" tick={{ fill: '#9ca3af' }} tickFormatter={(v) => `$${v/1000}k`} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={TOOLTIP_STYLE}
                   itemStyle={TOOLTIP_ITEM_STYLE}
                   labelStyle={TOOLTIP_LABEL_STYLE}
@@ -618,7 +611,7 @@ export default function Reports() {
                 <Bar dataKey="revenue" name="Revenue" fill={CHART_COLORS.primary} radius={BAR_RADIUS_TOP} />
               </BarChart>
             </ResponsiveContainer>
-          )}
+          </ChartContainer>
         </div>
 
         {/* Revenue by Service (Stacked) */}
@@ -627,20 +620,13 @@ export default function Reports() {
             <TrendingUp className="w-5 h-5 text-green-500" />
             Revenue by Service
           </h3>
-          {loadingRevenue ? (
-            <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
-            </div>
-          ) : revenueError ? (
-            <div className="h-64 flex items-center justify-center text-red-400">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {revenueErrorMsg instanceof Error ? revenueErrorMsg.message : 'Failed to load revenue data'}
-            </div>
-          ) : revenueByServiceData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              No revenue data for this period
-            </div>
-          ) : (
+          <ChartContainer
+            isLoading={loadingRevenue}
+            isError={revenueError}
+            error={revenueErrorMsg}
+            isEmpty={revenueByServiceData.length === 0}
+            emptyMessage="No revenue data for this period"
+          >
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={revenueByServiceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -652,21 +638,21 @@ export default function Reports() {
                   labelStyle={TOOLTIP_LABEL_STYLE}
                   formatter={(value, name) => [`$${Number(value).toLocaleString()}`, serviceNameMap[name as string] || name]}
                 />
-                <Legend 
-                  wrapperStyle={{ color: '#9ca3af' }} 
+                <Legend
+                  wrapperStyle={{ color: '#9ca3af' }}
                   formatter={(value) => serviceNameMap[value] || value}
                 />
                 {serviceKeys.map((key) => (
-                  <Bar 
-                    key={key} 
-                    dataKey={key} 
-                    stackId="a" 
-                    fill={SERVICE_COLORS[key] || CHART_COLORS.primary} 
+                  <Bar
+                    key={key}
+                    dataKey={key}
+                    stackId="a"
+                    fill={SERVICE_COLORS[key] || CHART_COLORS.primary}
                   />
                 ))}
               </BarChart>
             </ResponsiveContainer>
-          )}
+          </ChartContainer>
         </div>
 
         {/* Enrollments by Service */}
@@ -675,20 +661,13 @@ export default function Reports() {
             <PieChartIcon className="w-5 h-5 text-green-500" />
             Enrollments by Service
           </h3>
-          {loadingEnrollments ? (
-            <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
-            </div>
-          ) : enrollmentError ? (
-            <div className="h-64 flex items-center justify-center text-red-400">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {enrollmentErrorMsg instanceof Error ? enrollmentErrorMsg.message : 'Failed to load enrollments'}
-            </div>
-          ) : enrollmentData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              No active enrollments
-            </div>
-          ) : (
+          <ChartContainer
+            isLoading={loadingEnrollments}
+            isError={enrollmentError}
+            error={enrollmentErrorMsg}
+            isEmpty={enrollmentData.length === 0}
+            emptyMessage="No active enrollments"
+          >
             <div className="flex items-center">
               <ResponsiveContainer width="60%" height={280}>
                 <PieChart>
@@ -723,7 +702,7 @@ export default function Reports() {
                 ))}
               </div>
             </div>
-          )}
+          </ChartContainer>
         </div>
 
         {/* Outstanding Balance Aging */}
@@ -732,20 +711,13 @@ export default function Reports() {
             <Clock className="w-5 h-5 text-amber-500" />
             Outstanding Balance Aging
           </h3>
-          {loadingBalances ? (
-            <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
-            </div>
-          ) : balanceError ? (
-            <div className="h-64 flex items-center justify-center text-red-400">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {balanceErrorMsg instanceof Error ? balanceErrorMsg.message : 'Failed to load balance data'}
-            </div>
-          ) : balanceData.every((d) => d.amount === 0) ? (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              No outstanding balances! 🎉
-            </div>
-          ) : (
+          <ChartContainer
+            isLoading={loadingBalances}
+            isError={balanceError}
+            error={balanceErrorMsg}
+            isEmpty={balanceData.every((d) => d.amount === 0)}
+            emptyMessage="No outstanding balances!"
+          >
             <ResponsiveContainer width="100%" height={280}>
               <BarChart data={balanceData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -775,7 +747,7 @@ export default function Reports() {
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
-          )}
+          </ChartContainer>
         </div>
 
         {/* Revenue by Location */}
@@ -784,20 +756,13 @@ export default function Reports() {
             <BarChart3 className="w-5 h-5 text-purple-500" />
             Revenue by Location
           </h3>
-          {loadingLocation ? (
-            <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
-            </div>
-          ) : locationError ? (
-            <div className="h-64 flex items-center justify-center text-red-400">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {locationErrorMsg instanceof Error ? locationErrorMsg.message : 'Failed to load location data'}
-            </div>
-          ) : locationData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              No revenue data for this period
-            </div>
-          ) : (
+          <ChartContainer
+            isLoading={loadingLocation}
+            isError={locationError}
+            error={locationErrorMsg}
+            isEmpty={locationData.length === 0}
+            emptyMessage="No revenue data for this period"
+          >
             <div className="flex items-center gap-8">
               <ResponsiveContainer width="60%" height={280}>
                 <BarChart data={locationData} layout="vertical">
@@ -836,7 +801,7 @@ export default function Reports() {
                 ))}
               </div>
             </div>
-          )}
+          </ChartContainer>
         </div>
 
         {/* Teacher Payroll by Month */}
@@ -845,20 +810,13 @@ export default function Reports() {
             <TrendingUp className="w-5 h-5 text-purple-500" />
             Teacher Payroll by Month
           </h3>
-          {loadingPayroll ? (
-            <div className="h-64 flex items-center justify-center">
-              <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
-            </div>
-          ) : payrollError ? (
-            <div className="h-64 flex items-center justify-center text-red-400">
-              <AlertCircle className="w-5 h-5 mr-2" />
-              {payrollErrorMsg instanceof Error ? payrollErrorMsg.message : 'Failed to load payroll data'}
-            </div>
-          ) : payrollData.length === 0 ? (
-            <div className="h-64 flex items-center justify-center text-gray-500">
-              No payroll data for this period
-            </div>
-          ) : (
+          <ChartContainer
+            isLoading={loadingPayroll}
+            isError={payrollError}
+            error={payrollErrorMsg}
+            isEmpty={payrollData.length === 0}
+            emptyMessage="No payroll data for this period"
+          >
             <ResponsiveContainer width="100%" height={280}>
               <LineChart data={payrollData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
@@ -882,7 +840,7 @@ export default function Reports() {
                 />
               </LineChart>
             </ResponsiveContainer>
-          )}
+          </ChartContainer>
         </div>
       </div>
 

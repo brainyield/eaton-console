@@ -1,8 +1,9 @@
 import { useState } from 'react'
-import { RefreshCw, AlertCircle } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { useLeadMutations, type LeadFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { isValidEmail, parseIntInRange, isValidUrl } from '../lib/validation'
 import { AccessibleModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 
 interface EditLeadModalProps {
   lead: LeadFamily
@@ -232,24 +233,13 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3 pt-4 border-t border-zinc-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-zinc-400 hover:text-white"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSubmitting || !formData.email}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting && <RefreshCw className="w-4 h-4 animate-spin" aria-hidden="true" />}
-            Save Changes
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={onClose}
+          isSubmitting={isSubmitting}
+          submitDisabled={!formData.email}
+          submitText="Save Changes"
+          loadingText="Saving..."
+        />
       </form>
     </AccessibleModal>
   )

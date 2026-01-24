@@ -3,7 +3,6 @@ import {
   Plus,
   Trash2,
   Save,
-  Loader2,
   AlertCircle,
 } from 'lucide-react'
 import { useInvoiceMutations } from '../lib/hooks'
@@ -12,6 +11,7 @@ import { multiplyMoney, sumMoney } from '../lib/moneyUtils'
 import { parsePositiveFloat, isValidDateRange } from '../lib/validation'
 import { useToast } from '../lib/toast'
 import { AccessibleModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 
 // ============================================================================
 // Types
@@ -492,32 +492,16 @@ export default function EditInvoiceModal({ invoice, onClose, onSuccess }: Props)
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="px-6 py-4 border-t border-zinc-700 flex items-center justify-end gap-3">
-        <button
-          onClick={onClose}
-          className="px-4 py-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
-        >
-          Cancel
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={isSaving}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50"
-        >
-          {isSaving ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
-              Saving...
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4" aria-hidden="true" />
-              Save Changes
-            </>
-          )}
-        </button>
-      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onSubmit={handleSave}
+        isSubmitting={isSaving}
+        submitText="Save Changes"
+        loadingText="Saving..."
+        submitVariant="success"
+        submitIcon={<Save className="w-4 h-4" aria-hidden="true" />}
+        className="px-6 py-4"
+      />
     </AccessibleModal>
   )
 }

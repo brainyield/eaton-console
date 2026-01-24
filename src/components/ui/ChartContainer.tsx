@@ -1,5 +1,4 @@
 import { RefreshCw, AlertCircle } from 'lucide-react'
-import { ResponsiveContainer } from 'recharts'
 import type { ReactNode } from 'react'
 
 interface ChartContainerProps {
@@ -9,13 +8,13 @@ interface ChartContainerProps {
   isEmpty: boolean
   emptyMessage?: string
   height?: number
-  width?: number | `${number}%`
   children: ReactNode
 }
 
 /**
  * ChartContainer - Wrapper component for Recharts charts
- * Handles loading, error, and empty states consistently across all charts
+ * Handles loading, error, and empty states consistently across all charts.
+ * Children are rendered as-is when data is available - caller controls layout.
  */
 export function ChartContainer({
   isLoading,
@@ -23,16 +22,12 @@ export function ChartContainer({
   error,
   isEmpty,
   emptyMessage = 'No data available',
-  height = 280,
-  width = '100%',
+  height = 64,
   children,
 }: ChartContainerProps) {
-  const containerHeight = `h-${height === 280 ? '64' : `[${height}px]`}`
-  const heightStyle = height === 280 ? undefined : { height: `${height}px` }
-
   if (isLoading) {
     return (
-      <div className={`${containerHeight} flex items-center justify-center`} style={heightStyle}>
+      <div className="flex items-center justify-center" style={{ height: `${height * 4}px` }}>
         <RefreshCw className="w-6 h-6 text-gray-500 animate-spin" />
       </div>
     )
@@ -40,7 +35,7 @@ export function ChartContainer({
 
   if (isError) {
     return (
-      <div className={`${containerHeight} flex items-center justify-center text-red-400`} style={heightStyle}>
+      <div className="flex items-center justify-center text-red-400" style={{ height: `${height * 4}px` }}>
         <AlertCircle className="w-5 h-5 mr-2" />
         {error instanceof Error ? error.message : 'Failed to load data'}
       </div>
@@ -49,15 +44,11 @@ export function ChartContainer({
 
   if (isEmpty) {
     return (
-      <div className={`${containerHeight} flex items-center justify-center text-gray-500`} style={heightStyle}>
+      <div className="flex items-center justify-center text-gray-500" style={{ height: `${height * 4}px` }}>
         {emptyMessage}
       </div>
     )
   }
 
-  return (
-    <ResponsiveContainer width={width} height={height}>
-      {children}
-    </ResponsiveContainer>
-  )
+  return <>{children}</>
 }

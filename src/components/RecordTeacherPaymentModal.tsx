@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { DollarSign, Calendar, AlertCircle } from 'lucide-react'
 import { useTeacherAssignmentsByTeacher, useTeacherPaymentMutations } from '../lib/hooks'
 import { AccessibleModal } from './ui/AccessibleModal'
+import { ModalFooter } from './ui/ModalFooter'
 import type { Teacher } from '../lib/hooks'
 import { multiplyMoney } from '../lib/moneyUtils'
 import { formatDateLocal } from '../lib/dateUtils'
@@ -345,23 +346,14 @@ export function RecordTeacherPaymentModal({
             </div>
           </div>
 
-        {/* Footer */}
-        <div className="flex-shrink-0 flex items-center justify-end gap-3 p-4 border-t border-zinc-700 bg-zinc-800/20">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving || totalAmount === 0}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {saving ? 'Recording...' : `Record Payment ($${totalAmount.toFixed(2)})`}
-          </button>
-        </div>
+        <ModalFooter
+          onCancel={onClose}
+          isSubmitting={saving}
+          submitDisabled={totalAmount === 0}
+          submitText={`Record Payment ($${totalAmount.toFixed(2)})`}
+          loadingText="Recording..."
+          className="flex-shrink-0 p-4 bg-zinc-800/20"
+        />
       </form>
     </AccessibleModal>
   )
