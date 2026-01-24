@@ -8,7 +8,10 @@ import type {
   SendEmailPayload,
 } from '../types/gmail'
 
-const N8N_BASE_URL = 'https://eatonacademic.app.n8n.cloud/webhook'
+const N8N_BASE_URL = import.meta.env.VITE_N8N_BASE_URL || 'https://eatonacademic.app.n8n.cloud/webhook'
+
+// Default timeout for external API calls (30 seconds)
+const DEFAULT_TIMEOUT_MS = 30000
 
 /**
  * Search Gmail for emails to/from a specific email address
@@ -17,23 +20,47 @@ const N8N_BASE_URL = 'https://eatonacademic.app.n8n.cloud/webhook'
 export async function searchGmail(
   params: GmailSearchParams
 ): Promise<GmailSearchResponse> {
-  const response = await fetch(`${N8N_BASE_URL}/gmail-search`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email: params.email,
-      query: params.query || '',
-      maxResults: params.maxResults || 20,
-      pageToken: params.pageToken || undefined,
-    }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
 
-  if (!response.ok) {
-    throw new Error(`Gmail search failed: ${response.statusText}`)
+  try {
+    const response = await fetch(`${N8N_BASE_URL}/gmail-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: params.email,
+        query: params.query || '',
+        maxResults: params.maxResults || 20,
+        pageToken: params.pageToken || undefined,
+      }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`Gmail search failed: ${response.statusText}`)
+    }
+
+    const data = await response.json() as GmailSearchResponse
+
+    // Check for error in response body
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    if (!data.success) {
+      throw new Error('Gmail search returned unsuccessful response')
+    }
+
+    return data
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Gmail search timed out. Please try again.')
+    }
+    throw error
   }
-
-  const data = await response.json()
-  return data as GmailSearchResponse
 }
 
 /**
@@ -42,18 +69,42 @@ export async function searchGmail(
 export async function getGmailThread(
   threadId: string
 ): Promise<GmailThreadResponse> {
-  const response = await fetch(`${N8N_BASE_URL}/gmail-thread`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ threadId }),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
 
-  if (!response.ok) {
-    throw new Error(`Gmail thread fetch failed: ${response.statusText}`)
+  try {
+    const response = await fetch(`${N8N_BASE_URL}/gmail-thread`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ threadId }),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`Gmail thread fetch failed: ${response.statusText}`)
+    }
+
+    const data = await response.json() as GmailThreadResponse
+
+    // Check for error in response body
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    if (!data.success) {
+      throw new Error('Gmail thread fetch returned unsuccessful response')
+    }
+
+    return data
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Gmail thread fetch timed out. Please try again.')
+    }
+    throw error
   }
-
-  const data = await response.json()
-  return data as GmailThreadResponse
 }
 
 /**
@@ -62,16 +113,40 @@ export async function getGmailThread(
 export async function sendGmail(
   payload: SendEmailPayload
 ): Promise<GmailSendResponse> {
-  const response = await fetch(`${N8N_BASE_URL}/gmail-send`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  })
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS)
 
-  if (!response.ok) {
-    throw new Error(`Gmail send failed: ${response.statusText}`)
+  try {
+    const response = await fetch(`${N8N_BASE_URL}/gmail-send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    })
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`Gmail send failed: ${response.statusText}`)
+    }
+
+    const data = await response.json() as GmailSendResponse
+
+    // Check for error in response body
+    if (data.error) {
+      throw new Error(data.error)
+    }
+
+    if (!data.success) {
+      throw new Error('Gmail send returned unsuccessful response')
+    }
+
+    return data
+  } catch (error) {
+    clearTimeout(timeoutId)
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Gmail send timed out. Please try again.')
+    }
+    throw error
   }
-
-  const data = await response.json()
-  return data as GmailSendResponse
 }

@@ -2275,6 +2275,7 @@ export function useInvoiceMutations() {
 
       const createdInvoices: Invoice[] = []
       const failedFamilies: { familyName: string; error: string }[] = []
+      const warnings: string[] = []
 
       for (const [familyId, group] of Object.entries(byFamily)) {
         try {
@@ -2446,9 +2447,13 @@ export function useInvoiceMutations() {
         // Link registration fee event_orders to this invoice
         if (pendingRegistrationFees.length > 0) {
           const orderIds = pendingRegistrationFees.map(f => f.id)
-          await supabase.from('event_orders')
+          const { error: linkError } = await supabase.from('event_orders')
             .update({ invoice_id: invoice.id })
             .in('id', orderIds)
+
+          if (linkError) {
+            warnings.push(`Invoice for ${group.family?.display_name || 'Unknown'} created but failed to link registration fees: ${linkError.message}`)
+          }
         }
 
         createdInvoices.push(invoice as unknown as Invoice)
@@ -2468,13 +2473,14 @@ export function useInvoiceMutations() {
 
       // If some families failed, throw an error with partial success info
       if (failedFamilies.length > 0) {
-        const error = new Error(`Generated ${createdInvoices.length} invoices, but ${failedFamilies.length} failed: ${failedFamilies.map(f => f.familyName).join(', ')}`) as Error & { createdInvoices?: Invoice[] }
+        const error = new Error(`Generated ${createdInvoices.length} invoices, but ${failedFamilies.length} failed: ${failedFamilies.map(f => f.familyName).join(', ')}`) as Error & { createdInvoices?: Invoice[]; warnings?: string[] }
         // Attach the created invoices to the error so they can still be used
         error.createdInvoices = createdInvoices
+        error.warnings = warnings
         throw error
       }
 
-      return createdInvoices
+      return { invoices: createdInvoices, warnings }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
@@ -2637,14 +2643,20 @@ export function useInvoiceMutations() {
 
       if (updateError) throw updateError
 
+      const warnings: string[] = []
+
       // Link calendly_bookings to this invoice and mark as completed
       // This allows syncing payment status when invoice is paid
       const bookingIds = bookings.map(b => b.id)
-      await supabase.from('calendly_bookings')
+      const { error: linkError } = await supabase.from('calendly_bookings')
         .update({ status: 'completed', invoice_id: invoice.id })
         .in('id', bookingIds)
 
-      return invoice
+      if (linkError) {
+        warnings.push('Invoice created but failed to link Hub session bookings: ' + linkError.message)
+      }
+
+      return { data: invoice, warnings }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })

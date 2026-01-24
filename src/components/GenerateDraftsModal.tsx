@@ -743,7 +743,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         })
 
       // FIX: Use correct camelCase property names and pass enrollments array
-      await generateDrafts.mutateAsync({
+      const result = await generateDrafts.mutateAsync({
         enrollments: selectedEnrollmentsList,
         periodStart,
         periodEnd,
@@ -751,12 +751,17 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         invoiceType: invoiceType as 'weekly' | 'monthly' | 'events',
         customAmounts: Object.keys(customAmounts).length > 0 ? customAmounts : undefined,
       })
+
+      // Show warnings for secondary operation failures (e.g., failed to link event_orders)
+      if (result.warnings && result.warnings.length > 0) {
+        result.warnings.forEach(w => showWarning(w))
+      }
+
       onSuccess()
     } catch (error) {
-      console.error('Failed to generate drafts:', error)
       showError(error instanceof Error ? error.message : 'Failed to generate drafts')
     }
-  }, [selectedCount, generateDrafts, periodStart, periodEnd, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess, showError])
+  }, [selectedCount, generateDrafts, periodStart, periodEnd, dueDate, selectedEnrollments, invoiceType, sortedPreviewItems, onSuccess, showError, showWarning])
 
   // Generate event invoices - one invoice per family
   const handleGenerateEvents = useCallback(async () => {
@@ -852,7 +857,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
       const familyName = bookings[0].family_name
 
       try {
-        await generateHubInvoice.mutateAsync({
+        const result = await generateHubInvoice.mutateAsync({
           familyId,
           bookings: bookings.map(b => ({
             id: b.id,
@@ -862,9 +867,14 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
           })),
           dueDate,
         })
+
+        // Show warnings for secondary operation failures (e.g., failed to link calendly_bookings)
+        if (result.warnings && result.warnings.length > 0) {
+          result.warnings.forEach(w => showWarning(w))
+        }
+
         succeeded.push(familyName)
-      } catch (error) {
-        console.error(`Failed to generate invoice for ${familyName}:`, error)
+      } catch {
         failed.push(familyName)
       }
     }

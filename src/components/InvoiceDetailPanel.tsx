@@ -663,7 +663,12 @@ export default function InvoiceDetailPanel({
           )}
 
           <button
-            onClick={() => generateInvoicePdf(invoice)}
+            onClick={() => {
+              const result = generateInvoicePdf(invoice)
+              if (!result.success) {
+                showError(result.error || 'Failed to generate PDF')
+              }
+            }}
             className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
           >
             <Download className="w-4 h-4" aria-hidden="true" />
