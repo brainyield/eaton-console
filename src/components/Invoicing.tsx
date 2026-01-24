@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
+import { useMultiSelection } from '../lib/useSelectionState'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { useToast } from '../lib/toast'
 import GenerateDraftsModal from './GenerateDraftsModal'
@@ -131,7 +132,15 @@ export default function Invoicing() {
   const [serviceFilter, setServiceFilter] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<string>('') // For filtering within outstanding tab
   const [sort, setSort] = useState<SortConfig>({ field: 'due_date', direction: 'asc' })
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const {
+    selectedIds,
+    toggleItem,
+    selectAll,
+    selectNone,
+    isSelected,
+    hasSelection,
+    selectedCount,
+  } = useMultiSelection<InvoiceWithDetails>()
   const [selectedInvoice, setSelectedInvoice] = useState<InvoiceWithDetails | null>(null)
   const [showGenerateModal, setShowGenerateModal] = useState(false)
   const [showImportModal, setShowImportModal] = useState(false)
@@ -280,25 +289,15 @@ export default function Invoicing() {
     }))
   }, [])
 
-  const handleSelectAll = useCallback(() => {
-    if (selectedIds.size === sortedInvoices.length) {
-      setSelectedIds(new Set())
+  // Selection helper for toggle-all checkbox
+  const isAllSelected = sortedInvoices.length > 0 && sortedInvoices.every((i: InvoiceWithDetails) => isSelected(i.id))
+  const handleToggleAll = useCallback(() => {
+    if (isAllSelected) {
+      selectNone()
     } else {
-      setSelectedIds(new Set(sortedInvoices.map((i: InvoiceWithDetails) => i.id)))
+      selectAll(sortedInvoices)
     }
-  }, [sortedInvoices, selectedIds])
-
-  const handleSelectOne = useCallback((id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
-      } else {
-        next.add(id)
-      }
-      return next
-    })
-  }, [])
+  }, [isAllSelected, selectAll, selectNone, sortedInvoices])
 
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm('Delete this invoice?')) return
@@ -313,16 +312,16 @@ export default function Invoicing() {
   }, [deleteInvoice, showSuccess, showError])
 
   const handleBulkDelete = useCallback(async () => {
-    if (!confirm(`Delete ${selectedIds.size} invoices?`)) return
+    if (!confirm(`Delete ${selectedCount} invoices?`)) return
     try {
       await bulkDeleteInvoices.mutateAsync(Array.from(selectedIds))
-      setSelectedIds(new Set())
-      showSuccess(`${selectedIds.size} invoices deleted`)
+      selectNone()
+      showSuccess(`${selectedCount} invoices deleted`)
     } catch (err) {
       console.error('Failed to delete invoices:', err)
       showError(err instanceof Error ? err.message : 'Failed to delete invoices')
     }
-  }, [bulkDeleteInvoices, selectedIds, showSuccess, showError])
+  }, [bulkDeleteInvoices, selectedIds, selectedCount, selectNone, showSuccess, showError])
 
   const handleVoid = useCallback(async (id: string) => {
     if (!confirm('Void this invoice? This will mark it as void but preserve the record.')) return
@@ -337,16 +336,16 @@ export default function Invoicing() {
   }, [voidInvoice, showSuccess, showError])
 
   const handleBulkVoid = useCallback(async () => {
-    if (!confirm(`Void ${selectedIds.size} invoices? This will mark them as void but preserve the records.`)) return
+    if (!confirm(`Void ${selectedCount} invoices? This will mark them as void but preserve the records.`)) return
     try {
       await bulkVoidInvoices.mutateAsync(Array.from(selectedIds))
-      setSelectedIds(new Set())
-      showSuccess(`${selectedIds.size} invoices voided`)
+      selectNone()
+      showSuccess(`${selectedCount} invoices voided`)
     } catch (err) {
       console.error('Failed to void invoices:', err)
       showError(err instanceof Error ? err.message : 'Failed to void invoices')
     }
-  }, [bulkVoidInvoices, selectedIds, showSuccess, showError])
+  }, [bulkVoidInvoices, selectedIds, selectedCount, selectNone, showSuccess, showError])
 
   const handleSend = useCallback(async (id: string) => {
     try {
@@ -360,24 +359,24 @@ export default function Invoicing() {
   }, [sendInvoice, showSuccess, showError])
 
   const handleBulkSend = useCallback(async () => {
-    if (!confirm(`Send ${selectedIds.size} invoices?`)) return
+    if (!confirm(`Send ${selectedCount} invoices?`)) return
     try {
       await bulkSendInvoices.mutateAsync(Array.from(selectedIds))
-      setSelectedIds(new Set())
-      showSuccess(`${selectedIds.size} invoices sent`)
+      selectNone()
+      showSuccess(`${selectedCount} invoices sent`)
     } catch (err) {
       console.error('Failed to send invoices:', err)
       showError(err instanceof Error ? err.message : 'Failed to send invoices')
     }
-  }, [bulkSendInvoices, selectedIds, showSuccess, showError])
+  }, [bulkSendInvoices, selectedIds, selectedCount, selectNone, showSuccess, showError])
 
-  // NEW: Handle bulk send reminders - with explicit type
+  // Handle bulk send reminders
   const handleBulkSendReminders = useCallback(async () => {
-    if (selectedIds.size === 0) return
+    if (!hasSelection) return
 
     // Get the full invoice objects for selected IDs
     const invoicesToRemind = allInvoices.filter((inv: InvoiceWithDetails) =>
-      selectedIds.has(inv.id) &&
+      isSelected(inv.id) &&
       ['sent', 'partial', 'overdue'].includes(inv.status)
     )
 
@@ -397,22 +396,22 @@ export default function Invoicing() {
       } else {
         showSuccess(`${result.succeeded} reminders sent`)
       }
-      setSelectedIds(new Set())
+      selectNone()
     } catch (error) {
       console.error('Failed to send reminders:', error)
       showError(error instanceof Error ? error.message : 'Failed to send reminders')
     } finally {
       setSendingReminders(false)
     }
-  }, [selectedIds, allInvoices, bulkSendReminders, showSuccess, showError])
+  }, [hasSelection, isSelected, allInvoices, bulkSendReminders, selectNone, showSuccess, showError])
 
   // Clear selection and filters when changing tabs
   const handleTabChange = useCallback((tab: TabKey) => {
     setActiveTab(tab)
-    setSelectedIds(new Set())
+    selectNone()
     setSelectedInvoice(null)
     setStatusFilter('') // Clear status filter when switching tabs
-  }, [])
+  }, [selectNone])
 
   // Format helpers
   const formatCurrency = (amount: number | null) => {
@@ -576,10 +575,10 @@ export default function Invoicing() {
       </div>
 
       {/* Bulk Actions Bar */}
-      {selectedIds.size > 0 && (
+      {hasSelection && (
         <div className="px-6 py-3 bg-zinc-800/50 border-b border-zinc-700 flex items-center gap-4">
           <span className="text-sm text-zinc-300">
-            {selectedIds.size} selected
+            {selectedCount} selected
           </span>
           <div className="flex items-center gap-2">
             {/* Draft actions */}
@@ -643,7 +642,7 @@ export default function Invoicing() {
             )}
           </div>
           <button
-            onClick={() => setSelectedIds(new Set())}
+            onClick={selectNone}
             className="ml-auto text-sm text-zinc-400 hover:text-white"
           >
             Clear Selection
@@ -659,8 +658,8 @@ export default function Invoicing() {
               <th className="w-10 px-4 py-3">
                 <input
                   type="checkbox"
-                  checked={selectedIds.size === sortedInvoices.length && sortedInvoices.length > 0}
-                  onChange={handleSelectAll}
+                  checked={isAllSelected}
+                  onChange={handleToggleAll}
                   className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
                 />
               </th>
@@ -719,8 +718,8 @@ export default function Invoicing() {
                   <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                     <input
                       type="checkbox"
-                      checked={selectedIds.has(invoice.id)}
-                      onChange={() => handleSelectOne(invoice.id)}
+                      checked={isSelected(invoice.id)}
+                      onChange={(e) => toggleItem(invoice.id, e.target.checked)}
                       className="w-4 h-4 rounded border-zinc-600 bg-zinc-800 text-blue-500 focus:ring-blue-500 focus:ring-offset-zinc-900"
                     />
                   </td>

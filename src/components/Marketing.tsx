@@ -33,6 +33,7 @@ import { SortableTableHeader, useSortState } from './ui/SortableTableHeader'
 import { bulkSyncLeadsToMailchimp, bulkSyncEngagement, getEngagementLevel } from '../lib/mailchimp'
 import { queryKeys } from '../lib/queryClient'
 import { formatNameLastFirst } from '../lib/utils'
+import { useMultiSelection } from '../lib/useSelectionState'
 import {
   LEAD_ENGAGEMENT_COLORS,
   LEAD_TYPE_COLORS,
@@ -76,7 +77,16 @@ export default function Marketing() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null)
   const [showImportModal, setShowImportModal] = useState(false)
   const [editingLead, setEditingLead] = useState<LeadFamily | null>(null)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const {
+    selectedIds,
+    setSelectedIds,
+    toggleItem,
+    selectAll,
+    selectNone,
+    isSelected,
+    hasSelection,
+    selectedCount,
+  } = useMultiSelection<LeadFamily>()
   const [isBulkSyncing, setIsBulkSyncing] = useState(false)
   const [bulkSyncResult, setBulkSyncResult] = useState<{ success: number; failed: number } | null>(null)
   const [isBulkUpdating, setIsBulkUpdating] = useState(false)
@@ -281,26 +291,8 @@ export default function Marketing() {
     return daysBetween(created, today)
   }
 
-  // Selection handlers
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(new Set(leads.map(l => l.id)))
-    } else {
-      setSelectedIds(new Set())
-    }
-  }
-
-  const handleSelectOne = (id: string, checked: boolean) => {
-    const newSet = new Set(selectedIds)
-    if (checked) {
-      newSet.add(id)
-    } else {
-      newSet.delete(id)
-    }
-    setSelectedIds(newSet)
-  }
-
-  const isAllSelected = leads.length > 0 && leads.every(l => selectedIds.has(l.id))
+  // Selection state - isAllSelected is a derived value
+  const isAllSelected = leads.length > 0 && leads.every(l => isSelected(l.id))
 
   const { updateLead, deleteLead } = useLeadMutations()
 
@@ -373,7 +365,7 @@ export default function Marketing() {
 
   // Bulk sync to Mailchimp
   const handleBulkSync = async () => {
-    const selectedLeads = leads.filter(l => selectedIds.has(l.id))
+    const selectedLeads = leads.filter(l => isSelected(l.id))
     if (selectedLeads.length === 0) return
 
     if (!confirm(`Sync ${selectedLeads.length} lead(s) to Mailchimp? This will add/update them in your Mailchimp audience.`)) {
@@ -870,10 +862,10 @@ export default function Marketing() {
         </div>
 
         {/* Bulk Actions Bar */}
-        {selectedIds.size > 0 && (
+        {hasSelection && (
           <div className="px-4 py-3 bg-blue-900/30 border-b border-blue-800/50 flex items-center gap-4">
             <span className="text-sm text-blue-300 font-medium">
-              {selectedIds.size} selected
+              {selectedCount} selected
             </span>
 
             {/* Status Change Dropdown */}
@@ -937,7 +929,7 @@ export default function Marketing() {
 
             {/* Clear Selection */}
             <button
-              onClick={() => setSelectedIds(new Set())}
+              onClick={selectNone}
               className="flex items-center gap-1 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
             >
               <X className="w-4 h-4" />
@@ -977,7 +969,7 @@ export default function Marketing() {
                     <input
                       type="checkbox"
                       checked={isAllSelected}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      onChange={(e) => e.target.checked ? selectAll(leads) : selectNone()}
                       className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
                     />
                   </th>
@@ -1047,13 +1039,13 @@ export default function Marketing() {
                     onClick={() => setSelectedLeadId(lead.id)}
                     className={`hover:bg-zinc-800/50 cursor-pointer transition-colors ${
                       selectedLeadId === lead.id ? 'bg-zinc-800' : ''
-                    } ${selectedIds.has(lead.id) ? 'bg-blue-900/20' : ''}`}
+                    } ${isSelected(lead.id) ? 'bg-blue-900/20' : ''}`}
                   >
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(lead.id)}
-                        onChange={(e) => handleSelectOne(lead.id, e.target.checked)}
+                        checked={isSelected(lead.id)}
+                        onChange={(e) => toggleItem(lead.id, e.target.checked)}
                         className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
                       />
                     </td>

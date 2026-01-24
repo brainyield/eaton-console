@@ -12,6 +12,7 @@ import {
   type DirectorySortField,
   type DirectorySortConfig,
 } from '../lib/hooks'
+import { useMultiSelection } from '../lib/useSelectionState'
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown,
   Download, Trash2, RefreshCw, X, Loader2
@@ -62,7 +63,16 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const [sortConfig, setSortConfig] = useState<DirectorySortConfig>({ field: 'display_name', direction: 'asc' })
   
   // Selection state
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const {
+    selectedIds,
+    setSelectedIds,
+    toggleItem,
+    selectAll,
+    selectNone,
+    isSelected,
+    hasSelection,
+    selectedCount,
+  } = useMultiSelection<FamilyWithStudents>()
   
   // Bulk action states
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
@@ -215,34 +225,15 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
     setPage(1)
   }
 
-  // Checkbox handlers
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedIds(new Set(families.map(f => f.id)))
-    } else {
-      setSelectedIds(new Set())
-    }
-  }
-
-  const handleSelectOne = (id: string, checked: boolean) => {
-    const newSet = new Set(selectedIds)
-    if (checked) {
-      newSet.add(id)
-    } else {
-      newSet.delete(id)
-    }
-    setSelectedIds(newSet)
-  }
-
-  const isAllSelected = families.length > 0 && families.every(f => selectedIds.has(f.id))
-  const isSomeSelected = selectedIds.size > 0
+  // Selection helpers
+  const isAllSelected = families.length > 0 && families.every(f => isSelected(f.id))
 
   // Export selected to CSV
   const handleExportCSV = async () => {
     if (isExporting) return
     setIsExporting(true)
     try {
-      const selected = families.filter(f => selectedIds.has(f.id))
+      const selected = families.filter(f => isSelected(f.id))
       const headers = ['Family Name', 'Status', 'Email', 'Phone', 'Students', 'Balance']
       const rows = selected.map(f => [
         f.display_name,
@@ -270,7 +261,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const handleBulkStatusChange = (status: CustomerStatus) => {
     // Prevent duplicate submissions
     if (bulkUpdateStatus.isPending) return
-    if (!confirm(`Change status of ${selectedIds.size} families to "${status}"?`)) return
+    if (!confirm(`Change status of ${selectedCount} families to "${status}"?`)) return
     bulkUpdateStatus.mutate({ ids: Array.from(selectedIds), status })
   }
 
@@ -278,7 +269,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
   const handleBulkDelete = () => {
     // Prevent duplicate submissions
     if (bulkDelete.isPending) return
-    if (!confirm(`Delete ${selectedIds.size} families? This cannot be undone.`)) return
+    if (!confirm(`Delete ${selectedCount} families? This cannot be undone.`)) return
     bulkDelete.mutate(Array.from(selectedIds))
   }
 
@@ -333,10 +324,10 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
         </div>
 
         {/* Bulk Actions Bar */}
-        {isSomeSelected && (
+        {hasSelection && (
           <div className="px-6 py-3 bg-blue-900/30 border-b border-blue-800/50 flex items-center gap-4">
             <span className="text-sm text-blue-300">
-              {selectedIds.size} selected
+              {selectedCount} selected
             </span>
             <div className="flex items-center gap-2">
               {/* Change Status Dropdown */}
@@ -399,7 +390,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
 
               {/* Clear Selection */}
               <button
-                onClick={() => setSelectedIds(new Set())}
+                onClick={selectNone}
                 className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white transition-colors"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
@@ -432,7 +423,7 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                     <input
                       type="checkbox"
                       checked={isAllSelected}
-                      onChange={(e) => handleSelectAll(e.target.checked)}
+                      onChange={(e) => e.target.checked ? selectAll(families) : selectNone()}
                       className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
                       aria-label="Select all families"
                     />
@@ -512,14 +503,14 @@ export function Directory({ selectedFamilyId, onSelectFamily }: DirectoryProps) 
                     className={`
                       hover:bg-zinc-800/50 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset
                       ${selectedFamily?.id === family.id ? 'bg-zinc-800' : ''}
-                      ${selectedIds.has(family.id) ? 'bg-blue-900/20' : ''}
+                      ${isSelected(family.id) ? 'bg-blue-900/20' : ''}
                     `}
                   >
                     <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
-                        checked={selectedIds.has(family.id)}
-                        onChange={(e) => handleSelectOne(family.id, e.target.checked)}
+                        checked={isSelected(family.id)}
+                        onChange={(e) => toggleItem(family.id, e.target.checked)}
                         className="rounded bg-zinc-800 border-zinc-600 text-blue-500 focus:ring-blue-500"
                         aria-label={`Select ${family.display_name}`}
                       />
