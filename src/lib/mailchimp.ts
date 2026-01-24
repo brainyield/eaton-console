@@ -85,12 +85,10 @@ async function callMailchimpFunction<T>(action: string, payload?: unknown): Prom
   })
 
   if (error) {
-    console.error('Mailchimp function error:', error)
     throw new Error(error.message || 'Failed to call Mailchimp function')
   }
 
   if (!data?.success) {
-    console.error('Mailchimp operation failed:', data)
     throw new Error(data?.error || 'Mailchimp operation failed')
   }
 

@@ -3,6 +3,7 @@ import { X, DollarSign, Calendar, AlertCircle } from 'lucide-react'
 import { useTeacherAssignmentsByTeacher, useTeacherPaymentMutations } from '../lib/hooks'
 import type { Teacher } from '../lib/hooks'
 import { multiplyMoney } from '../lib/moneyUtils'
+import { formatDateLocal } from '../lib/dateUtils'
 
 interface LineItem {
   enrollment_id: string | null
@@ -64,14 +65,6 @@ export function RecordTeacherPaymentModal({
       service_code: a.enrollment?.service?.code || '',
     }))
   }, [assignmentsData])
-
-  // Helper to format date as YYYY-MM-DD in local time (avoids timezone shift from toISOString)
-  const formatDateLocal = (date: Date): string => {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${year}-${month}-${day}`
-  }
 
   // Set default dates (current week)
   useEffect(() => {

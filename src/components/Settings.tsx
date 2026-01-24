@@ -9,7 +9,6 @@ import {
   Save,
   Plus,
   X,
-  Check,
   AlertCircle,
   Loader2,
   MapPin,
@@ -18,6 +17,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
+import { useToast } from '../lib/toast'
 
 // Types for settings
 interface BusinessInfo {
@@ -62,29 +62,9 @@ interface LocationRow {
   created_at: string
 }
 
-// Toast component
-function Toast({ message, type, onClose }: { message: string; type: 'success' | 'error'; onClose: () => void }) {
-  useEffect(() => {
-    const timer = setTimeout(onClose, 4000)
-    return () => clearTimeout(timer)
-  }, [onClose])
-
-  return (
-    <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-lg shadow-lg ${
-      type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
-    }`}>
-      {type === 'success' ? <Check className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
-      <span>{message}</span>
-      <button onClick={onClose} className="ml-2 hover:opacity-80">
-        <X className="h-4 w-4" />
-      </button>
-    </div>
-  )
-}
-
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>('business')
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
+  const { showSuccess, showError } = useToast()
   const queryClient = useQueryClient()
 
   // Local form state (initialized from query data)
@@ -197,16 +177,15 @@ export default function Settings() {
       
       return { previous }
     },
-    onError: (err, _variables, context) => {
+    onError: (_err, _variables, context) => {
       // Rollback on error
       if (context?.previous) {
         queryClient.setQueryData(queryKeys.settings.all, context.previous)
       }
-      console.error('Error saving setting:', err)
-      setToast({ message: 'Failed to save settings', type: 'error' })
+      showError('Failed to save settings')
     },
     onSuccess: () => {
-      setToast({ message: 'Settings saved successfully', type: 'success' })
+      showSuccess('Settings saved successfully')
     },
     onSettled: () => {
       // Refetch to ensure sync
@@ -230,11 +209,10 @@ export default function Settings() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.locations.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.locations.active() })
-      setToast({ message: 'Location status updated', type: 'success' })
+      showSuccess('Location status updated')
     },
-    onError: (err) => {
-      console.error('Error updating location:', err)
-      setToast({ message: 'Failed to update location status', type: 'error' })
+    onError: () => {
+      showError('Failed to update location status')
     },
   })
 
@@ -709,11 +687,6 @@ export default function Settings() {
           </div>
         )}
       </div>
-
-      {/* Toast */}
-      {toast && (
-        <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />
-      )}
     </div>
   )
 }

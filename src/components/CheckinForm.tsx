@@ -83,8 +83,8 @@ function loadFromStorage(inviteId: string): FormData | null {
     if (stored) {
       return JSON.parse(stored)
     }
-  } catch (e) {
-    console.error('Failed to load form data from storage:', e)
+  } catch {
+    // Silently fail - localStorage may be unavailable or data corrupted
   }
   return null
 }
@@ -92,16 +92,16 @@ function loadFromStorage(inviteId: string): FormData | null {
 function saveToStorage(inviteId: string, data: FormData): void {
   try {
     localStorage.setItem(getStorageKey(inviteId), JSON.stringify(data))
-  } catch (e) {
-    console.error('Failed to save form data to storage:', e)
+  } catch {
+    // Silently fail - localStorage may be unavailable or quota exceeded
   }
 }
 
 function clearStorage(inviteId: string): void {
   try {
     localStorage.removeItem(getStorageKey(inviteId))
-  } catch (e) {
-    console.error('Failed to clear form data from storage:', e)
+  } catch {
+    // Silently fail - localStorage may be unavailable
   }
 }
 
@@ -771,8 +771,8 @@ export default function CheckinForm({ token, periodId }: CheckinFormProps) {
 
       // Navigate back to desk with success message
       navigate(`/desk/${token}?submitted=true`, { replace: true })
-    } catch (error) {
-      console.error('Failed to submit check-in:', error)
+    } catch {
+      // Error is already displayed via submitMutation.isError state
     }
   }, [invite, teacher, periodId, needsAssessment, studentResources, submitMutation, token, navigate])
 
