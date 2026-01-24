@@ -11,7 +11,9 @@ import {
   CalendarDays,
   Wallet,
   Train,
-  Megaphone
+  Megaphone,
+  MessageSquare,
+  Send,
 } from 'lucide-react'
 import { useRecentlyViewed } from '../lib/hooks'
 
@@ -21,12 +23,24 @@ interface NavItem {
   href: string
 }
 
-const navigation: NavItem[] = [
+interface NavItemWithChildren extends NavItem {
+  children?: NavItem[]
+}
+
+const navigation: NavItemWithChildren[] = [
   { name: 'Command Center', icon: LayoutDashboard, href: '/' },
   { name: 'Directory', icon: Users, href: '/directory' },
   { name: 'Active Roster', icon: ClipboardList, href: '/roster' },
   { name: 'Events', icon: CalendarDays, href: '/events' },
-  { name: 'Marketing', icon: Megaphone, href: '/marketing' },
+  {
+    name: 'Marketing',
+    icon: Megaphone,
+    href: '/marketing',
+    children: [
+      { name: 'Quick Send', icon: Send, href: '/quick-send' },
+      { name: 'SMS Log', icon: MessageSquare, href: '/sms-log' },
+    ]
+  },
   { name: 'Invoicing', icon: Receipt, href: '/invoicing' },
   { name: 'Payroll', icon: Wallet, href: '/payroll' },
   { name: 'Teachers', icon: GraduationCap, href: '/teachers' },
@@ -85,24 +99,51 @@ export function Sidebar({ currentPath, onNavigate, onSelectFamily }: SidebarProp
       {/* Navigation */}
       <nav className="flex-1 px-3 py-2 space-y-1">
         {navigation.map((item) => {
-          const isActive = currentPath === item.href || 
+          const isActive = currentPath === item.href ||
             (item.href !== '/' && currentPath.startsWith(item.href))
-          
+          const hasActiveChild = item.children?.some(child => currentPath === child.href)
+          const isParentActive = isActive || hasActiveChild
+
           return (
-            <button
-              key={item.name}
-              onClick={() => onNavigate(item.href)}
-              className={`
-                flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium
-                ${isActive 
-                  ? 'bg-zinc-800 text-white' 
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-                }
-              `}
-            >
-              <item.icon className="h-4 w-4" aria-hidden="true" />
-              {item.name}
-            </button>
+            <div key={item.name}>
+              <button
+                onClick={() => onNavigate(item.href)}
+                className={`
+                  flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium
+                  ${isParentActive
+                    ? 'bg-zinc-800 text-white'
+                    : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
+                  }
+                `}
+              >
+                <item.icon className="h-4 w-4" aria-hidden="true" />
+                {item.name}
+              </button>
+              {/* Child items */}
+              {item.children && isParentActive && (
+                <div className="ml-7 mt-1 space-y-1">
+                  {item.children.map((child) => {
+                    const isChildActive = currentPath === child.href
+                    return (
+                      <button
+                        key={child.name}
+                        onClick={() => onNavigate(child.href)}
+                        className={`
+                          flex w-full items-center gap-2 rounded-md px-3 py-1.5 text-sm
+                          ${isChildActive
+                            ? 'text-blue-400'
+                            : 'text-zinc-500 hover:text-zinc-300'
+                          }
+                        `}
+                      >
+                        <child.icon className="h-3.5 w-3.5" aria-hidden="true" />
+                        {child.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
           )
         })}
       </nav>

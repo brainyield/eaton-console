@@ -207,6 +207,62 @@ export interface InvoiceEmail {
   created_at: string
 }
 
+// =============================================================================
+// SMS TYPES
+// =============================================================================
+
+export type SmsStatus = 'pending' | 'sent' | 'delivered' | 'failed' | 'undelivered'
+export type SmsMessageType = 'invoice_reminder' | 'event_reminder' | 'announcement' | 'custom' | 'bulk'
+
+export interface SmsMessage {
+  id: string
+  family_id: string | null
+  invoice_id: string | null
+  sent_by: string | null
+  to_phone: string
+  from_phone: string
+  message_body: string
+  message_type: SmsMessageType
+  status: SmsStatus
+  twilio_sid: string | null
+  error_code: string | null
+  error_message: string | null
+  template_key: string | null
+  merge_data: unknown
+  campaign_name: string | null
+  sent_at: string | null
+  delivered_at: string | null
+  failed_at: string | null
+  created_at: string
+  updated_at: string
+  // Joined fields
+  family?: { display_name: string; primary_email: string | null }
+}
+
+export interface SmsMessageFilters {
+  familyId?: string
+  invoiceId?: string
+  status?: SmsStatus
+  messageType?: SmsMessageType
+  dateFrom?: string
+  dateTo?: string
+  limit?: number
+}
+
+export interface SmsMedia {
+  id: string
+  sms_message_id: string
+  storage_path: string
+  public_url: string
+  content_type: string | null
+  file_size: number | null
+  name: string | null
+  created_at: string
+}
+
+export type SmsMessageInsert = Pick<SmsMessage, 'to_phone' | 'message_body' | 'message_type'> &
+  Partial<Omit<SmsMessage, 'id' | 'to_phone' | 'message_body' | 'message_type' | 'created_at' | 'updated_at'>>
+
 // Enrollment Onboarding - tracking forms and documents sent to families
 export type OnboardingItemType = 'form' | 'document'
 export type OnboardingItemStatus = 'pending' | 'sent' | 'completed'
@@ -7176,5 +7232,219 @@ export function useFamilyMergeLog() {
       return (data || []) as FamilyMergeLogEntry[]
     },
     staleTime: 60 * 1000, // 1 minute
+  })
+}
+
+// =============================================================================
+// SMS HOOKS
+// =============================================================================
+
+// Note: SMS tables may not be in generated types yet. Using type assertions.
+// Run `npm run db:types` after applying the migration to update types.
+
+/**
+ * Hook to fetch SMS messages with optional filtering.
+ */
+export function useSmsMessages(filters?: SmsMessageFilters) {
+  return useQuery({
+    queryKey: queryKeys.sms.messages(filters),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = (supabase.from as any)('sms_messages')
+        .select(`
+          *,
+          family:families(display_name, primary_email)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(filters?.limit ?? 500)
+
+      if (filters?.familyId) {
+        query = query.eq('family_id', filters.familyId)
+      }
+
+      if (filters?.invoiceId) {
+        query = query.eq('invoice_id', filters.invoiceId)
+      }
+
+      if (filters?.status) {
+        query = query.eq('status', filters.status)
+      }
+
+      if (filters?.messageType) {
+        query = query.eq('message_type', filters.messageType)
+      }
+
+      if (filters?.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom)
+      }
+
+      if (filters?.dateTo) {
+        query = query.lte('created_at', filters.dateTo)
+      }
+
+      const { data, error } = await query
+      if (error) {
+        // If the table doesn't exist, return empty array
+        if (error.message?.includes('does not exist')) {
+          console.warn('sms_messages table not found - migration may not be applied')
+          return [] as SmsMessage[]
+        }
+        throw error
+      }
+      return (data || []) as SmsMessage[]
+    },
+  })
+}
+
+/**
+ * Hook to fetch SMS messages for a specific family.
+ */
+export function useSmsByFamily(familyId: string) {
+  return useQuery({
+    queryKey: queryKeys.sms.byFamily(familyId),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from as any)('sms_messages')
+        .select('*')
+        .eq('family_id', familyId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        if (error.message?.includes('does not exist')) {
+          return [] as SmsMessage[]
+        }
+        throw error
+      }
+      return (data || []) as SmsMessage[]
+    },
+    enabled: !!familyId,
+  })
+}
+
+/**
+ * Hook to fetch SMS messages for a specific invoice.
+ */
+export function useSmsByInvoice(invoiceId: string) {
+  return useQuery({
+    queryKey: queryKeys.sms.byInvoice(invoiceId),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from as any)('sms_messages')
+        .select('*')
+        .eq('invoice_id', invoiceId)
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (error) {
+        if (error.message?.includes('does not exist')) {
+          return [] as SmsMessage[]
+        }
+        throw error
+      }
+      return (data || []) as SmsMessage[]
+    },
+    enabled: !!invoiceId,
+  })
+}
+
+/**
+ * Hook for SMS mutations (send, update opt-out).
+ */
+export function useSmsMutations() {
+  const queryClient = useQueryClient()
+
+  const sendSms = useMutation({
+    mutationFn: async (params: {
+      familyId?: string
+      familyIds?: string[]
+      toPhone?: string
+      messageBody: string
+      messageType?: SmsMessageType
+      invoiceId?: string
+      templateKey?: string
+      mergeData?: Record<string, unknown>
+      campaignName?: string
+      mediaUrls?: string[]
+      sentBy?: string
+    }) => {
+      const { data, error } = await supabase.functions.invoke('send-sms', {
+        body: {
+          familyId: params.familyId,
+          familyIds: params.familyIds,
+          toPhone: params.toPhone,
+          messageBody: params.messageBody,
+          messageType: params.messageType || 'custom',
+          invoiceId: params.invoiceId,
+          templateKey: params.templateKey,
+          mergeData: params.mergeData,
+          campaignName: params.campaignName,
+          mediaUrls: params.mediaUrls,
+          sentBy: params.sentBy || 'admin',
+        },
+      })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      return data as { success: boolean; sent: number; failed: number; skipped: number }
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.sms.all })
+      if (variables.familyId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.sms.byFamily(variables.familyId) })
+      }
+      if (variables.invoiceId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.sms.byInvoice(variables.invoiceId) })
+      }
+    },
+  })
+
+  const updateOptOut = useMutation({
+    mutationFn: async ({ familyId, optOut }: { familyId: string; optOut: boolean }) => {
+      // Note: sms_opt_out fields may not be in generated types yet
+      // Using raw SQL via rpc would be cleaner but update works with type assertion
+      type FamilyUpdate = { sms_opt_out: boolean; sms_opt_out_at: string | null }
+      const updateData: FamilyUpdate = {
+        sms_opt_out: optOut,
+        sms_opt_out_at: optOut ? new Date().toISOString() : null,
+      }
+      const { error } = await supabase
+        .from('families')
+        .update(updateData as unknown as Record<string, never>)
+        .eq('id', familyId)
+
+      if (error) throw error
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+    },
+  })
+
+  return {
+    sendSms,
+    updateOptOut,
+  }
+}
+
+/**
+ * Hook to fetch SMS media library.
+ */
+export function useSmsMedia() {
+  return useQuery({
+    queryKey: queryKeys.smsMedia.list(),
+    queryFn: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.from as any)('sms_media')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        if (error.message?.includes('does not exist')) {
+          return [] as SmsMedia[]
+        }
+        throw error
+      }
+      return (data || []) as SmsMedia[]
+    },
   })
 }

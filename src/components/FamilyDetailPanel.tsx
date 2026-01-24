@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
-import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, ExternalLink } from 'lucide-react'
+import { X, Mail, Phone, CreditCard, Calendar, Pencil, UserPlus, ChevronRight, GraduationCap, FileText, ExternalLink, MessageSquare } from 'lucide-react'
 import { useEnrollmentsByFamily, useInvoicesByFamily, type Family, type Student, type CustomerStatus, type EnrollmentStatus, type InvoiceStatus } from '../lib/hooks'
 import { EditFamilyModal } from './EditFamilyModal'
 import { AddStudentModal } from './AddStudentModal'
 import { EditStudentModal } from './EditStudentModal'
 import { EmailHistory } from './email'
+import { SmsHistory } from './sms/SmsHistory'
+import { SmsComposeModal } from './sms/SmsComposeModal'
 import { calculateAge } from '../lib/utils'
 import { parseLocalDate } from '../lib/dateUtils'
+import { isValidPhone } from '../lib/phoneUtils'
 
 interface FamilyWithStudents extends Family {
   students: Student[]
@@ -44,7 +47,7 @@ const INVOICE_STATUS_COLORS: Record<InvoiceStatus, string> = {
 
 
 export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDetailPanelProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'enrollments' | 'invoices' | 'history'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'enrollments' | 'invoices' | 'sms' | 'history'>('overview')
   const [showEndedEnrollments, setShowEndedEnrollments] = useState(false)
 
   // Modal states
@@ -52,6 +55,10 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
   const [showAddStudent, setShowAddStudent] = useState(false)
   const [showEditStudent, setShowEditStudent] = useState(false)
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
+  const [showSmsModal, setShowSmsModal] = useState(false)
+
+  // Check if family has a valid phone for SMS
+  const canSendSms = family.primary_phone && isValidPhone(family.primary_phone)
 
   // React Query - fetch enrollments for this family
  const {
@@ -90,6 +97,7 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
     { id: 'overview', label: 'Overview' },
     { id: 'enrollments', label: 'Enrollments' },
     { id: 'invoices', label: 'Invoices' },
+    { id: 'sms', label: 'SMS' },
     { id: 'history', label: 'History' },
   ] as const
 
@@ -167,6 +175,15 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
                 <a href={`tel:${family.primary_phone}`} className="hover:text-white">
                   {family.primary_phone}
                 </a>
+                {canSendSms && (
+                  <button
+                    onClick={() => setShowSmsModal(true)}
+                    className="ml-2 p-1 text-blue-400 hover:text-blue-300 hover:bg-zinc-800 rounded transition-colors"
+                    title="Send SMS"
+                  >
+                    <MessageSquare className="h-4 w-4" aria-hidden="true" />
+                  </button>
+                )}
               </div>
             )}
             {family.payment_gateway && (
@@ -451,6 +468,28 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
             </div>
           )}
 
+          {activeTab === 'sms' && (
+            <div className="space-y-4">
+              {/* Send SMS Button */}
+              {canSendSms ? (
+                <button
+                  onClick={() => setShowSmsModal(true)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                >
+                  <MessageSquare className="w-4 h-4" aria-hidden="true" />
+                  Send SMS
+                </button>
+              ) : (
+                <div className="p-3 bg-zinc-800 rounded-lg text-sm text-zinc-400 text-center">
+                  No valid phone number on file
+                </div>
+              )}
+
+              {/* SMS History */}
+              <SmsHistory familyId={family.id} limit={50} />
+            </div>
+          )}
+
           {activeTab === 'history' && (
             <EmailHistory
               email={family.primary_email}
@@ -488,6 +527,15 @@ export function FamilyDetailPanel({ family, onClose, onFamilyUpdated }: FamilyDe
           setSelectedStudent(null)
         }}
         onSuccess={handleStudentSuccess}
+      />
+
+      {/* SMS Compose Modal */}
+      <SmsComposeModal
+        isOpen={showSmsModal}
+        onClose={() => setShowSmsModal(false)}
+        toPhone={family.primary_phone || ''}
+        toName={family.display_name}
+        familyId={family.id}
       />
     </>
   )

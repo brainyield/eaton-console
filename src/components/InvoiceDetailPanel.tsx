@@ -17,12 +17,16 @@ import {
   DollarSign,
   AlertTriangle,
   Wrench,
+  MessageSquare,
 } from 'lucide-react'
 import type { InvoiceWithDetails } from '../lib/hooks'
-import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations } from '../lib/hooks'
+import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations, useSmsByInvoice } from '../lib/hooks'
 import { parseLocalDate } from '../lib/dateUtils'
 import { useToast } from '../lib/toast'
 import { generateInvoicePdf } from '../lib/invoicePdf'
+import { SmsComposeModal } from './sms/SmsComposeModal'
+import { SmsHistory } from './sms/SmsHistory'
+import { isValidPhone } from '../lib/phoneUtils'
 
 // ============================================================================
 // Types
@@ -130,14 +134,19 @@ export default function InvoiceDetailPanel({
   const [paymentAmount, setPaymentAmount] = useState('')
   const [paymentNotes, setPaymentNotes] = useState('')
   const [fixingBalance, setFixingBalance] = useState(false)
+  const [showSmsModal, setShowSmsModal] = useState(false)
 
   // Global processing state to prevent concurrent actions
   const isProcessing = sendingReminder || recordingPayment || fixingBalance || isSending || isVoiding
 
-  // Fetch email history and payment history for this invoice
+  // Fetch email history, payment history, and SMS history for this invoice
   const { data: emailHistory, isLoading: loadingEmails } = useInvoiceEmails(invoice?.id)
   const { data: paymentHistory, isLoading: loadingPayments } = useInvoicePayments(invoice?.id)
+  const { data: smsHistory = [] } = useSmsByInvoice(invoice?.id)
   const { sendReminder, recordPayment, recalculateInvoiceBalance } = useInvoiceMutations()
+
+  // Check if family has a valid phone for SMS
+  const canSendSms = invoice.family?.primary_phone && isValidPhone(invoice.family.primary_phone)
 
   const formatCurrency = (amount: number | null) => {
     if (amount === null || amount === undefined) return '-'
@@ -544,6 +553,30 @@ export default function InvoiceDetailPanel({
               <div className="text-sm text-zinc-500 italic">No emails sent yet</div>
             )}
           </div>
+
+          {/* SMS History Section */}
+          <div className="px-6 py-4 border-b border-zinc-800">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-zinc-400 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" aria-hidden="true" />
+                SMS History
+              </h3>
+              {canSendSms && (
+                <button
+                  onClick={() => setShowSmsModal(true)}
+                  className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                >
+                  Send SMS
+                </button>
+              )}
+            </div>
+
+            {smsHistory.length > 0 ? (
+              <SmsHistory invoiceId={invoice.id} limit={5} showEmpty={false} />
+            ) : (
+              <div className="text-sm text-zinc-500 italic">No SMS messages yet</div>
+            )}
+          </div>
         </div>
 
         {/* Actions */}
@@ -597,6 +630,17 @@ export default function InvoiceDetailPanel({
             >
               <DollarSign className="w-4 h-4" aria-hidden="true" />
               Record Payment
+            </button>
+          )}
+
+          {/* Send SMS button for outstanding invoices with phone */}
+          {canSendSms && ['sent', 'partial', 'overdue'].includes(invoice.status) && (
+            <button
+              onClick={() => setShowSmsModal(true)}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg transition-colors"
+            >
+              <MessageSquare className="w-4 h-4" aria-hidden="true" />
+              Send SMS Reminder
             </button>
           )}
 
@@ -742,6 +786,24 @@ export default function InvoiceDetailPanel({
           </div>
         </>
       )}
+
+      {/* SMS Compose Modal */}
+      <SmsComposeModal
+        isOpen={showSmsModal}
+        onClose={() => setShowSmsModal(false)}
+        toPhone={invoice.family?.primary_phone || ''}
+        toName={invoice.family?.display_name || ''}
+        familyId={invoice.family_id || undefined}
+        invoiceId={invoice.id}
+        suggestedTemplate="invoice_reminder"
+        templateData={{
+          familyName: invoice.family?.display_name?.split(',')[0] || 'there',
+          invoiceNumber: invoice.invoice_number || '',
+          amount: balanceDue ?? 0,
+          dueDate: invoice.due_date || '',
+          invoiceUrl: publicUrl,
+        }}
+      />
     </>
   )
 }

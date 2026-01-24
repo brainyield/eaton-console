@@ -291,4 +291,19 @@ export const queryKeys = {
     potentialDuplicates: () => ['admin', 'potential-duplicates'] as const,
     familyMergeLog: () => ['admin', 'family-merge-log'] as const,
   },
+
+  // SMS
+  sms: {
+    all: ['sms'] as const,
+    messages: (filters?: { familyId?: string; invoiceId?: string; status?: string; messageType?: string; limit?: number }) =>
+      ['sms', 'messages', filters] as const,
+    byFamily: (familyId: string) => ['sms', 'family', familyId] as const,
+    byInvoice: (invoiceId: string) => ['sms', 'invoice', invoiceId] as const,
+  },
+
+  // SMS Media
+  smsMedia: {
+    all: ['sms-media'] as const,
+    list: () => ['sms-media', 'list'] as const,
+  },
 }

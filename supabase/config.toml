@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.get-pending-onboarding]
 verify_jwt = false
+
+[functions.twilio-status-webhook]
+verify_jwt = false
+
+[functions.twilio-opt-out-webhook]
+verify_jwt = false

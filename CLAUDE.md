@@ -38,9 +38,12 @@ src/
 │   ├── queryClient.ts   # React Query config + query key factory
 │   ├── dateUtils.ts     # Timezone-safe date utilities
 │   ├── moneyUtils.ts    # Floating-point safe money operations
+│   ├── phoneUtils.ts    # Phone normalization, validation, formatting
+│   ├── smsTemplates.ts  # SMS templates with merge fields, segment calculation
 │   ├── validation.ts    # Input validation
 │   ├── toast.tsx        # Toast context provider
 │   └── utils.ts         # Name formatting, age calculation
+├── pages/               # Full-page components (SmsLog, QuickSend)
 ├── components/
 │   ├── Layout.tsx       # Main layout wrapper
 │   ├── Sidebar.tsx      # Navigation
@@ -56,7 +59,7 @@ src/
 
 Admin routes are protected by a client-side password gate (`AdminGate.tsx`). This prevents accidental access but is not cryptographically secure.
 
-**Protected routes:** `/`, `/directory`, `/roster`, `/events`, `/marketing`, `/invoicing`, `/payroll`, `/teachers`, `/reports`, `/settings`
+**Protected routes:** `/`, `/directory`, `/roster`, `/events`, `/marketing`, `/sms-log`, `/quick-send`, `/invoicing`, `/payroll`, `/teachers`, `/reports`, `/settings`
 
 **Public routes (no password):** `/desk/:token`, `/desk/:token/checkin/:periodId`, `/invoice/:publicId`
 
@@ -192,6 +195,9 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** leave database triggers that reference deprecated tables/columns - triggers can silently fail while the main operation succeeds. After schema changes that remove tables/columns, audit triggers in Supabase Dashboard → Database → Triggers and drop any that reference removed objects. Example: `trigger_update_lead_score_on_activity` referenced the deprecated `leads` table, causing webhooks to partially succeed (family created, but lead_activities insert failed silently).
 - **DON'T** use `window.location.origin` for URLs sent in emails - when sending from localhost, emails will contain localhost URLs that recipients can't access. Use `import.meta.env.VITE_APP_URL || window.location.origin` and set `VITE_APP_URL` in production (Vercel env vars). The fallback allows local testing while ensuring production emails have correct URLs.
 - **DON'T** fetch large datasets directly from Supabase without considering the 1000 row default limit - Supabase REST API returns max 1000 rows by default, and `.limit(N)` won't help if N > server max. For tables that may exceed 1000 rows (like `revenue_records`), use database functions with `.rpc()` to aggregate data server-side. See `get_revenue_by_month` and `get_revenue_by_location` functions used in Reports.tsx.
+- **DON'T** query new tables before applying migrations - if you create new tables like `sms_messages`, the Supabase types won't include them until you apply the migration and run `npm run db:types`. Use `(supabase.from as any)('table_name')` with explicit type casts as a workaround, with a comment noting types need regeneration.
+- **DON'T** use ASCII ranges for GSM character detection in SMS - the GSM 03.38 character set is NOT the same as ASCII. Use the explicit character sets in `smsTemplates.ts` which include Greek letters (Δ, Φ, Γ, etc.) and handle extended characters (€, [, ], etc.) that count as 2 characters each.
+- **DON'T** store phone numbers in inconsistent formats - use `normalizePhone()` from `phoneUtils.ts` to convert to E.164 format (+1XXXXXXXXXX) for storage, and `formatPhoneDisplay()` for user-facing display as (XXX) XXX-XXXX.
 
 ---
 

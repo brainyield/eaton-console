@@ -16,6 +16,8 @@ import Marketing from './components/Marketing'
 import Reports from './components/Reports'
 import Settings from './components/Settings'
 import AdminGate from './components/AdminGate'
+import SmsLog from './pages/SmsLog'
+import QuickSend from './pages/QuickSend'
 
 // Wrapper component that provides navigation context
 function AppContent() {
@@ -90,6 +92,22 @@ function AppContent() {
           <CommandPalette onSelect={handleSearchSelect} />
           <Layout currentPath="/marketing" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
             <Marketing />
+          </Layout>
+        </AdminGate>
+      } />
+      <Route path="/sms-log" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
+          <Layout currentPath="/sms-log" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
+            <SmsLog />
+          </Layout>
+        </AdminGate>
+      } />
+      <Route path="/quick-send" element={
+        <AdminGate>
+          <CommandPalette onSelect={handleSearchSelect} />
+          <Layout currentPath="/quick-send" onNavigate={(path) => navigate(path)} onSelectFamily={setSelectedFamilyId}>
+            <QuickSend />
           </Layout>
         </AdminGate>
       } />
