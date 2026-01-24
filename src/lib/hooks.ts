@@ -603,6 +603,8 @@ export function useFamilyMutations() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.families.detail(variables.id) })
+      // Invalidate dashboard stats when family status changes affect counts
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -2478,6 +2480,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -2565,6 +2569,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.eventOrders.pending() })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
@@ -2645,6 +2651,8 @@ export function useInvoiceMutations() {
       queryClient.invalidateQueries({ queryKey: queryKeys.hubSessions.pending() })
       // Invalidate families to update balance in Directory
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      // Invalidate dashboard stats so outstanding balance updates
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },
   })
 
