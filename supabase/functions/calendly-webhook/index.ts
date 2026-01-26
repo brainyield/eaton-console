@@ -338,7 +338,7 @@ Deno.serve(async (req) => {
               .update({
                 calendly_event_uri: scheduledEventUri || null,
                 calendly_invitee_uri: inviteeUri || null,
-                calendly_scheduled_at: startTime || null,
+                scheduled_at: startTime || null,
                 primary_phone: inviteePhone || existingFamily.primary_phone || null,
               })
               .eq('id', familyId)
@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
                 lead_type: 'calendly_call',
                 calendly_event_uri: scheduledEventUri || null,
                 calendly_invitee_uri: inviteeUri || null,
-                calendly_scheduled_at: startTime || null,
+                scheduled_at: startTime || null,
                 primary_phone: inviteePhone || existingFamily.primary_phone || null,
               })
               .eq('id', familyId)
@@ -397,7 +397,7 @@ Deno.serve(async (req) => {
               lead_type: 'calendly_call',
               calendly_event_uri: scheduledEventUri || null,
               calendly_invitee_uri: inviteeUri || null,
-              calendly_scheduled_at: startTime || null,
+              scheduled_at: startTime || null,
             })
             .select('id')
             .single()

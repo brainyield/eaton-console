@@ -219,6 +219,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** duplicate STATUS_COLORS or status badge styling across files - these identical color mappings exist in 8+ files. Use shared constants from a central location or create a `<StatusBadge variant="enrollment|lead|invoice" />` component.
 - **DON'T** duplicate utility functions that already exist - don't define local `formatDate()` or `formatCurrency()` functions when `formatDateLocal()` and `formatCurrency()` already exist in `dateUtils.ts` and `moneyUtils.ts`. Import and use the canonical versions to ensure consistent behavior.
 - **DON'T** hardcode external service URLs - use environment variables like `import.meta.env.VITE_N8N_BASE_URL` with a fallback for development. This allows different environments (staging, production) without code changes.
+- **DON'T** assume column names in Edge Functions match your mental model - the `families` table has `scheduled_at` (not `calendly_scheduled_at`). Edge Functions don't get TypeScript compile errors for wrong column names; Supabase inserts silently fail. Always verify column names against the schema before writing insert/update queries, and check `family_id` is not null after booking creation to catch silent failures.
 
 ---
 
