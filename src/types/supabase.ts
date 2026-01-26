@@ -1376,6 +1376,7 @@ export type Database = {
           payment_gateway: string | null
           pdf_email_sent_at: string | null
           preferred_days: string | null
+          preferred_location: string | null
           preferred_time: string | null
           primary_contact_name: string | null
           primary_email: string | null
@@ -1421,6 +1422,7 @@ export type Database = {
           payment_gateway?: string | null
           pdf_email_sent_at?: string | null
           preferred_days?: string | null
+          preferred_location?: string | null
           preferred_time?: string | null
           primary_contact_name?: string | null
           primary_email?: string | null
@@ -1466,6 +1468,7 @@ export type Database = {
           payment_gateway?: string | null
           pdf_email_sent_at?: string | null
           preferred_days?: string | null
+          preferred_location?: string | null
           preferred_time?: string | null
           primary_contact_name?: string | null
           primary_email?: string | null
