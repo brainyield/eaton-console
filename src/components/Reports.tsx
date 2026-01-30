@@ -65,6 +65,11 @@ interface PayrollRow {
   total_amount: number | null
 }
 
+interface PayrollRunRow {
+  paid_at: string
+  total_adjusted: number | null
+}
+
 // Chart data types
 interface RevenueByMonth {
   month: string
@@ -364,7 +369,7 @@ export default function Reports() {
     },
   })
 
-  // Payroll by month query
+  // Payroll by month query - combines legacy teacher_payments and batch payroll_run
   const {
     data: payrollResult,
     isLoading: loadingPayroll,
@@ -374,21 +379,31 @@ export default function Reports() {
   } = useQuery({
     queryKey: queryKeys.reports.payroll(startDate),
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fetch legacy individual teacher payments
+      const { data: legacyPayments, error: legacyError } = await supabase
         .from('teacher_payments')
         .select('pay_date, total_amount')
         .gte('pay_date', startDate)
         .order('pay_date', { ascending: true })
 
-      if (error) throw error
+      if (legacyError) throw legacyError
 
-      const payments = (data || []) as PayrollRow[]
+      // Fetch batch payroll runs (paid only)
+      const { data: payrollRuns, error: runsError } = await supabase
+        .from('payroll_run')
+        .select('paid_at, total_adjusted')
+        .eq('status', 'paid')
+        .gte('paid_at', startDate)
+        .order('paid_at', { ascending: true })
 
-      // Group by month
+      if (runsError) throw runsError
+
+      // Group by month - combining both sources
       const monthlyData: Record<string, { amount: number; count: number }> = {}
 
+      // Add legacy payments
+      const payments = (legacyPayments || []) as PayrollRow[]
       payments.forEach((p) => {
-        // Use parseLocalDate to avoid timezone issues
         const date = parseLocalDate(p.pay_date)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 
@@ -397,6 +412,21 @@ export default function Reports() {
         }
 
         monthlyData[monthKey].amount += Number(p.total_amount) || 0
+        monthlyData[monthKey].count++
+      })
+
+      // Add batch payroll runs
+      const runs = (payrollRuns || []) as PayrollRunRow[]
+      runs.forEach((r) => {
+        // paid_at is a timestamp, extract date portion
+        const date = new Date(r.paid_at)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+
+        if (!monthlyData[monthKey]) {
+          monthlyData[monthKey] = { amount: 0, count: 0 }
+        }
+
+        monthlyData[monthKey].amount += Number(r.total_adjusted) || 0
         monthlyData[monthKey].count++
       })
 

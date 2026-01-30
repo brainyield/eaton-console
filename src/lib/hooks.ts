@@ -1733,6 +1733,8 @@ export function useTeacherPaymentMutations() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teacherPayments.all })
+      // Invalidate reports - Teacher Payroll metric and payroll-by-month chart
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
     },
   })
 
