@@ -26,6 +26,7 @@ import type {
   InvoiceWithDetails,
 } from '../lib/hooks'
 import { useToast } from '../lib/toast'
+import { parseLocalDate } from '../lib/dateUtils'
 import BulkAdjustHoursModal from './BulkAdjustHoursModal'
 import AddManualLineItemModal from './AddManualLineItemModal'
 
@@ -40,7 +41,7 @@ interface Props {
 // ============================================================================
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
+  const d = parseLocalDate(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 

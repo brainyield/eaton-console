@@ -21,6 +21,7 @@ import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import { useMultiSelection } from '../lib/useSelectionState'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { useToast } from '../lib/toast'
+import { parseLocalDate } from '../lib/dateUtils'
 import GenerateDraftsModal from './GenerateDraftsModal'
 import InvoiceDetailPanel from './InvoiceDetailPanel'
 import EditInvoiceModal from './EditInvoiceModal'
@@ -421,7 +422,7 @@ export default function Invoicing() {
 
   const formatDate = (date: string | null) => {
     if (!date) return '-'
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    return parseLocalDate(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
   const formatPeriod = (start: string | null, end: string | null) => {

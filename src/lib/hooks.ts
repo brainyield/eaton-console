@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
-import { getTodayString } from './dateUtils'
+import { getTodayString, parseLocalDate } from './dateUtils'
 import { addMoney, centsToDollars, multiplyMoney } from './moneyUtils'
 import { formatNameLastFirst } from './utils'
 import type { GmailSearchParams } from '../types/gmail'
@@ -3621,8 +3621,8 @@ export function getLastFridayOfMonth(year: number, month: number): Date {
 }
 
 export function formatDateRange(start: string, end: string): string {
-  const s = new Date(start)
-  const e = new Date(end)
+  const s = parseLocalDate(start)
+  const e = parseLocalDate(end)
   
   const sMonth = s.toLocaleDateString('en-US', { month: 'short' })
   const eMonth = e.toLocaleDateString('en-US', { month: 'short' })
@@ -3904,7 +3904,7 @@ export function generatePayrollCSV(run: PayrollRunWithDetails): string {
 
   // Format period label
   const formatDate = (dateStr: string) => {
-    const d = new Date(dateStr)
+    const d = parseLocalDate(dateStr)
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
   const periodLabel = `${formatDate(run.period_start)} - ${formatDate(run.period_end)}`

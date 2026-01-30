@@ -22,6 +22,7 @@ import {
 } from '../lib/hooks'
 import type { PayrollRunStatus, PayrollRunWithDetails } from '../lib/hooks'
 import { useToast } from '../lib/toast'
+import { parseLocalDate } from '../lib/dateUtils'
 import CreatePayrollRunModal from './CreatePayrollRunModal'
 import PayrollRunDetail from './PayrollRunDetail'
 import PayrollAdjustmentModal from './PayrollAdjustmentModal'
@@ -99,12 +100,12 @@ function SortableHeader({ field, label, sort, onSort, className = '' }: Sortable
 // ============================================================================
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr)
+  const d = parseLocalDate(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
 function formatDateFull(dateStr: string): string {
-  const d = new Date(dateStr)
+  const d = parseLocalDate(dateStr)
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
