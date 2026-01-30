@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { AccessibleModal } from './ui/AccessibleModal'
 import { ModalFooter } from './ui/ModalFooter'
-import { useFamilyMutations } from '../lib/hooks'
-import type { CustomerStatus } from '../lib/hooks'
+import { useFamilyMutations, useCheckMatchingLeads, useLeadMutations } from '../lib/hooks'
+import type { CustomerStatus, MatchingLead } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
+import { AlertTriangle, UserCheck } from 'lucide-react'
 
 interface InitialFamilyData {
   display_name?: string
@@ -36,8 +37,12 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
     notes: initialData?.notes || '',
   })
   const [error, setError] = useState<string | null>(null)
+  const [matchingLeads, setMatchingLeads] = useState<MatchingLead[]>([])
+  const [isConverting, setIsConverting] = useState(false)
 
   const { createFamily } = useFamilyMutations()
+  const checkMatchingLeads = useCheckMatchingLeads()
+  const { convertToCustomer } = useLeadMutations()
 
   // Update form when initialData changes (e.g., opening modal with lead data)
   useEffect(() => {
@@ -53,6 +58,60 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
       }))
     }
   }, [initialData])
+
+  // Reset matching leads when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setMatchingLeads([])
+      setError(null)
+    }
+  }, [isOpen])
+
+  // Debounced check for matching leads
+  const checkForMatches = useCallback(async (email: string, name: string) => {
+    if (!email.trim() && !name.trim()) {
+      setMatchingLeads([])
+      return
+    }
+
+    try {
+      const matches = await checkMatchingLeads.mutateAsync({
+        email: email.trim() || undefined,
+        name: name.trim() || undefined,
+      })
+      setMatchingLeads(matches)
+    } catch {
+      // Silently fail - this is just a helpful warning
+      setMatchingLeads([])
+    }
+  }, [checkMatchingLeads])
+
+  // Debounce the check
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkForMatches(formData.primary_email, formData.display_name)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [formData.primary_email, formData.display_name, checkForMatches])
+
+  const handleConvertLead = async (lead: MatchingLead) => {
+    setIsConverting(true)
+    setError(null)
+
+    try {
+      await convertToCustomer.mutateAsync({
+        familyId: lead.id,
+        targetStatus: formData.status,
+      })
+      onSuccess?.(lead.id)
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to convert lead')
+    } finally {
+      setIsConverting(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,6 +152,7 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
             zip: '',
             notes: '',
           })
+          setMatchingLeads([])
           onSuccess?.(createdFamily.id)
           onClose()
         },
@@ -118,6 +178,54 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
         {error && (
           <div className="bg-red-500/10 border border-red-500 text-red-500 px-4 py-2 rounded" role="alert">
             {error}
+          </div>
+        )}
+
+        {/* Warning: Matching leads found */}
+        {matchingLeads.length > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500 rounded-lg p-4" role="alert">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-amber-500 font-medium mb-2">
+                  Potential matching lead{matchingLeads.length > 1 ? 's' : ''} found
+                </p>
+                <p className="text-sm text-zinc-400 mb-3">
+                  This person may already exist as a lead. Consider converting the lead instead of creating a duplicate.
+                </p>
+                <div className="space-y-2">
+                  {matchingLeads.map((lead) => (
+                    <div
+                      key={lead.id}
+                      className="flex items-center justify-between bg-zinc-800/50 rounded px-3 py-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-zinc-200 truncate">
+                          {lead.display_name || 'Unknown'}
+                        </div>
+                        <div className="text-xs text-zinc-500 truncate">
+                          {lead.primary_email || lead.primary_phone || 'No contact info'}
+                          {' · '}
+                          <span className="capitalize">{lead.lead_status}</span> lead
+                          {lead.lead_type && ` · ${lead.lead_type.replace('_', ' ')}`}
+                          {' · '}
+                          Matched by {lead.match_type}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleConvertLead(lead)}
+                        disabled={isConverting}
+                        className="ml-3 flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-500 disabled:bg-green-800 text-white text-sm rounded transition-colors"
+                      >
+                        <UserCheck className="w-4 h-4" />
+                        {isConverting ? 'Converting...' : 'Convert'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -305,8 +413,8 @@ export function AddFamilyModal({ isOpen, onClose, onSuccess, initialData }: AddF
 
         <ModalFooter
           onCancel={onClose}
-          isSubmitting={createFamily.isPending}
-          submitText="Add Family"
+          isSubmitting={createFamily.isPending || isConverting}
+          submitText={matchingLeads.length > 0 ? 'Create Anyway' : 'Add Family'}
           loadingText="Creating..."
         />
       </form>

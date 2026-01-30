@@ -4986,6 +4986,80 @@ export function useCheckDuplicateEmails() {
   })
 }
 
+/**
+ * Check for existing leads that might match when creating a new family.
+ * Returns matching leads by email (primary or secondary) or normalized name.
+ */
+export interface MatchingLead {
+  id: string
+  display_name: string | null
+  primary_email: string | null
+  secondary_email: string | null
+  primary_phone: string | null
+  lead_status: LeadStatus | null
+  lead_type: string | null
+  created_at: string | null
+  match_type: 'email' | 'name'
+}
+
+export function useCheckMatchingLeads() {
+  return useMutation({
+    mutationFn: async ({ email, name }: { email?: string; name?: string }): Promise<MatchingLead[]> => {
+      const matches: MatchingLead[] = []
+
+      // Check by email if provided
+      if (email && email.trim()) {
+        const lowerEmail = email.toLowerCase().trim()
+        const { data: emailMatches, error: emailError } = await supabase
+          .from('families')
+          .select('id, display_name, primary_email, secondary_email, primary_phone, lead_status, lead_type, created_at')
+          .eq('status', 'lead')
+          .or(`primary_email.ilike.${lowerEmail},secondary_email.ilike.${lowerEmail}`)
+
+        if (emailError) throw emailError
+
+        if (emailMatches) {
+          matches.push(...emailMatches.map(m => ({ ...m, match_type: 'email' as const })))
+        }
+      }
+
+      // Check by normalized name if provided (and no email match found)
+      if (name && name.trim() && matches.length === 0) {
+        // Normalize the name to "Last, First" format for comparison
+        const normalizedName = formatNameLastFirst(name).toLowerCase()
+
+        // Also check without the comma format for partial matches
+        const nameParts = name.toLowerCase().trim().split(/[\s,]+/).filter(Boolean)
+
+        if (nameParts.length > 0) {
+          // Build an OR query for name matching
+          const { data: nameMatches, error: nameError } = await supabase
+            .from('families')
+            .select('id, display_name, primary_email, secondary_email, primary_phone, lead_status, lead_type, created_at')
+            .eq('status', 'lead')
+            .or(nameParts.map(part => `display_name.ilike.%${part}%`).join(','))
+
+          if (nameError) throw nameError
+
+          // Filter to only include good matches (all name parts present)
+          if (nameMatches) {
+            const goodMatches = nameMatches.filter(m => {
+              const displayLower = (m.display_name || '').toLowerCase()
+              return nameParts.every(part => displayLower.includes(part)) ||
+                     displayLower === normalizedName
+            })
+            // Don't add duplicates (already matched by email)
+            const existingIds = new Set(matches.map(m => m.id))
+            matches.push(...goodMatches.filter(m => !existingIds.has(m.id)).map(m => ({ ...m, match_type: 'name' as const })))
+          }
+        }
+      }
+
+      return matches
+    },
+  })
+}
+
 // =============================================================================
 // EVENT LEADS (from event_leads view)
 // =============================================================================

@@ -1,33 +1,50 @@
 -- Migration: Auto-convert leads when enrollment is created
 -- When an enrollment with status 'active' or 'trial' is created,
--- automatically convert any matching leads (by email) to 'converted' status.
+-- automatically convert any matching lead families to 'converted' status.
+--
+-- IMPORTANT: Leads are stored as families with status='lead', NOT in a separate leads table.
+
+-- Drop the old triggers first (in case they exist)
+DROP TRIGGER IF EXISTS enrollment_auto_convert_lead ON enrollments;
+DROP TRIGGER IF EXISTS enrollment_status_change_auto_convert_lead ON enrollments;
 
 -- Create the trigger function
 CREATE OR REPLACE FUNCTION auto_convert_leads_on_enrollment()
 RETURNS TRIGGER AS $$
 DECLARE
   family_email TEXT;
+  family_secondary_email TEXT;
+  converted_count INT;
 BEGIN
-  -- Get the family's primary email
-  SELECT primary_email INTO family_email
+  -- Get the family's emails
+  SELECT primary_email, secondary_email INTO family_email, family_secondary_email
   FROM families
   WHERE id = NEW.family_id;
 
-  IF family_email IS NOT NULL THEN
-    -- Convert any active leads with matching email (case-insensitive)
-    UPDATE leads
+  -- Convert any lead families with matching email (case-insensitive)
+  -- Check both primary and secondary emails
+  IF family_email IS NOT NULL OR family_secondary_email IS NOT NULL THEN
+    UPDATE families
     SET
-      status = 'converted',
+      status = 'active',
+      lead_status = 'converted',
       converted_at = NOW(),
-      family_id = NEW.family_id,
-      updated_at = NOW()
+      notes = COALESCE(notes || E'\n', '') || 'Auto-converted: enrollment created for matching family'
     WHERE
-      LOWER(email) = LOWER(family_email)
-      AND status IN ('new', 'contacted');
+      status = 'lead'
+      AND lead_status IN ('new', 'contacted')
+      AND id != NEW.family_id  -- Don't update the same family
+      AND (
+        (family_email IS NOT NULL AND LOWER(primary_email) = LOWER(family_email))
+        OR (family_email IS NOT NULL AND LOWER(secondary_email) = LOWER(family_email))
+        OR (family_secondary_email IS NOT NULL AND LOWER(primary_email) = LOWER(family_secondary_email))
+        OR (family_secondary_email IS NOT NULL AND LOWER(secondary_email) = LOWER(family_secondary_email))
+      );
 
-    -- Log if any leads were converted
-    IF FOUND THEN
-      RAISE NOTICE 'Auto-converted lead(s) for email % to family %', family_email, NEW.family_id;
+    GET DIAGNOSTICS converted_count = ROW_COUNT;
+
+    IF converted_count > 0 THEN
+      RAISE NOTICE 'Auto-converted % lead(s) for family %', converted_count, NEW.family_id;
     END IF;
   END IF;
 
@@ -37,7 +54,6 @@ $$ LANGUAGE plpgsql;
 
 -- Create the trigger on enrollments table
 -- Only fires for active or trial enrollments (not pending, ended, etc.)
-DROP TRIGGER IF EXISTS enrollment_auto_convert_lead ON enrollments;
 CREATE TRIGGER enrollment_auto_convert_lead
 AFTER INSERT ON enrollments
 FOR EACH ROW
@@ -45,11 +61,11 @@ WHEN (NEW.status IN ('active', 'trial'))
 EXECUTE FUNCTION auto_convert_leads_on_enrollment();
 
 -- Also handle enrollment status updates (e.g., pending -> active)
-DROP TRIGGER IF EXISTS enrollment_status_change_auto_convert_lead ON enrollments;
 CREATE TRIGGER enrollment_status_change_auto_convert_lead
 AFTER UPDATE OF status ON enrollments
 FOR EACH ROW
 WHEN (OLD.status NOT IN ('active', 'trial') AND NEW.status IN ('active', 'trial'))
 EXECUTE FUNCTION auto_convert_leads_on_enrollment();
 
-COMMENT ON FUNCTION auto_convert_leads_on_enrollment IS 'Automatically converts leads to "converted" status when a matching enrollment is created or activated';
+COMMENT ON FUNCTION auto_convert_leads_on_enrollment IS
+'Automatically converts lead families (status=lead) to active when an enrollment is created for a family with matching email.';
