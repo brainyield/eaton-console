@@ -11,7 +11,7 @@ interface EditLeadModalProps {
 }
 
 export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
-  const { updateLead } = useLeadMutations()
+  const { updateLead, convertToCustomer } = useLeadMutations()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -63,18 +63,36 @@ export function EditLeadModal({ lead, onClose }: EditLeadModalProps) {
     setIsSubmitting(true)
 
     try {
-      await updateLead.mutateAsync({
-        id: lead.id,
-        primary_contact_name: formData.name.trim() || null,
-        primary_email: trimmedEmail.toLowerCase(),
-        primary_phone: formData.phone.trim() || null,
-        lead_type: formData.lead_type as LeadType,
-        lead_status: formData.lead_status as LeadStatus,
-        source_url: formData.source_url.trim() || null,
-        num_children: numChildren,
-        service_interest: formData.service_interest.trim() || null,
-        notes: formData.notes.trim() || null,
-      })
+      // If status is changing to 'converted', use convertToCustomer which also sets status='active'
+      if (formData.lead_status === 'converted' && lead.lead_status !== 'converted') {
+        // First update the other fields
+        await updateLead.mutateAsync({
+          id: lead.id,
+          primary_contact_name: formData.name.trim() || null,
+          primary_email: trimmedEmail.toLowerCase(),
+          primary_phone: formData.phone.trim() || null,
+          lead_type: formData.lead_type as LeadType,
+          source_url: formData.source_url.trim() || null,
+          num_children: numChildren,
+          service_interest: formData.service_interest.trim() || null,
+          notes: formData.notes.trim() || null,
+        })
+        // Then convert to customer (sets status='active' and lead_status='converted')
+        await convertToCustomer.mutateAsync({ familyId: lead.id })
+      } else {
+        await updateLead.mutateAsync({
+          id: lead.id,
+          primary_contact_name: formData.name.trim() || null,
+          primary_email: trimmedEmail.toLowerCase(),
+          primary_phone: formData.phone.trim() || null,
+          lead_type: formData.lead_type as LeadType,
+          lead_status: formData.lead_status as LeadStatus,
+          source_url: formData.source_url.trim() || null,
+          num_children: numChildren,
+          service_interest: formData.service_interest.trim() || null,
+          notes: formData.notes.trim() || null,
+        })
+      }
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update lead. Please try again.')

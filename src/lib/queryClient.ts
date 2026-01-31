@@ -205,6 +205,7 @@ export const queryKeys = {
       ['leads', 'list', filters] as const,
     detail: (id: string) => ['leads', 'detail', id] as const,
     pipeline: () => ['leads', 'pipeline'] as const,
+    converted: () => ['leads', 'converted'] as const,
   },
 
   // Lead Activities

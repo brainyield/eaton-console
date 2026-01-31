@@ -4849,6 +4849,28 @@ export interface CreateLeadInput {
 }
 
 /**
+ * Count of converted leads - families that have lead_status='converted'
+ * This includes both leads that are still status='lead' AND those converted to 'active'
+ * Used for the Marketing view's converted metric
+ */
+export function useConvertedLeadsCount() {
+  return useQuery({
+    queryKey: queryKeys.leads.converted(),
+    queryFn: async () => {
+      const { count, error } = await supabase
+        .from('families')
+        .select('*', { count: 'exact', head: true })
+        .eq('lead_status', 'converted')
+        .not('lead_type', 'is', null) // Must have a lead_type to be counted as a converted lead
+
+      if (error) throw error
+      return count || 0
+    },
+    staleTime: 60 * 1000, // 1 minute
+  })
+}
+
+/**
  * Lead mutations for CRUD operations
  * Now operates on families table with status='lead'
  */
@@ -4951,6 +4973,7 @@ export function useLeadMutations() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.leads.detail(variables.familyId) })
+      queryClient.invalidateQueries({ queryKey: queryKeys.leads.converted() })
       queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
     },

@@ -21,7 +21,7 @@ import {
   ExternalLink,
   Edit
 } from 'lucide-react'
-import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, useEventLeads, getScoreLabel, getUrgencyColor, type LeadFamily, type LeadType, type LeadStatus } from '../lib/hooks'
+import { useLeads, useLeadMutations, useUpcomingFollowUps, useFollowUpMutations, useEventLeads, useConvertedLeadsCount, getScoreLabel, getUrgencyColor, type LeadFamily, type LeadType, type LeadStatus } from '../lib/hooks'
 import { dateAtMidnight, daysBetween, parseLocalDate } from '../lib/dateUtils'
 import { useToast } from '../lib/toast'
 import { LeadDetailPanel } from './LeadDetailPanel'
@@ -108,6 +108,7 @@ export default function Marketing() {
   const { data: upcomingFollowUps = [] } = useUpcomingFollowUps()
   const { completeFollowUp } = useFollowUpMutations()
   const { data: eventLeads = [], isLoading: eventLeadsLoading } = useEventLeads()
+  const { data: convertedCount = 0 } = useConvertedLeadsCount()
 
   // Also fetch leads with lead_type='event' from the leads table
   const { data: eventTypeLeads = [] } = useLeads({ type: 'event' })
@@ -194,15 +195,17 @@ export default function Marketing() {
   }, [currentPage, totalPages])
 
   // Stats - exclude event leads to match the table display
+  // Note: convertedCount comes from useConvertedLeadsCount which counts ALL converted leads
+  // (including those now with status='active'), not just leads still in the pipeline
   const stats = useMemo(() => {
     const nonEventLeads = (allLeads || []).filter(l => l.lead_type !== 'event')
     return {
       total: nonEventLeads.length,
       new: nonEventLeads.filter(l => l.lead_status === 'new').length,
       contacted: nonEventLeads.filter(l => l.lead_status === 'contacted').length,
-      converted: nonEventLeads.filter(l => l.lead_status === 'converted').length,
+      converted: convertedCount, // Use the count from all converted families
     }
-  }, [allLeads])
+  }, [allLeads, convertedCount])
 
   // Sort event type leads (imported event leads)
   const sortedEventTypeLeads = useMemo(() => {
