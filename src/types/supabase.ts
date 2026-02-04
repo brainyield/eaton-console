@@ -1385,6 +1385,8 @@ export type Database = {
           scheduled_at: string | null
           secondary_email: string | null
           service_interest: string | null
+          sms_consent: boolean | null
+          sms_consent_at: string | null
           sms_opt_out: boolean
           sms_opt_out_at: string | null
           source_url: string | null
@@ -1431,6 +1433,8 @@ export type Database = {
           scheduled_at?: string | null
           secondary_email?: string | null
           service_interest?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
           sms_opt_out?: boolean
           sms_opt_out_at?: string | null
           source_url?: string | null
@@ -1477,6 +1481,8 @@ export type Database = {
           scheduled_at?: string | null
           secondary_email?: string | null
           service_interest?: string | null
+          sms_consent?: boolean | null
+          sms_consent_at?: string | null
           sms_opt_out?: boolean
           sms_opt_out_at?: string | null
           source_url?: string | null
