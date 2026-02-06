@@ -16,6 +16,7 @@ import {
   Bell,
   History,
   Loader2,
+  Merge,
 } from 'lucide-react'
 import { useInvoicesWithDetails, useInvoiceMutations } from '../lib/hooks'
 import { useMultiSelection } from '../lib/useSelectionState'
@@ -183,6 +184,7 @@ export default function Invoicing() {
     voidInvoice,
     bulkVoidInvoices,
     bulkSendReminders,
+    consolidateInvoices,
   } = useInvoiceMutations()
 
   // Tab counts - with explicit type annotations
@@ -405,6 +407,44 @@ export default function Invoicing() {
       setSendingReminders(false)
     }
   }, [hasSelection, isSelected, allInvoices, bulkSendReminders, selectNone, showSuccess, showError])
+
+  // Handle consolidate invoices
+  const handleConsolidate = useCallback(async () => {
+    const selectedInvoicesList = allInvoices.filter((inv: InvoiceWithDetails) => isSelected(inv.id))
+    const familyIds = new Set(selectedInvoicesList.map((inv: InvoiceWithDetails) => inv.family_id))
+
+    if (familyIds.size > 1) {
+      showError('Cannot consolidate invoices from different families. Select invoices for a single family.')
+      return
+    }
+
+    if (selectedCount < 2) {
+      showError('Select at least 2 invoices to consolidate')
+      return
+    }
+
+    const familyName = selectedInvoicesList[0]?.family?.display_name || 'this family'
+
+    if (!confirm(`Consolidate ${selectedCount} invoices for ${familyName} into a single draft invoice?\n\nThe originals will be voided.`)) {
+      return
+    }
+
+    try {
+      const result = await consolidateInvoices.mutateAsync(Array.from(selectedIds))
+      selectNone()
+
+      if (result.warnings.length > 0) {
+        showError(`Consolidated with warnings: ${result.warnings.join('; ')}`)
+      } else {
+        showSuccess(`${selectedCount} invoices consolidated into a new draft`)
+      }
+
+      // Switch to drafts tab to show the new consolidated invoice
+      setActiveTab('drafts')
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to consolidate invoices')
+    }
+  }, [consolidateInvoices, selectedIds, selectedCount, allInvoices, isSelected, selectNone, showSuccess, showError])
 
   // Clear selection and filters when changing tabs
   const handleTabChange = useCallback((tab: TabKey) => {
@@ -638,6 +678,19 @@ export default function Invoicing() {
                     <Ban className="w-4 h-4" aria-hidden="true" />
                   )}
                   {bulkVoidInvoices.isPending ? 'Voiding...' : 'Void Selected'}
+                </button>
+                <button
+                  onClick={handleConsolidate}
+                  disabled={consolidateInvoices.isPending || selectedCount < 2}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={selectedCount < 2 ? 'Select at least 2 invoices to consolidate' : 'Merge selected invoices into one'}
+                >
+                  {consolidateInvoices.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Merge className="w-4 h-4" aria-hidden="true" />
+                  )}
+                  {consolidateInvoices.isPending ? 'Consolidating...' : 'Consolidate'}
                 </button>
               </>
             )}

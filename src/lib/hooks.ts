@@ -4,7 +4,7 @@ import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
 import { getTodayString, parseLocalDate } from './dateUtils'
-import { addMoney, centsToDollars, multiplyMoney } from './moneyUtils'
+import { addMoney, centsToDollars, multiplyMoney, sumMoney } from './moneyUtils'
 import { formatNameLastFirst } from './utils'
 import type { GmailSearchParams } from '../types/gmail'
 
@@ -2895,6 +2895,188 @@ export function useInvoiceMutations() {
     },
   })
 
+  // Consolidate multiple outstanding invoices for the same family into a single draft
+  const consolidateInvoices = useMutation({
+    mutationFn: async (invoiceIds: string[]): Promise<{ invoiceId: string; warnings: string[] }> => {
+      const warnings: string[] = []
+
+      if (invoiceIds.length < 2) {
+        throw new Error('Must select at least 2 invoices to consolidate')
+      }
+
+      // Fetch all invoices with line items and payments
+      const { data: invoices, error: fetchError } = await supabase
+        .from('invoices')
+        .select(`
+          *,
+          line_items:invoice_line_items(*),
+          payments:payments(*)
+        `)
+        .in('id', invoiceIds)
+
+      if (fetchError) throw fetchError
+      if (!invoices || invoices.length < 2) {
+        throw new Error('Could not fetch selected invoices')
+      }
+
+      // Validate all same family
+      const familyIds = new Set(invoices.map(inv => inv.family_id))
+      if (familyIds.size > 1) {
+        throw new Error('All selected invoices must belong to the same family')
+      }
+
+      // Validate all outstanding
+      const nonOutstanding = invoices.filter(inv =>
+        !['sent', 'partial', 'overdue'].includes(inv.status)
+      )
+      if (nonOutstanding.length > 0) {
+        throw new Error(`Cannot consolidate invoices with status: ${nonOutstanding.map(i => i.status).join(', ')}`)
+      }
+
+      const familyId = invoices[0].family_id
+
+      // Calculate period span (earliest start, latest end)
+      const periodStarts = invoices.map(i => i.period_start).filter(Boolean) as string[]
+      const periodEnds = invoices.map(i => i.period_end).filter(Boolean) as string[]
+      const periodStart = periodStarts.length > 0
+        ? periodStarts.sort()[0]
+        : null
+      const periodEnd = periodEnds.length > 0
+        ? periodEnds.sort()[periodEnds.length - 1]
+        : null
+
+      // Use EARLIEST due date so reminder urgency reflects the oldest debt
+      const dueDates = invoices.map(i => i.due_date).filter(Boolean) as string[]
+      const dueDate = dueDates.length > 0
+        ? dueDates.sort()[0]
+        : null
+
+      // Generate consolidation note
+      const invoiceNumbers = invoices
+        .map(inv => inv.invoice_number || `ID:${inv.public_id}`)
+        .sort()
+        .join(', ')
+      const consolidationNote = `Consolidated from: ${invoiceNumbers}`
+
+      // Create new consolidated invoice (draft)
+      const { data: newInvoice, error: createError } = await supabase
+        .from('invoices')
+        .insert({
+          family_id: familyId,
+          invoice_date: getTodayString(),
+          due_date: dueDate,
+          period_start: periodStart,
+          period_end: periodEnd,
+          status: 'draft' as const,
+          notes: consolidationNote,
+        })
+        .select()
+        .single()
+
+      if (createError) throw createError
+
+      // Copy all line items from originals, preserving enrollment_id and descriptions
+      let sortOrder = 0
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const allLineItems: any[] = []
+
+      for (const invoice of invoices) {
+        const items = invoice.line_items || []
+        for (const item of items) {
+          allLineItems.push({
+            invoice_id: newInvoice.id,
+            enrollment_id: item.enrollment_id,
+            description: item.description,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            amount: item.amount,
+            teacher_cost: item.teacher_cost,
+            profit: item.profit,
+            sort_order: sortOrder++,
+          })
+        }
+      }
+
+      if (allLineItems.length === 0) {
+        // Clean up the empty invoice
+        await supabase.from('invoices').delete().eq('id', newInvoice.id)
+        throw new Error('No line items found on selected invoices')
+      }
+
+      const { error: lineItemsError } = await supabase
+        .from('invoice_line_items')
+        .insert(allLineItems)
+
+      if (lineItemsError) {
+        await supabase.from('invoices').delete().eq('id', newInvoice.id)
+        throw lineItemsError
+      }
+
+      // Calculate subtotal from line items
+      const subtotal = sumMoney(allLineItems.map((item: { amount: number | null }) => item.amount || 0))
+
+      // Transfer payments from originals to new invoice
+      const allPayments = invoices.flatMap(inv => inv.payments || [])
+      let totalPaid = 0
+
+      if (allPayments.length > 0) {
+        const { error: paymentTransferError } = await supabase
+          .from('payments')
+          .update({ invoice_id: newInvoice.id })
+          .in('id', allPayments.map((p: { id: string }) => p.id))
+
+        if (paymentTransferError) {
+          warnings.push('Failed to transfer some payments to the consolidated invoice. Please verify payment records.')
+        } else {
+          totalPaid = sumMoney(allPayments.map((p: { amount: number }) => p.amount || 0))
+        }
+      }
+
+      // Warn if payments exceed subtotal (overpayment from legacy data)
+      if (totalPaid > subtotal) {
+        warnings.push(`Consolidated invoice shows overpayment: $${totalPaid.toFixed(2)} paid on $${subtotal.toFixed(2)} total`)
+      }
+
+      // Update invoice totals
+      const newStatus = totalPaid > 0 && totalPaid >= subtotal ? 'paid' : totalPaid > 0 ? 'partial' : 'draft'
+      const { error: updateError } = await supabase
+        .from('invoices')
+        .update({
+          subtotal,
+          total_amount: subtotal,
+          amount_paid: totalPaid,
+          status: newStatus as InvoiceStatus,
+        })
+        .eq('id', newInvoice.id)
+
+      if (updateError) throw updateError
+
+      // Void original invoices and reset their amount_paid since payments were transferred
+      const { error: voidError } = await supabase
+        .from('invoices')
+        .update({ status: 'void', amount_paid: 0 })
+        .in('id', invoiceIds)
+
+      if (voidError) {
+        warnings.push('Consolidated invoice created but failed to void originals. Please void them manually.')
+      }
+
+      return { invoiceId: newInvoice.id, warnings }
+    },
+    onSuccess: (result, invoiceIds) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(result.invoiceId) })
+      invoiceIds.forEach(id => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.invoices.detail(id) })
+      })
+      queryClient.invalidateQueries({ queryKey: queryKeys.families.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.balances() })
+      queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.invoicePayments.all })
+    },
+  })
+
   // Record payment - supports both full and partial payments
   const recordPayment = useMutation({
     mutationFn: async ({
@@ -3409,6 +3591,7 @@ export function useInvoiceMutations() {
     bulkDeleteInvoices,
     voidInvoice,
     bulkVoidInvoices,
+    consolidateInvoices,
     recordPayment,
     recalculateInvoiceBalance,
     sendInvoice,
