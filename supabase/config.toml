@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.twilio-opt-out-webhook]
 verify_jwt = false
+
+[functions.get-kendall-roster]
+verify_jwt = false
