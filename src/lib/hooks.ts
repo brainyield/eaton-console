@@ -2975,18 +2975,41 @@ export function useInvoiceMutations() {
 
       if (createError) throw createError
 
-      // Copy all line items from originals, preserving enrollment_id and descriptions
+      // Copy all line items from originals, prepending the source invoice's period
+      // so customers can identify which week/month each charge is for
       let sortOrder = 0
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const allLineItems: any[] = []
 
-      for (const invoice of invoices) {
+      // Sort invoices by period_start so line items appear chronologically
+      const sortedInvoices = [...invoices].sort((a, b) =>
+        (a.period_start || '').localeCompare(b.period_start || '')
+      )
+
+      for (const invoice of sortedInvoices) {
+        // Build period prefix like "Jan 6-12" or "Jan 6 - Feb 2"
+        let periodPrefix = ''
+        if (invoice.period_start && invoice.period_end) {
+          const s = parseLocalDate(invoice.period_start)
+          const e = parseLocalDate(invoice.period_end)
+          const sMonth = s.toLocaleDateString('en-US', { month: 'short' })
+          const eMonth = e.toLocaleDateString('en-US', { month: 'short' })
+          if (sMonth === eMonth) {
+            periodPrefix = `${sMonth} ${s.getDate()}-${e.getDate()}: `
+          } else {
+            periodPrefix = `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}: `
+          }
+        } else if (invoice.invoice_number) {
+          // Fallback: use invoice number if no period dates
+          periodPrefix = `${invoice.invoice_number}: `
+        }
+
         const items = invoice.line_items || []
         for (const item of items) {
           allLineItems.push({
             invoice_id: newInvoice.id,
             enrollment_id: item.enrollment_id,
-            description: item.description,
+            description: periodPrefix + item.description,
             quantity: item.quantity,
             unit_price: item.unit_price,
             amount: item.amount,
