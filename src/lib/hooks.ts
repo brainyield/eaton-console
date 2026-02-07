@@ -309,7 +309,7 @@ export const SERVICE_ONBOARDING_CONFIG: Record<string, ServiceOnboardingConfig> 
   learning_pod: {
     forms: [
       { key: 'lp_tos', name: 'Learning Pod Terms of Service Agreement', formId: '1Ayv9FEbeRsTI_gsMf8UWfQz13vFP5ZdoYeKSwZ4lv48' },
-      { key: 'lp_enrollment', name: 'Learning Pod Enrollment Form', formId: '1IMbBq8aCNVnm6vdgiX-BQepAJG2iR5BPjJHWbuLlU8' },
+      { key: 'lp_enrollment', name: 'Learning Pod Enrollment Form', formId: '1IMbBq8aCNVnm6vdgiX-BQepAJG2i2R5BPjJHWbuLlU8' },
       { key: 'lp_allergy', name: 'Learning Pod Allergy Notification Form', formId: '1vbfQKgbpWLV1MgLL5myzHWM62DfkQrMJyPfq1LX3sTI' },
       { key: 'lp_photo', name: 'Learning Pod Student Photo/Video Release', formId: '1Xe-LSy_fK8NepAXFjyPT0t4yYZmSAi53KeIKFG_BfMg' },
     ],
