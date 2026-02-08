@@ -13,6 +13,7 @@ export const CHART_COLORS = {
   pink: '#ec4899',
   cyan: '#06b6d4',
   orange: '#f97316',
+  rose: '#f43f5e',
 }
 
 // Color array for pie charts and multi-series data
@@ -34,6 +35,7 @@ export const SERVICE_COLORS: Record<string, string> = {
   eaton_online: CHART_COLORS.pink,
   eaton_hub: CHART_COLORS.cyan,
   elective_classes: CHART_COLORS.orange,
+  microschool: CHART_COLORS.rose,
 }
 
 // Location-specific colors

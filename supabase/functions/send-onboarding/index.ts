@@ -69,6 +69,11 @@ const SERVICE_ONBOARDING_CONFIG: Record<string, ServiceOnboardingConfig> = {
     ],
     mergeFields: ['eo_program', 'eo_weekly_rate'],
   },
+  microschool: {
+    forms: [],
+    documents: [],
+    mergeFields: [],
+  },
 }
 
 // Google Forms base URL (using edit ID format, not published ID)
@@ -450,6 +455,7 @@ Deno.serve(async (req) => {
       consulting: 'Eaton Academic Homeschool Consulting',
       academic_coaching: 'Eaton Academic Coaching',
       eaton_online: 'Eaton Online',
+      microschool: 'Eaton Academic Microschool',
     }
     const serviceName = serviceDisplayNames[serviceCode] || 'Eaton Academic'
 

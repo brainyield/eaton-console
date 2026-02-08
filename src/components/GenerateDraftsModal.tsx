@@ -63,6 +63,7 @@ const SERVICE_COLORS: Record<string, { bg: string; text: string; label: string }
   eaton_hub: { bg: 'bg-amber-500/20', text: 'text-amber-400', label: 'Hub' },
   eaton_online: { bg: 'bg-cyan-500/20', text: 'text-cyan-400', label: 'Online' },
   elective_classes: { bg: 'bg-pink-500/20', text: 'text-pink-400', label: 'Elective' },
+  microschool: { bg: 'bg-rose-500/20', text: 'text-rose-400', label: 'Micro' },
 }
 
 function ServiceBadge({ code }: { code: string }) {
@@ -909,6 +910,7 @@ export default function GenerateDraftsModal({ onClose, onSuccess }: Props) {
         { value: 'learning_pod', label: 'Learning Pod' },
         { value: 'consulting', label: 'Consulting' },
         { value: 'elective_classes', label: 'Elective Classes' },
+        { value: 'microschool', label: 'Microschool' },
       ]
 
   const existingCount = sortedPreviewItems.filter(i => i.hasExisting).length

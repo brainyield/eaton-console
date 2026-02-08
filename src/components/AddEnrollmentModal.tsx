@@ -102,7 +102,7 @@ const INITIAL_FORM: FormData = {
 };
 
 // Services that require a physical location
-const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes'];
+const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes', 'microschool'];
 
 const STATUS_OPTIONS: { value: EnrollmentStatus; label: string }[] = [
   { value: 'trial', label: 'Trial' },

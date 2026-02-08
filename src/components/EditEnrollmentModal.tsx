@@ -21,7 +21,7 @@ import { AccessibleModal } from './ui/AccessibleModal';
 import { ModalFooter } from './ui/ModalFooter';
 
 // Services that require a physical location
-const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes'];
+const IN_PERSON_SERVICES = ['learning_pod', 'eaton_hub', 'elective_classes', 'microschool'];
 
 interface EnrollmentWithService extends Enrollment {
   service?: Service

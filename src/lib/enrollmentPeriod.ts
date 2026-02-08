@@ -1,5 +1,5 @@
 // Service codes from the services table
-export type ServiceCode = 'tutoring' | 'learning_pod' | 'elective_classes' | 'full_day_program' | 'enrichment' | 'test_prep' | 'other'
+export type ServiceCode = 'tutoring' | 'learning_pod' | 'elective_classes' | 'full_day_program' | 'enrichment' | 'test_prep' | 'microschool' | 'other'
 
 // Service codes that use semester format (Fall/Spring/Summer YYYY)
 const SEMESTER_SERVICES: ServiceCode[] = ['learning_pod', 'elective_classes']

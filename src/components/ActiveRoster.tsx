@@ -10,6 +10,7 @@ import {
   Home,
   Laptop,
   Star,
+  School,
   User,
   ChevronDown,
   ChevronRight,
@@ -105,6 +106,7 @@ const serviceIcons: Record<string, typeof BookOpen> = {
   eaton_online: Monitor,
   eaton_hub: Star,
   elective_classes: Laptop,
+  microschool: School,
 }
 
 export default function ActiveRoster() {
@@ -407,6 +409,8 @@ export default function ActiveRoster() {
       case 'consulting':
         return { showRate: true }
       case 'learning_pod':
+        return { showAgeGroup: true, showRate: true }
+      case 'microschool':
         return { showAgeGroup: true, showRate: true }
       case 'elective_classes':
         return { showClass: true, showRate: true }

@@ -339,6 +339,11 @@ export const SERVICE_ONBOARDING_CONFIG: Record<string, ServiceOnboardingConfig> 
     ],
     mergeFields: ['eo_program', 'eo_weekly_rate'],
   },
+  microschool: {
+    forms: [],
+    documents: [],
+    mergeFields: [],
+  },
 }
 
 // =============================================================================
@@ -488,6 +493,7 @@ export function getServiceBadgeColor(code: string): string {
     eaton_online: 'bg-purple-900/50 text-purple-300 border-purple-700',
     eaton_hub: 'bg-amber-900/50 text-amber-300 border-amber-700',
     elective_classes: 'bg-cyan-900/50 text-cyan-300 border-cyan-700',
+    microschool: 'bg-rose-900/50 text-rose-300 border-rose-700',
   }
   return colors[code] || 'bg-gray-900/50 text-gray-300 border-gray-700'
 }
@@ -500,6 +506,7 @@ export function getServiceShortName(code: string): string {
     eaton_online: 'Online',
     eaton_hub: 'Hub',
     elective_classes: 'Elective',
+    microschool: 'Micro',
   }
   return names[code] || code
 }
