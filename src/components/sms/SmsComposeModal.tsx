@@ -17,11 +17,14 @@ interface SmsComposeModalProps {
   isOpen: boolean
   onClose: () => void
 
-  // Pre-filled data
+  // Pre-filled data (single recipient)
   toPhone?: string
   toName?: string
   familyId?: string
   invoiceId?: string
+
+  // Bulk recipients (overrides single recipient fields)
+  familyIds?: string[]
 
   // Template suggestion
   suggestedTemplate?: TemplateKey
@@ -38,10 +41,12 @@ export function SmsComposeModal({
   toName = '',
   familyId,
   invoiceId,
+  familyIds,
   suggestedTemplate,
   templateData,
   onSuccess,
 }: SmsComposeModalProps) {
+  const isBulkSend = familyIds && familyIds.length > 0
   const [phone, setPhone] = useState(toPhone)
   const [message, setMessage] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey | ''>('')
@@ -53,7 +58,8 @@ export function SmsComposeModal({
   // Character count and segments
   const charCount = message.length
   const segmentCount = calculateSegments(message)
-  const cost = estimateCost(1, segmentCount)
+  const recipientCount = isBulkSend ? familyIds.length : 1
+  const cost = estimateCost(recipientCount, segmentCount)
 
   // Reset form when modal opens with new data
   useEffect(() => {
@@ -96,13 +102,6 @@ export function SmsComposeModal({
     e.preventDefault()
     setError(null)
 
-    // Validation
-    const normalizedPhone = normalizePhone(phone)
-    if (!normalizedPhone) {
-      setError('Please enter a valid US phone number')
-      return
-    }
-
     if (!message.trim()) {
       setError('Please enter a message')
       return
@@ -113,12 +112,57 @@ export function SmsComposeModal({
       return
     }
 
+    // Bulk send to multiple families
+    if (isBulkSend) {
+      sendSms.mutate(
+        {
+          familyIds,
+          messageBody: message.trim(),
+          messageType: selectedTemplate || 'custom',
+          templateKey: selectedTemplate || undefined,
+          mergeData: templateData as Record<string, unknown> | undefined,
+          sentBy: 'admin',
+        },
+        {
+          onSuccess: (result) => {
+            if (result.sent > 0) {
+              const msg = result.failed > 0
+                ? `Sent ${result.sent}, failed ${result.failed}`
+                : `SMS sent to ${result.sent} recipient${result.sent !== 1 ? 's' : ''}`
+              showSuccess(msg)
+              onSuccess?.()
+              onClose()
+            } else {
+              setError(
+                result.skipped > 0
+                  ? 'All recipients have opted out of SMS'
+                  : 'Failed to send SMS'
+              )
+            }
+          },
+          onError: (err: Error) => {
+            const errorMessage = err.message || 'Failed to send SMS'
+            setError(errorMessage)
+            showError(errorMessage)
+          },
+        }
+      )
+      return
+    }
+
+    // Single recipient send
+    const normalizedPhone = normalizePhone(phone)
+    if (!normalizedPhone) {
+      setError('Please enter a valid US phone number')
+      return
+    }
+
     sendSms.mutate(
       {
         familyId: familyId || undefined,
         toPhone: normalizedPhone,
         messageBody: message.trim(),
-        messageType: selectedTemplate ? (selectedTemplate as never) : 'custom',
+        messageType: selectedTemplate || 'custom',
         invoiceId: invoiceId || undefined,
         templateKey: selectedTemplate || undefined,
         mergeData: templateData as Record<string, unknown> | undefined,
@@ -159,33 +203,43 @@ export function SmsComposeModal({
           )}
 
           {/* Recipient */}
-          <div>
-            <label htmlFor="sms-to" className="block text-sm font-medium text-zinc-400 mb-1">
-              To
-            </label>
-            <div className="relative">
-              <User
-                className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500"
-                aria-hidden="true"
-              />
-              <input
-                id="sms-to"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="(555) 123-4567"
-                className="w-full pl-10 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                autoFocus
-              />
+          {isBulkSend ? (
+            <div>
+              <label className="block text-sm font-medium text-zinc-400 mb-1">To</label>
+              <div className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-zinc-100">
+                <User className="h-4 w-4 text-zinc-500" aria-hidden="true" />
+                <span>{familyIds.length} {familyIds.length === 1 ? 'family' : 'families'}</span>
+              </div>
             </div>
-            {toName && <p className="mt-1 text-xs text-zinc-500">{toName}</p>}
-            {phone && isValidPhone(phone) && (
-              <p className="mt-1 text-xs text-green-400">Valid: {formatPhoneDisplay(phone)}</p>
-            )}
-            {phone && !isValidPhone(phone) && phone.length > 5 && (
-              <p className="mt-1 text-xs text-red-400">Invalid phone number format</p>
-            )}
-          </div>
+          ) : (
+            <div>
+              <label htmlFor="sms-to" className="block text-sm font-medium text-zinc-400 mb-1">
+                To
+              </label>
+              <div className="relative">
+                <User
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500"
+                  aria-hidden="true"
+                />
+                <input
+                  id="sms-to"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                  className="w-full pl-10 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+              </div>
+              {toName && <p className="mt-1 text-xs text-zinc-500">{toName}</p>}
+              {phone && isValidPhone(phone) && (
+                <p className="mt-1 text-xs text-green-400">Valid: {formatPhoneDisplay(phone)}</p>
+              )}
+              {phone && !isValidPhone(phone) && phone.length > 5 && (
+                <p className="mt-1 text-xs text-red-400">Invalid phone number format</p>
+              )}
+            </div>
+          )}
 
           {/* Template selector */}
           <div>
@@ -246,7 +300,7 @@ export function SmsComposeModal({
           </button>
           <button
             type="submit"
-            disabled={sendSms.isPending || !message.trim() || !isValidPhone(phone)}
+            disabled={sendSms.isPending || !message.trim() || (!isBulkSend && !isValidPhone(phone))}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {sendSms.isPending ? (

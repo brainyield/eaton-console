@@ -10,17 +10,12 @@ import {
   useFamilies,
   useSmsMutations,
   type CustomerStatus,
-  type Family as HookFamily,
+  type SmsMessageType,
 } from '../lib/hooks'
 import { formatPhoneDisplay, isValidPhone } from '../lib/phoneUtils'
-import { calculateSegments, estimateCost } from '../lib/smsTemplates'
+import { calculateSegments, estimateCost, generateMessage } from '../lib/smsTemplates'
 import { useToast } from '../lib/toast'
 import { ConfirmationModal } from '../components/ui/AccessibleModal'
-
-// Extend Family type with sms_opt_out field (may not be in generated types yet)
-interface Family extends Omit<HookFamily, 'sms_opt_out'> {
-  sms_opt_out?: boolean
-}
 
 export default function QuickSend() {
   const { showSuccess, showError, showWarning } = useToast()
@@ -29,6 +24,7 @@ export default function QuickSend() {
   // Form state
   const [message, setMessage] = useState('')
   const [campaignName, setCampaignName] = useState('')
+  const [messageType, setMessageType] = useState<'bulk' | 'announcement'>('bulk')
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
@@ -52,7 +48,7 @@ export default function QuickSend() {
 
   // Filter families
   const filteredFamilies = useMemo(() => {
-    let families = (allFamilies as unknown as Family[])
+    let families = allFamilies
 
     // Require phone
     if (requirePhone) {
@@ -82,11 +78,16 @@ export default function QuickSend() {
   const selectedFamilies = filteredFamilies.filter((f) => selectedIds.has(f.id))
   const eligibleForSend = selectedFamilies.filter(
     (f) => f.primary_phone && isValidPhone(f.primary_phone) && !f.sms_opt_out
-  ) as Family[]
+  )
 
-  // Message stats
-  const charCount = message.length
-  const segmentCount = calculateSegments(message)
+  // Final message (wrapped with announcement template when applicable)
+  const finalMessage = messageType === 'announcement' && message.trim()
+    ? generateMessage('announcement', { customMessage: message.trim() })
+    : message
+
+  // Message stats (based on final message that will be sent)
+  const charCount = finalMessage.length
+  const segmentCount = calculateSegments(finalMessage)
   const totalCost = estimateCost(eligibleForSend.length, segmentCount)
 
   // Selection handlers
@@ -139,9 +140,10 @@ export default function QuickSend() {
     try {
       const result = await sendSms.mutateAsync({
         familyIds,
-        messageBody: message.trim(),
-        messageType: 'bulk',
+        messageBody: finalMessage.trim(),
+        messageType: messageType as SmsMessageType,
         campaignName: campaignName.trim() || undefined,
+        templateKey: messageType === 'announcement' ? 'announcement' : undefined,
         sentBy: 'admin',
       })
 
@@ -156,6 +158,7 @@ export default function QuickSend() {
       // Reset form
       setMessage('')
       setCampaignName('')
+      setMessageType('bulk')
       setSelectedIds(new Set())
     } catch (error) {
       setSendingProgress(null)
@@ -193,6 +196,42 @@ export default function QuickSend() {
             />
           </div>
 
+          {/* Message Type */}
+          <div>
+            <label className="block text-sm font-medium text-zinc-400 mb-1">
+              Message Type
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMessageType('bulk')}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  messageType === 'bulk'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700'
+                }`}
+              >
+                Bulk
+              </button>
+              <button
+                type="button"
+                onClick={() => setMessageType('announcement')}
+                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                  messageType === 'announcement'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-zinc-800 text-zinc-400 hover:text-white border border-zinc-700'
+                }`}
+              >
+                Announcement
+              </button>
+            </div>
+            <p className="text-xs text-zinc-500 mt-1">
+              {messageType === 'bulk'
+                ? 'Send your message as-is to selected recipients.'
+                : 'Wraps your message with Eaton branding and opt-out footer.'}
+            </p>
+          </div>
+
           {/* Message */}
           <div>
             <label htmlFor="message" className="block text-sm font-medium text-zinc-400 mb-1">
@@ -210,12 +249,23 @@ export default function QuickSend() {
             <div className="mt-1 flex items-center justify-between text-xs">
               <span className={charCount > 1600 ? 'text-red-400' : 'text-zinc-500'}>
                 {charCount} / 1600 characters
+                {messageType === 'announcement' && message.trim() && charCount !== message.length && (
+                  <span className="text-zinc-600"> ({message.length} + footer)</span>
+                )}
               </span>
               <span className="text-zinc-500">
                 {segmentCount} segment{segmentCount !== 1 ? 's' : ''}
               </span>
             </div>
           </div>
+
+          {/* Announcement preview */}
+          {messageType === 'announcement' && message.trim() && (
+            <div className="p-3 bg-zinc-800/50 rounded-lg border border-zinc-700">
+              <div className="text-xs text-zinc-500 mb-1">Final message preview</div>
+              <p className="text-sm text-zinc-300 whitespace-pre-wrap font-mono">{finalMessage}</p>
+            </div>
+          )}
 
           {/* Preview */}
           {eligibleForSend.length > 0 && (

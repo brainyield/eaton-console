@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { formatNameLastFirst } from '../lib/utils'
+import { formatCurrency } from '../lib/moneyUtils'
+import { type EventReminderData } from '../lib/smsTemplates'
+import { SmsComposeModal } from './sms/SmsComposeModal'
 import {
   X,
   Calendar,
@@ -13,7 +16,8 @@ import {
   Download,
   ExternalLink,
   ChevronUp,
-  ChevronDown
+  ChevronDown,
+  MessageSquare
 } from 'lucide-react'
 
 interface EventWithStats {
@@ -122,6 +126,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const navigate = useNavigate()
   const { data: attendees = [], isLoading } = useEventAttendees(event.id)
   const [sortConfig, setSortConfig] = useState<{ field: SortField; direction: SortDirection }>({ field: 'attendee_name', direction: 'asc' })
+  const [showSmsModal, setShowSmsModal] = useState(false)
 
   const handleFamilyClick = (familyId: string) => {
     sessionStorage.setItem('selectedFamilyId', familyId)
@@ -165,6 +170,32 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
     })
     return result
   }, [attendees, sortConfig])
+
+  // Unique family IDs from attendees (for SMS reminders)
+  const attendeeFamilyIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const a of attendees) {
+      if (a.family_id) ids.add(a.family_id)
+    }
+    return [...ids]
+  }, [attendees])
+
+  // Event reminder template data
+  const eventReminderData = useMemo((): EventReminderData => {
+    const eventDate = event.start_at
+      ? new Date(event.start_at).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+      : ''
+    const eventTime = event.start_at
+      ? new Date(event.start_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : ''
+    return {
+      familyName: 'there',
+      eventName: event.title,
+      eventDate,
+      eventTime,
+      location: event.location || undefined,
+    }
+  }, [event])
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortConfig.field !== field) {
@@ -236,13 +267,24 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
         >
           <X className="h-5 w-5" />
         </button>
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
-        >
-          <Download className="h-4 w-4" />
-          Export
-        </button>
+        <div className="flex items-center gap-2">
+          {status.label === 'Upcoming' && attendeeFamilyIds.length > 0 && (
+            <button
+              onClick={() => setShowSmsModal(true)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-blue-400 hover:text-blue-300 hover:bg-zinc-800 rounded-md transition-colors"
+            >
+              <MessageSquare className="h-4 w-4" />
+              Send Reminder
+            </button>
+          )}
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-md transition-colors"
+          >
+            <Download className="h-4 w-4" />
+            Export
+          </button>
+        </div>
       </div>
 
       {/* Event Info */}
@@ -281,7 +323,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
           {event.ticket_price_cents && (
             <div className="flex items-center gap-2 text-zinc-400">
               <DollarSign className="h-4 w-4" />
-              <span>${(event.ticket_price_cents / 100).toFixed(2)} per ticket</span>
+              <span>{formatCurrency(event.ticket_price_cents / 100)} per ticket</span>
             </div>
           )}
         </div>
@@ -300,7 +342,7 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
               <DollarSign className="h-4 w-4" />
               <span className="text-xs uppercase">Revenue</span>
             </div>
-            <div className="text-2xl font-semibold text-white">${event.revenue.toFixed(2)}</div>
+            <div className="text-2xl font-semibold text-white">{formatCurrency(event.revenue)}</div>
           </div>
         </div>
       </div>
@@ -387,6 +429,15 @@ export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
           </div>
         )}
       </div>
+
+      {/* SMS Reminder Modal */}
+      <SmsComposeModal
+        isOpen={showSmsModal}
+        onClose={() => setShowSmsModal(false)}
+        familyIds={attendeeFamilyIds}
+        suggestedTemplate="event_reminder"
+        templateData={eventReminderData}
+      />
     </div>
   )
 }

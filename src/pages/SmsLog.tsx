@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, Fragment } from 'react'
 import { MessageSquare, Search, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import { useSmsMessages, type SmsStatus, type SmsMessageType } from '../lib/hooks'
 import { SmsStatusBadge } from '../components/ui/SmsStatusBadge'
@@ -197,9 +197,8 @@ export default function SmsLog() {
                 const isExpanded = expandedId === msg.id
 
                 return (
-                  <>
+                  <Fragment key={msg.id}>
                     <tr
-                      key={msg.id}
                       className="hover:bg-zinc-800/50 cursor-pointer"
                       onClick={() => setExpandedId(isExpanded ? null : msg.id)}
                     >
@@ -227,7 +226,7 @@ export default function SmsLog() {
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr key={`${msg.id}-expanded`}>
+                      <tr>
                         <td colSpan={6} className="px-4 py-4 bg-zinc-800/30">
                           <div className="space-y-3">
                             <div>
@@ -285,7 +284,7 @@ export default function SmsLog() {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 )
               })}
             </tbody>

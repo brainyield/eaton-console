@@ -39,6 +39,8 @@ export interface Family {
   zip: string | null
   notes: string | null
   last_contact_at: string | null
+  sms_opt_out: boolean
+  sms_opt_out_at: string | null
   created_at: string
   updated_at: string
 }
@@ -7571,8 +7573,6 @@ export function useFamilyMergeLog() {
 // SMS HOOKS
 // =============================================================================
 
-// Note: SMS tables may not be in generated types yet. Using type assertions.
-// Run `npm run db:types` after applying the migration to update types.
 
 /**
  * Hook to fetch SMS messages with optional filtering.
@@ -7730,16 +7730,12 @@ export function useSmsMutations() {
 
   const updateOptOut = useMutation({
     mutationFn: async ({ familyId, optOut }: { familyId: string; optOut: boolean }) => {
-      // Note: sms_opt_out fields may not be in generated types yet
-      // Using raw SQL via rpc would be cleaner but update works with type assertion
-      type FamilyUpdate = { sms_opt_out: boolean; sms_opt_out_at: string | null }
-      const updateData: FamilyUpdate = {
-        sms_opt_out: optOut,
-        sms_opt_out_at: optOut ? new Date().toISOString() : null,
-      }
       const { error } = await supabase
         .from('families')
-        .update(updateData as unknown as Record<string, never>)
+        .update({
+          sms_opt_out: optOut,
+          sms_opt_out_at: optOut ? new Date().toISOString() : null,
+        })
         .eq('id', familyId)
 
       if (error) throw error
