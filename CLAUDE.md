@@ -176,57 +176,85 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 
 ## Common Mistakes to Avoid
 
-- **DON'T** use `toISOString().split('T')[0]` for dates - causes timezone bugs. Use `formatDateLocal()`.
-- **DON'T** do direct multiplication/division with money - floating point errors. Use `multiplyMoney()`, `addMoney()`, etc.
-- **DON'T** edit `src/types/supabase.ts` - it's auto-generated. Run `npm run db:types` to update.
-- **DON'T** create new hook files - add hooks to `src/lib/hooks.ts` following existing patterns.
-- **DON'T** use `console.log` in committed code - remove before committing.
-- **DON'T** forget `verify_jwt = false` for external webhooks - Supabase Edge Functions require JWT auth by default. External services (Stripe, Calendly, etc.) don't send Authorization headers. Add the config to `supabase/config.toml` with `[functions.function-name]` section (more reliable than per-function config.toml).
-- **DON'T** trust external webhook payload structures - APIs like Calendly may have payload variations not matching docs. Always use defensive null checks (optional chaining, fallback values) and log raw payloads for debugging.
-- **DON'T** look for Calendly phone numbers on the invitee object - for outbound call events, the phone is in `scheduled_event.location.location` when `location.type === 'outbound_call'`. The `calendly-webhook` extracts phone with priority: location > text_reminder_number > form answers.
-- **DON'T** compare names with simple string equality - "Celine Orellana" and "Orellana, Celine" are the same person. Use `formatNameLastFirst()` from `utils.ts` to normalize names before comparison.
-- **DON'T** store family/student names in "First Last" or "XYZ Family" format - always use `formatNameLastFirst()` which handles: "John Smith" → "Smith, John", "Smith Family" → "Smith", "John Smith Jr." → "Smith, John Jr.". The function also handles already-formatted names (with comma) by returning them unchanged.
-- **DON'T** hardcode age group values - use `AGE_GROUP_OPTIONS` from `utils.ts` for dropdowns, `getAgeGroup(dob)` to calculate from DOB, and `getAgeGroupSortValue()` for sorting. Age groups must match the format expected by ActiveRoster sorting ('3-5', '6-8', '9-11', '12-14', '15-17').
-- **DON'T** create custom modal wrappers with plain divs - use `AccessibleModal` from `components/ui/AccessibleModal.tsx` for proper focus trap, keyboard handling (Escape to close), and aria attributes.
-- **DON'T** use `Partial<T>` for mutation inputs - use the insert types (`FamilyInsert`, `StudentInsert`, `EnrollmentInsert`, `TeacherInsert`) which specify required fields and make optional fields partial. This avoids `as any` casts and provides proper type checking.
-- **DON'T** create families with `status: 'lead'` for paying customers - families with 'lead' status are excluded from Directory search and cannot be invoiced. Event purchases (Step Up, Stripe) should always create families with `status: 'active'`.
-- **DON'T** use `.eq()` for email lookups - emails may have case variations. Use `.ilike()` for case-insensitive matching: `.ilike('primary_email', email.toLowerCase())`.
-- **DON'T** create leads without checking for duplicates - always check for existing families with the same email before creating. If a family exists with `status='lead'` and `lead_status` in ('new', 'contacted'), log as activity instead of creating. If family has active enrollments, skip lead creation. See `ingest-lead` and `calendly-webhook` edge functions for the pattern.
-- **DON'T** rely on email-only matching for family lookups - people use different emails (typos like `gmial` vs `gmail`, work vs personal). Edge functions now check both `primary_email` and `secondary_email`, and fall back to name-based matching if email fails. For new integrations, use `find_or_create_family_for_purchase()` stored procedure which handles email+name matching and logs matches to `family_merge_log`. Use `usePotentialDuplicates()` hook to review edge cases.
-- **DON'T** assume all data creation happens in application code - Supabase database triggers (like `process_class_registration`) can create students and enrollments automatically when event_attendees or event_orders are inserted/updated. Check Supabase Dashboard → Database → Triggers when debugging unexpected data creation. Trigger functions are in `supabase/migrations/` but may have been created directly in Dashboard.
-- **DON'T** change the fuzzy match threshold in `process_class_registration` without testing against real sibling names - the trigger uses `pg_trgm` `similarity()` at threshold 0.55 to match attendee names to existing students within the same family. This catches typos ("Pmapin" vs "Pampin", score 0.62) and spelling variations ("Anabella" vs "Annabelle", score 0.65) while staying well above sibling-to-sibling scores (0.3–0.4). Lowering the threshold risks merging different siblings; raising it lets typos create duplicates.
-- **DON'T** use BEFORE INSERT triggers that reference the new row via foreign key - the row doesn't exist yet, causing FK violations. Use AFTER INSERT triggers when you need to insert related records that have a foreign key back to the triggering table.
-- **DON'T** forget that `enrollments` and `teacher_assignments` have separate `hours_per_week` fields - when editing enrollment hours in a modal, you must update BOTH records. The `EditEnrollmentModal` handles this, but any new edit flows must sync both tables. Active Roster and Teachers views display `teacher_assignments.hours_per_week`, while invoicing uses `enrollments.hours_per_week`.
-- **DON'T** assume `revenue_records` links to enrollments - the table tracks revenue by `family_id`, `student_id`, `service_id` separately with no `enrollment_id` FK. For location-based revenue reporting, `location_id` was added directly to `revenue_records`.
-- **DON'T** use only `contentStyle` for Recharts tooltips in dark mode - the inner text will be invisible. Must also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}` for visible text.
-- **DON'T** use non-null assertions (`!`) for env vars in Edge Functions - if the env var is missing, the function will crash with an unclear error. Always validate and return early with a clear error: `if (!supabaseUrl) { return new Response(JSON.stringify({ error: 'Server configuration error' }), { status: 500 }) }`.
-- **DON'T** use `.single()` when a query might return 0 or multiple rows - it throws on both cases. Use `.maybeSingle()` for queries that may or may not find a match (returns `null` if not found, first result if multiple). Only use `.single()` when you're certain exactly one row exists.
-- **DON'T** silently swallow errors in secondary operations - mutations with secondary steps (e.g., syncing event_orders after invoice payment, sending webhook emails) should return `{ data, warnings: string[] }`. Callers can then show warnings to users about partial failures. See `updateInvoice`, `recordPayment`, `createPayrollRun`, and check-in mutations for examples of this pattern.
-- **DON'T** forget to invalidate `stats.dashboard()` in mutations that affect Command Center metrics - the dashboard has a 60-second `staleTime`, so without explicit invalidation, metrics won't update immediately. Any mutation affecting invoices (outstanding balance), enrollments (student counts), or families should include `queryClient.invalidateQueries({ queryKey: queryKeys.stats.dashboard() })` in its `onSuccess` handler.
-- **DON'T** pass empty strings to Supabase for nullable fields - PostgreSQL cannot convert `''` to date/timestamp types. Always use `value || null` pattern when saving form data: `due_date: dueDate || null`. This applies to all nullable date, timestamp, and optional string fields.
-- **DON'T** enable RLS on new tables - this internal admin app doesn't use Row Level Security. Other tables like `families`, `enrollments` have RLS disabled. If you create a new table, leave RLS disabled to match the existing pattern.
-- **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/viewform`) - use the edit ID format (`/forms/d/{id}/viewform`). The form IDs in our config are edit IDs from the form's edit URL, not the longer published IDs from the "Send" dialog.
-- **DON'T** try to query Supabase directly from N8N workflows - N8N's free/starter plans don't support environment variables for credentials. Instead, create a helper edge function (like `get-pending-onboarding`) that N8N can call via HTTP. The edge function has automatic access to Supabase credentials and returns the data N8N needs.
-- **DON'T** leave database triggers that reference deprecated tables/columns - triggers can silently fail while the main operation succeeds. After schema changes that remove tables/columns, audit triggers in Supabase Dashboard → Database → Triggers and drop any that reference removed objects. Example: `trigger_update_lead_score_on_activity` referenced the deprecated `leads` table, causing webhooks to partially succeed (family created, but lead_activities insert failed silently).
-- **DON'T** use `window.location.origin` for URLs sent in emails - when sending from localhost, emails will contain localhost URLs that recipients can't access. Use `import.meta.env.VITE_APP_URL || window.location.origin` and set `VITE_APP_URL` in production (Vercel env vars). The fallback allows local testing while ensuring production emails have correct URLs.
-- **DON'T** fetch large datasets directly from Supabase without considering the 1000 row default limit - Supabase REST API returns max 1000 rows by default, and `.limit(N)` won't help if N > server max. For tables that may exceed 1000 rows (like `revenue_records`), use database functions with `.rpc()` to aggregate data server-side. See `get_revenue_by_month` and `get_revenue_by_location` functions used in Reports.tsx.
-- **DON'T** query new tables before applying migrations - if you create new tables like `sms_messages`, the Supabase types won't include them until you apply the migration and run `npm run db:types`. Use `(supabase.from as any)('table_name')` with explicit type casts as a workaround, with a comment noting types need regeneration.
-- **DON'T** use ASCII ranges for GSM character detection in SMS - the GSM 03.38 character set is NOT the same as ASCII. Use the explicit character sets in `smsTemplates.ts` which include Greek letters (Δ, Φ, Γ, etc.) and handle extended characters (€, [, ], etc.) that count as 2 characters each.
-- **DON'T** store phone numbers in inconsistent formats - use `normalizePhone()` from `phoneUtils.ts` to convert to E.164 format (+1XXXXXXXXXX) for storage, and `formatPhoneDisplay()` for user-facing display as (XXX) XXX-XXXX.
-- **DON'T** use `new Date(dateStr)` for YYYY-MM-DD date strings - this parses as UTC midnight, causing timezone bugs. Use `parseLocalDate(dateStr)` from `dateUtils.ts` which correctly parses as local midnight. This applies to validation functions too - `isValidDateString()` and `isValidDateRange()` in `validation.ts` should use `parseLocalDate()`.
-- **DON'T** make fetch calls to external APIs without try-catch and timeout - network errors, service outages, and hung connections will crash the app or leave users waiting forever. Always wrap in try-catch, use AbortController for timeout, validate response JSON, and check for error fields in the response body.
-- **DON'T** let PDF generation or file downloads fail silently - `generateInvoicePdf()` and similar functions should be wrapped in try-catch and return `{ success: boolean, error?: string }` so the UI can show appropriate feedback. Users clicking download buttons need to know if it worked.
-- **DON'T** create local Toast components when `useToast()` hook is available - the app has a global `ToastProvider` in `src/lib/toast.tsx`. Use `const { showSuccess, showError } = useToast()` instead of defining local toast state. See Settings.tsx which needs this fix.
-- **DON'T** duplicate STATUS_COLORS or status badge styling across files - these identical color mappings exist in 8+ files. Use shared constants from a central location or create a `<StatusBadge variant="enrollment|lead|invoice" />` component.
-- **DON'T** duplicate utility functions that already exist - don't define local `formatDate()` or `formatCurrency()` functions when `formatDateLocal()` and `formatCurrency()` already exist in `dateUtils.ts` and `moneyUtils.ts`. Import and use the canonical versions to ensure consistent behavior.
-- **DON'T** hardcode external service URLs - use environment variables like `import.meta.env.VITE_N8N_BASE_URL` with a fallback for development. This allows different environments (staging, production) without code changes.
-- **DON'T** assume column names in Edge Functions match your mental model - the `families` table has `scheduled_at` (not `calendly_scheduled_at`). Edge Functions don't get TypeScript compile errors for wrong column names; Supabase inserts silently fail. Always verify column names against the schema before writing insert/update queries, and check `family_id` is not null after booking creation to catch silent failures.
-- **DON'T** forget there are TWO payroll systems - `teacher_payments` (legacy manual payments, Sep-Dec 2025) and `payroll_run`/`payroll_line_item` (batch payroll, Jan 2026+). Reports and metrics showing total teacher compensation must query BOTH tables. The systems are independent with no FK relationship, so ensure mutations that affect either system invalidate `queryKeys.reports.all`.
-- **DON'T** create a new family when a lead with the same person exists - this creates duplicates. The `AddFamilyModal` now checks for matching leads (by email or name) and offers to convert them instead. The proper workflow for leads is: Marketing view → find lead → "Convert to Customer" button → add students/enrollments to the converted family. Creating families directly in Directory bypasses this flow.
-- **DON'T** set `status = 'active'` on a lead without also setting `lead_status = 'converted'` and `converted_at = NOW()` — the Marketing "Converted" metric counts families by `lead_status = 'converted'`. If you only change `status`, the lead disappears from the pipeline without being counted as a conversion. This applies to both application code and database triggers (e.g., `process_class_registration`).
-- **DON'T** reference the deprecated `leads` table in new code - leads are stored as families with `status='lead'`. The database trigger `auto_convert_leads_on_enrollment` auto-converts matching leads when enrollments are created, checking both `primary_email` and `secondary_email` for matches.
-- **DON'T** pass raw Twilio status values to `sms_messages` inserts - Twilio returns statuses like `'queued'` and `'sending'` that violate the CHECK constraint (`pending`, `sent`, `delivered`, `failed`, `undelivered`). Always map Twilio statuses to allowed DB values before inserting (e.g., `queued`/`sending` → `sent`). The `mapTwilioStatus()` function in `send-sms/index.ts` handles this.
-- **DON'T** assume moving payments between invoices auto-updates `amount_paid` - the `payment_updates_invoice` DB trigger only fires on INSERT to the `payments` table, not on UPDATE. If you transfer payments by updating `invoice_id` (e.g., during invoice consolidation), the source invoice's `amount_paid` becomes stale. You must manually reset it (e.g., set `amount_paid: 0` when voiding the source invoice).
+### Database & Supabase
+
+- **DON'T** use `.single()` when a query might return 0 or multiple rows — use `.maybeSingle()`. Only use `.single()` when exactly one row is guaranteed.
+- **DON'T** use `.eq()` for email lookups — use `.ilike('primary_email', email.toLowerCase())` for case-insensitive matching.
+- **DON'T** pass empty strings to Supabase for nullable fields — use `value || null`. PostgreSQL cannot convert `''` to date/timestamp types.
+- **DON'T** enable RLS on new tables — this internal admin app doesn't use Row Level Security.
+- **DON'T** fetch large datasets without considering the 1000 row default limit — use `.rpc()` with database functions for aggregation (see `get_revenue_by_month`, `get_revenue_by_location`).
+- **DON'T** query new tables before applying migrations and running `npm run db:types` — use `(supabase.from as any)('table_name')` as a workaround with a comment.
+- **DON'T** assume column names in Edge Functions match your mental model — Supabase inserts silently fail on wrong column names. Always verify against the schema.
+
+### Database Triggers
+
+- **DON'T** assume all data creation happens in application code — triggers like `process_class_registration` auto-create students and enrollments. Check Dashboard → Triggers when debugging.
+- **DON'T** use BEFORE INSERT triggers that reference the new row via FK — the row doesn't exist yet. Use AFTER INSERT.
+- **DON'T** leave triggers referencing deprecated tables/columns — they silently fail. Audit triggers in Dashboard after schema changes.
+- **DON'T** assume `payment_updates_invoice` fires on UPDATE — it only fires on INSERT. When transferring payments, manually reset the source invoice's `amount_paid`.
+- **DON'T** change the fuzzy match threshold (0.55) in `process_class_registration` without testing — catches typos (score ~0.62) while staying above sibling-to-sibling scores (0.3-0.4).
+
+### Database Schema Relationships
+
+- **DON'T** forget `enrollments` and `teacher_assignments` have separate `hours_per_week` — editing hours must update BOTH. Roster/Teachers use `teacher_assignments`, invoicing uses `enrollments`.
+- **DON'T** assume `revenue_records` links to enrollments — it tracks by `family_id`, `student_id`, `service_id` with no `enrollment_id` FK. Uses `location_id` for location reporting.
+- **DON'T** forget there are TWO payroll systems — `teacher_payments` (legacy, Sep-Dec 2025) and `payroll_run`/`payroll_line_item` (batch, Jan 2026+). Reports must query both; invalidate `queryKeys.reports.all`.
+
+### Business Logic & Lead Management
+
+- **DON'T** create families with `status: 'lead'` for paying customers — leads are excluded from Directory and can't be invoiced. Event purchases should use `status: 'active'`.
+- **DON'T** create leads without checking for duplicates — check for existing families with the same email first. See `ingest-lead` and `calendly-webhook` for the pattern.
+- **DON'T** rely on email-only matching for family lookups — check both `primary_email` and `secondary_email`, fall back to name matching. Use `find_or_create_family_for_purchase()` for new integrations.
+- **DON'T** create a new family when a matching lead exists — `AddFamilyModal` checks for leads by email/name and offers conversion. Use Marketing → "Convert to Customer" flow.
+- **DON'T** set `status = 'active'` on a lead without also setting `lead_status = 'converted'` and `converted_at = NOW()` — the Marketing "Converted" metric depends on `lead_status`.
+- **DON'T** reference the deprecated `leads` table — leads are families with `status='lead'`. The `auto_convert_leads_on_enrollment` trigger handles auto-conversion.
+
+### Edge Functions & Webhooks
+
+- **DON'T** forget `verify_jwt = false` for external webhooks — add to `supabase/config.toml` with `[functions.function-name]` section.
+- **DON'T** trust external webhook payload structures — use defensive null checks and log raw payloads for debugging.
+- **DON'T** use non-null assertions (`!`) for env vars — validate and return early with a clear 500 error.
+- **DON'T** query Supabase directly from N8N — create helper edge functions that N8N calls via HTTP instead.
+
+### Integration-Specific
+
+- **DON'T** look for Calendly phone numbers on the invitee — they're in `scheduled_event.location.location` for outbound calls. Priority: location > text_reminder_number > form answers.
+- **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/`) — use the edit ID format (`/forms/d/{id}/`).
+- **DON'T** pass raw Twilio statuses to `sms_messages` — map via `mapTwilioStatus()` in `send-sms/index.ts` (`queued`/`sending` → `sent`).
+- **DON'T** use ASCII ranges for GSM character detection — use the explicit character sets in `smsTemplates.ts`.
+
+### Data Handling & Formatting
+
+- **DON'T** compare names with string equality — use `formatNameLastFirst()` from `utils.ts` to normalize before comparison.
+- **DON'T** store names in "First Last" or "XYZ Family" format — use `formatNameLastFirst()` which handles all variants and is idempotent.
+- **DON'T** hardcode age group values — use `AGE_GROUP_OPTIONS`, `getAgeGroup(dob)`, and `getAgeGroupSortValue()` from `utils.ts`.
+- **DON'T** store phone numbers inconsistently — use `normalizePhone()` for E.164 storage (+1XXXXXXXXXX), `formatPhoneDisplay()` for display.
+
+### UI & Frontend
+
+- **DON'T** create custom modal wrappers with plain divs — use `AccessibleModal` for focus trap, keyboard handling, and aria attributes.
+- **DON'T** use only `contentStyle` for Recharts tooltips in dark mode — also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}`.
+- **DON'T** use `window.location.origin` for URLs in emails — use `import.meta.env.VITE_APP_URL || window.location.origin`.
+- **DON'T** create local Toast components — use `const { showSuccess, showError } = useToast()` from `src/lib/toast.tsx`.
+- **DON'T** duplicate STATUS_COLORS across files — use shared constants or a `<StatusBadge>` component.
+
+### Error Handling
+
+- **DON'T** silently swallow errors in secondary operations — return `{ data, warnings: string[] }` so callers can show partial failure messages. See `updateInvoice`, `recordPayment`, `createPayrollRun`.
+- **DON'T** make fetch calls to external APIs without try-catch and timeout — use AbortController and validate response JSON.
+- **DON'T** let PDF generation fail silently — wrap in try-catch and return `{ success, error? }`.
+
+### Conventions & Code Quality
+
+- **DON'T** create new hook files — add hooks to `src/lib/hooks.ts`.
+- **DON'T** use `console.log` in committed code.
+- **DON'T** use `Partial<T>` for mutation inputs — use insert types (`FamilyInsert`, `StudentInsert`, etc.).
+- **DON'T** duplicate utility functions — import `formatDateLocal()`, `formatCurrency()`, etc. from their canonical locations.
+- **DON'T** hardcode external service URLs — use env vars like `import.meta.env.VITE_N8N_BASE_URL` with a fallback.
+
+### React Query & Caching
+
+- **DON'T** forget to invalidate `stats.dashboard()` in mutations affecting Command Center metrics — the dashboard has 60-second `staleTime`.
 
 ---
 
