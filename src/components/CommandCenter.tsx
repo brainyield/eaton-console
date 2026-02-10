@@ -344,10 +344,10 @@ function useDashboardStats() {
       const upcomingCalls = calendlyBookings.filter(b => b.event_type === '15min_call').length
       const upcomingHubDropoffs = calendlyBookings.filter(b => b.event_type === 'hub_dropoff').length
 
-      // Calculate actual revenue comparison (paid invoices this month vs last month)
+      // Calculate MRR comparison: projected MRR (from enrollments) vs last month's actual collected revenue
       const mrrThisMonth = thisMonthInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
       const mrrLastMonth = lastMonthInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-      const mrrChange = mrrLastMonth > 0 ? ((mrrThisMonth - mrrLastMonth) / mrrLastMonth) * 100 : 0
+      const mrrChange = mrrLastMonth > 0 ? ((totalMRR - mrrLastMonth) / mrrLastMonth) * 100 : 0
 
       // Enrollments change
       const enrollmentsLastMonth = lastMonthEnrollmentsResult.count || 0
