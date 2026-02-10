@@ -52,9 +52,6 @@ interface DashboardStats {
   upcomingCalls: number
   upcomingHubDropoffs: number
   // Comparative
-  mrrThisMonth: number
-  mrrLastMonth: number
-  mrrChange: number
   enrollmentsLastMonth: number
   enrollmentsChange: number
 }
@@ -112,8 +109,6 @@ function useDashboardStats() {
         reengagementResult,
         leadsResult,
         upcomingCalendlyResult,
-        lastMonthInvoicesResult,
-        thisMonthInvoicesResult,
         overdue30PlusResult,
         eventLeadsViewResult,
       ] = await Promise.all([
@@ -207,21 +202,6 @@ function useDashboardStats() {
           .eq('status', 'scheduled')
           .gte('scheduled_at', now.toISOString()),
 
-        // Last month invoices for MRR comparison
-        supabase
-          .from('invoices')
-          .select('total_amount')
-          .eq('status', 'paid')
-          .gte('invoice_date', lastMonthStart)
-          .lte('invoice_date', lastMonthEnd),
-
-        // This month paid invoices for proper MRR comparison (actual vs actual)
-        supabase
-          .from('invoices')
-          .select('total_amount')
-          .eq('status', 'paid')
-          .gte('invoice_date', monthStart),
-
         // Overdue invoices 30+ days (due_date before 30 days ago)
         supabase
           .from('invoices')
@@ -262,21 +242,12 @@ function useDashboardStats() {
       interface CalendlyData {
         event_type: string
       }
-      interface LastMonthInvoiceData {
-        total_amount: number | null
-      }
-      interface ThisMonthInvoiceData {
-        total_amount: number | null
-      }
-
       const invoices = (invoicesResult.data || []) as InvoiceData[]
       const enrollments = (enrollmentsResult.data || []) as EnrollmentData[]
       const stepUpPending = (stepUpPendingResult.data || []) as StepUpPendingData[]
       const lineItems = (profitMarginResult.data || []) as LineItemData[]
       const leads = (leadsResult.data || []) as LeadData[]
       const calendlyBookings = (upcomingCalendlyResult.data || []) as CalendlyData[]
-      const lastMonthInvoices = (lastMonthInvoicesResult.data || []) as LastMonthInvoiceData[]
-      const thisMonthInvoices = (thisMonthInvoicesResult.data || []) as ThisMonthInvoiceData[]
 
       // Count unique students with active/trial enrollments
       interface StudentEnrollmentData {
@@ -344,11 +315,6 @@ function useDashboardStats() {
       const upcomingCalls = calendlyBookings.filter(b => b.event_type === '15min_call').length
       const upcomingHubDropoffs = calendlyBookings.filter(b => b.event_type === 'hub_dropoff').length
 
-      // Calculate MRR comparison: projected MRR (from enrollments) vs last month's actual collected revenue
-      const mrrThisMonth = thisMonthInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-      const mrrLastMonth = lastMonthInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-      const mrrChange = mrrLastMonth > 0 ? ((totalMRR - mrrLastMonth) / mrrLastMonth) * 100 : 0
-
       // Enrollments change
       const enrollmentsLastMonth = lastMonthEnrollmentsResult.count || 0
       const newEnrollmentsThisMonth = newEnrollmentsResult.count || 0
@@ -381,9 +347,6 @@ function useDashboardStats() {
         totalLeads,
         upcomingCalls,
         upcomingHubDropoffs,
-        mrrThisMonth,
-        mrrLastMonth,
-        mrrChange,
         enrollmentsLastMonth,
         enrollmentsChange,
       }
@@ -515,11 +478,10 @@ export default function CommandCenter() {
     {
       label: 'MRR',
       value: formatCurrency(stats?.totalMRR ?? 0),
-      sub: 'Monthly Revenue',
+      sub: 'From Active Enrollments',
       icon: TrendingUp,
       color: 'text-status-trial',
       isFormatted: true,
-      change: stats?.mrrChange,
     },
     {
       label: 'Outstanding',
@@ -608,7 +570,6 @@ export default function CommandCenter() {
           <div key={stat.label} className="bg-card border border-border rounded-lg p-4">
             <div className="flex items-center justify-between mb-2">
               <stat.icon className={`w-5 h-5 ${stat.color}`} />
-              {stat.change !== undefined && <ChangeIndicator value={stat.change} />}
             </div>
             <div className={`text-2xl font-bold ${stat.color}`}>
               {stat.value}
