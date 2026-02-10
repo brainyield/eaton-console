@@ -38,6 +38,24 @@ interface SendResult {
   error?: string
 }
 
+// Map Twilio status to our allowed DB values
+function mapTwilioStatus(twilioStatus: string | undefined): string {
+  switch (twilioStatus) {
+    case 'queued':
+    case 'sending':
+    case 'sent':
+      return 'sent'
+    case 'delivered':
+      return 'delivered'
+    case 'undelivered':
+      return 'undelivered'
+    case 'failed':
+      return 'failed'
+    default:
+      return 'sent'
+  }
+}
+
 // Normalize phone to E.164 format
 function normalizePhone(phone: string | null | undefined): string | null {
   if (!phone) return null
@@ -275,7 +293,7 @@ Deno.serve(async (req) => {
             from_phone: twilioFromPhone,
             message_body: payload.messageBody,
             message_type: payload.messageType || 'custom',
-            status: twilioData.status || 'sent',
+            status: mapTwilioStatus(twilioData.status),
             twilio_sid: twilioData.sid,
             template_key: payload.templateKey || null,
             merge_data: payload.mergeData || null,
