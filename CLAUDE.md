@@ -215,7 +215,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** forget `verify_jwt = false` for external webhooks — add to `supabase/config.toml` with `[functions.function-name]` section.
 - **DON'T** trust external webhook payload structures — use defensive null checks and log raw payloads for debugging.
 - **DON'T** use non-null assertions (`!`) for env vars — validate and return early with a clear 500 error.
-- **DON'T** query Supabase directly from N8N — create helper edge functions that N8N calls via HTTP instead.
+- **DON'T** query Supabase directly from N8N — create helper edge functions that N8N calls via HTTP instead. Specifically, n8n Supabase node `filterString` (e.g., `=primary_email.ilike.{{ email }}`) breaks PostgREST parsing when values contain dots (like email addresses), causing silent wrong matches. Route all lead ingestion through the `ingest-lead` edge function.
 
 ### Integration-Specific
 
