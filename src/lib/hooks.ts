@@ -159,6 +159,7 @@ export interface Invoice {
   sent_to?: string | null
   viewed_at: string | null
   notes: string | null
+  consolidated_into: string | null
   created_at: string
   updated_at: string
 }
@@ -2996,21 +2997,29 @@ export function useInvoiceMutations() {
       )
 
       for (const invoice of sortedInvoices) {
-        // Build period prefix like "Jan 6-12" or "Jan 6 - Feb 2"
+        // Build description prefix showing origin invoice + period
+        // e.g. "INV-2026-0536 | Jan 6-12: " or "INV-2026-0536: " or "Jan 6-12: "
         let periodPrefix = ''
+        const invNum = invoice.invoice_number || ''
+        let periodStr = ''
         if (invoice.period_start && invoice.period_end) {
           const s = parseLocalDate(invoice.period_start)
           const e = parseLocalDate(invoice.period_end)
           const sMonth = s.toLocaleDateString('en-US', { month: 'short' })
           const eMonth = e.toLocaleDateString('en-US', { month: 'short' })
           if (sMonth === eMonth) {
-            periodPrefix = `${sMonth} ${s.getDate()}-${e.getDate()}: `
+            periodStr = `${sMonth} ${s.getDate()}-${e.getDate()}`
           } else {
-            periodPrefix = `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}: `
+            periodStr = `${sMonth} ${s.getDate()} - ${eMonth} ${e.getDate()}`
           }
-        } else if (invoice.invoice_number) {
-          // Fallback: use invoice number if no period dates
-          periodPrefix = `${invoice.invoice_number}: `
+        }
+
+        if (invNum && periodStr) {
+          periodPrefix = `${invNum} | ${periodStr}: `
+        } else if (invNum) {
+          periodPrefix = `${invNum}: `
+        } else if (periodStr) {
+          periodPrefix = `${periodStr}: `
         }
 
         const items = invoice.line_items || []
@@ -3083,10 +3092,10 @@ export function useInvoiceMutations() {
 
       if (updateError) throw updateError
 
-      // Void original invoices and reset their amount_paid since payments were transferred
+      // Void original invoices, reset amount_paid, and link to consolidated invoice
       const { error: voidError } = await supabase
         .from('invoices')
-        .update({ status: 'void', amount_paid: 0 })
+        .update({ status: 'void', amount_paid: 0, consolidated_into: newInvoice.id })
         .in('id', invoiceIds)
 
       if (voidError) {

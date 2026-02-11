@@ -19,8 +19,10 @@ import {
   Wrench,
   MessageSquare,
 } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import type { InvoiceWithDetails } from '../lib/hooks'
 import { useInvoiceEmails, useInvoicePayments, getReminderType, useInvoiceMutations, useSmsByInvoice } from '../lib/hooks'
+import { supabase } from '../lib/supabase'
 import { parseLocalDate } from '../lib/dateUtils'
 import { useToast } from '../lib/toast'
 import { generateInvoicePdf } from '../lib/invoicePdf'
@@ -144,6 +146,21 @@ export default function InvoiceDetailPanel({
   const { data: paymentHistory, isLoading: loadingPayments } = useInvoicePayments(invoice?.id)
   const { data: smsHistory = [] } = useSmsByInvoice(invoice?.id)
   const { sendReminder, recordPayment, recalculateInvoiceBalance } = useInvoiceMutations()
+
+  // Fetch consolidated target invoice (only when void + has reference)
+  const { data: consolidatedTarget } = useQuery({
+    queryKey: ['invoice-consolidated', invoice.consolidated_into],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('invoices')
+        .select('invoice_number')
+        .eq('id', invoice.consolidated_into!)
+        .maybeSingle()
+      return data as { invoice_number: string } | null
+    },
+    enabled: !!invoice.consolidated_into,
+    staleTime: Infinity,
+  })
 
   // Check if family has a valid phone for SMS
   const canSendSms = invoice.family?.primary_phone && isValidPhone(invoice.family.primary_phone)
@@ -313,7 +330,12 @@ export default function InvoiceDetailPanel({
             <div className="px-6 py-3 bg-zinc-800 border-b border-zinc-700">
               <div className="flex items-center gap-2 text-zinc-400">
                 <Ban className="w-4 h-4" aria-hidden="true" />
-                <span className="text-sm">This invoice has been voided and is excluded from revenue calculations.</span>
+                <span className="text-sm">
+                  This invoice has been voided and is excluded from revenue calculations.
+                  {consolidatedTarget?.invoice_number && (
+                    <> Consolidated into <span className="text-zinc-300 font-medium">{consolidatedTarget.invoice_number}</span>.</>
+                  )}
+                </span>
               </div>
             </div>
           )}

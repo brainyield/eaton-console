@@ -1904,6 +1904,7 @@ export type Database = {
         Row: {
           amount_paid: number
           balance_due: number | null
+          consolidated_into: string | null
           created_at: string
           due_date: string | null
           family_id: string
@@ -1926,6 +1927,7 @@ export type Database = {
         Insert: {
           amount_paid?: number
           balance_due?: number | null
+          consolidated_into?: string | null
           created_at?: string
           due_date?: string | null
           family_id: string
@@ -1948,6 +1950,7 @@ export type Database = {
         Update: {
           amount_paid?: number
           balance_due?: number | null
+          consolidated_into?: string | null
           created_at?: string
           due_date?: string | null
           family_id?: string
@@ -1968,6 +1971,20 @@ export type Database = {
           viewed_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "invoices_consolidated_into_fkey"
+            columns: ["consolidated_into"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_consolidated_into_fkey"
+            columns: ["consolidated_into"]
+            isOneToOne: false
+            referencedRelation: "overdue_invoices"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoices_family_id_fkey"
             columns: ["family_id"]

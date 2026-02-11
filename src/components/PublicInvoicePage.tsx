@@ -18,6 +18,7 @@ interface Invoice {
   balance_due: number | null;
   status: string;
   notes: string | null;
+  consolidated_into: string | null;
 }
 
 interface Family {
@@ -91,12 +92,20 @@ function getStatusConfig(status: string) {
         iconColor: 'text-blue-600'
       };
     case 'draft':
-      return { 
-        label: 'Draft', 
-        bgColor: 'bg-gray-100', 
+      return {
+        label: 'Draft',
+        bgColor: 'bg-gray-100',
         textColor: 'text-gray-800',
         icon: FileText,
         iconColor: 'text-gray-600'
+      };
+    case 'void':
+      return {
+        label: 'Voided',
+        bgColor: 'bg-gray-100',
+        textColor: 'text-gray-500',
+        icon: FileText,
+        iconColor: 'text-gray-400'
       };
     default:
       return { 
@@ -118,6 +127,7 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
   const [error, setError] = useState<string | null>(null);
   const [isLoadingStripe, setIsLoadingStripe] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+  const [consolidatedInvoice, setConsolidatedInvoice] = useState<{ invoice_number: string; public_id: string } | null>(null);
 
   // Check for payment status from URL params (redirect from Stripe)
   const paymentStatus = searchParams.get('payment');
@@ -176,6 +186,19 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
 
       const inv = invoiceData as Invoice;
       setInvoice(inv);
+
+      // If voided and consolidated, fetch the target invoice
+      if (inv.consolidated_into) {
+        const { data: consolidatedData } = await supabase
+          .from('invoices')
+          .select('invoice_number, public_id')
+          .eq('id', inv.consolidated_into)
+          .maybeSingle();
+
+        if (consolidatedData) {
+          setConsolidatedInvoice(consolidatedData as { invoice_number: string; public_id: string });
+        }
+      }
 
       // Fetch family info
       const { data: familyData } = await supabase
@@ -287,6 +310,28 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
               <div>
                 <p className="font-medium text-amber-800">Payment Cancelled</p>
                 <p className="text-sm text-amber-700">Your payment was cancelled. You can try again when ready.</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Consolidated Invoice Banner */}
+        {invoice.status === 'void' && consolidatedInvoice && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-start gap-3">
+              <FileText className="w-6 h-6 text-blue-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium text-blue-800">This invoice has been voided.</p>
+                <p className="text-sm text-blue-700 mt-1">
+                  It was consolidated into{' '}
+                  <a
+                    href={`/invoice/${consolidatedInvoice.public_id}`}
+                    className="font-semibold underline hover:text-blue-900"
+                  >
+                    {consolidatedInvoice.invoice_number}
+                  </a>
+                  . Please refer to the new invoice for payment.
+                </p>
               </div>
             </div>
           </div>
@@ -416,7 +461,7 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
           </div>
 
           {/* Payment Options */}
-          {invoice.status !== 'paid' && (invoice.balance_due ?? 0) > 0 && (
+          {invoice.status !== 'paid' && invoice.status !== 'void' && (invoice.balance_due ?? 0) > 0 && (
             <div className="mt-6 pt-6 border-t border-gray-200">
               <h3 className="font-medium text-gray-900 mb-4">Payment Options</h3>
 
@@ -475,6 +520,30 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
                 <p className="font-medium text-green-800">
                   This invoice has been paid in full. Thank you!
                 </p>
+              </div>
+            </div>
+          )}
+
+          {/* Void Message */}
+          {invoice.status === 'void' && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                <FileText className="w-5 h-5 text-gray-500 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-gray-700">This invoice has been voided.</p>
+                  {consolidatedInvoice && (
+                    <p className="text-sm text-gray-600 mt-1">
+                      It was consolidated into{' '}
+                      <a
+                        href={`/invoice/${consolidatedInvoice.public_id}`}
+                        className="font-semibold text-blue-600 underline hover:text-blue-800"
+                      >
+                        {consolidatedInvoice.invoice_number}
+                      </a>
+                      . Please refer to the new invoice for payment.
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           )}
