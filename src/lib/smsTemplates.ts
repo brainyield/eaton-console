@@ -60,20 +60,26 @@ export const invoiceReminderTemplate: TemplateConfig<'invoice_reminder'> = {
   generate: (data) => {
     const formattedAmount = formatCurrency(data.amount)
 
-    // Handle missing or invalid due date
-    let dueDate = 'soon'
+    // Handle missing or invalid due date, with overdue detection
+    let duePart = 'due soon'
     if (data.dueDate) {
       try {
-        dueDate = parseLocalDate(data.dueDate).toLocaleDateString('en-US', {
-          month: 'short',
-          day: 'numeric',
-        })
+        const parsed = parseLocalDate(data.dueDate)
+        const formatted = parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        const today = new Date()
+        today.setHours(0, 0, 0, 0)
+        const diffDays = Math.floor((today.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24))
+        if (diffDays > 0) {
+          duePart = `was due on ${formatted} and is overdue by ${diffDays} day${diffDays === 1 ? '' : 's'}`
+        } else {
+          duePart = `due ${formatted}`
+        }
       } catch {
-        // Keep default 'soon' if date parsing fails
+        // Keep default 'due soon' if date parsing fails
       }
     }
 
-    return `Hi ${data.familyName}, this is Eaton Education. You have an outstanding invoice #${data.invoiceNumber} for ${formattedAmount} due ${dueDate}. View and pay online: ${data.invoiceUrl}${OPT_OUT_FOOTER}`
+    return `Hi ${data.familyName}, this is Eaton Academic. You have an outstanding invoice #${data.invoiceNumber} for ${formattedAmount} ${duePart}. View and pay online: ${data.invoiceUrl}${OPT_OUT_FOOTER}`
   },
 }
 
@@ -87,7 +93,7 @@ export const eventReminderTemplate: TemplateConfig<'event_reminder'> = {
   requiredFields: ['familyName', 'eventName', 'eventDate', 'eventTime'],
   generate: (data) => {
     const locationPart = data.location ? ` at ${data.location}` : ''
-    return `Hi ${data.familyName}, reminder: ${data.eventName} is ${data.eventDate} at ${data.eventTime}${locationPart}. We look forward to seeing you!\n\n- Eaton Education${OPT_OUT_FOOTER}`
+    return `Hi ${data.familyName}, reminder: ${data.eventName} is ${data.eventDate} at ${data.eventTime}${locationPart}. We look forward to seeing you!\n\n- Eaton Academic${OPT_OUT_FOOTER}`
   },
 }
 
@@ -100,7 +106,7 @@ export const announcementTemplate: TemplateConfig<'announcement'> = {
   description: 'Custom announcement with standard footer',
   requiredFields: ['customMessage'],
   generate: (data) => {
-    return `${data.customMessage}\n\n- Eaton Education${OPT_OUT_FOOTER}`
+    return `${data.customMessage}\n\n- Eaton Academic${OPT_OUT_FOOTER}`
   },
 }
 

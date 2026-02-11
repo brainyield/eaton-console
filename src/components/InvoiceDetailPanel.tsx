@@ -824,7 +824,7 @@ export default function InvoiceDetailPanel({
         invoiceId={invoice.id}
         suggestedTemplate="invoice_reminder"
         templateData={{
-          familyName: invoice.family?.display_name?.split(',')[0] || 'there',
+          familyName: invoice.family?.display_name?.split(',')[1]?.trim() || invoice.family?.display_name?.split(',')[0] || 'there',
           invoiceNumber: invoice.invoice_number || '',
           amount: balanceDue ?? 0,
           dueDate: invoice.due_date || '',
