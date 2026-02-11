@@ -62,6 +62,35 @@ Deno.serve(async (req) => {
       status = 'sent'
     }
 
+    // Status priority - only allow forward transitions to prevent
+    // out-of-order callbacks from downgrading status
+    // (e.g. a late "sent" callback overwriting "delivered")
+    const STATUS_PRIORITY: Record<string, number> = {
+      sent: 1,
+      delivered: 2,
+      undelivered: 2,
+      failed: 2,
+    }
+
+    // Check current status before updating
+    const { data: existing } = await supabase
+      .from('sms_messages')
+      .select('status')
+      .eq('twilio_sid', messageSid)
+      .maybeSingle()
+
+    if (existing) {
+      const currentPriority = STATUS_PRIORITY[existing.status] || 0
+      const newPriority = STATUS_PRIORITY[status || ''] || 0
+      if (newPriority < currentPriority) {
+        console.log('Skipping status downgrade:', { messageSid, current: existing.status, incoming: status })
+        return new Response(
+          JSON.stringify({ success: true, skipped: 'status_downgrade' }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     // Build update object
     const updateData: Record<string, unknown> = {
       status,

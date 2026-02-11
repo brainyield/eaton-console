@@ -222,6 +222,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** look for Calendly phone numbers on the invitee — they're in `scheduled_event.location.location` for outbound calls. Priority: location > text_reminder_number > form answers.
 - **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/`) — use the edit ID format (`/forms/d/{id}/`).
 - **DON'T** pass raw Twilio statuses to `sms_messages` — map via `mapTwilioStatus()` in `send-sms/index.ts` (`queued`/`sending` → `sent`).
+- **DON'T** allow Twilio status callbacks to downgrade status — callbacks arrive out of order (e.g. `sent` after `delivered`). The `twilio-status-webhook` uses a priority guard; maintain this pattern if modifying status update logic.
 - **DON'T** use ASCII ranges for GSM character detection — use the explicit character sets in `smsTemplates.ts`.
 
 ### Data Handling & Formatting
