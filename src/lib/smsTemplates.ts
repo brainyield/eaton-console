@@ -70,9 +70,9 @@ export const invoiceReminderTemplate: TemplateConfig<'invoice_reminder'> = {
         today.setHours(0, 0, 0, 0)
         const diffDays = Math.floor((today.getTime() - parsed.getTime()) / (1000 * 60 * 60 * 24))
         if (diffDays > 0) {
-          duePart = `was due on ${formatted} and is overdue by ${diffDays} day${diffDays === 1 ? '' : 's'}`
+          duePart = `that was due on ${formatted} and is overdue by ${diffDays} day${diffDays === 1 ? '' : 's'}`
         } else {
-          duePart = `due ${formatted}`
+          duePart = `that is due ${formatted}`
         }
       } catch {
         // Keep default 'due soon' if date parsing fails
