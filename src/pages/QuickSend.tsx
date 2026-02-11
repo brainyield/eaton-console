@@ -318,7 +318,7 @@ export default function QuickSend() {
             ) : (
               <>
                 <Send className="w-5 h-5" />
-                Send to {eligibleForSend.length} Familie{eligibleForSend.length !== 1 ? 's' : 'y'}
+                Send to {eligibleForSend.length} {eligibleForSend.length !== 1 ? 'Families' : 'Family'}
               </>
             )}
           </button>
