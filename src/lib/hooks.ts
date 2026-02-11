@@ -240,6 +240,7 @@ export interface SmsMessage {
   updated_at: string
   // Joined fields
   family?: { display_name: string; primary_email: string | null }
+  sms_media?: SmsMedia[]
 }
 
 export interface SmsMessageFilters {
@@ -7593,7 +7594,8 @@ export function useSmsMessages(filters?: SmsMessageFilters) {
       let query = supabase.from('sms_messages')
         .select(`
           *,
-          family:families(display_name, primary_email)
+          family:families(display_name, primary_email),
+          sms_media(*)
         `)
         .order('created_at', { ascending: false })
         .limit(filters?.limit ?? 500)
@@ -7644,7 +7646,7 @@ export function useSmsByFamily(familyId: string) {
     queryKey: queryKeys.sms.byFamily(familyId),
     queryFn: async () => {
       const { data, error } = await supabase.from('sms_messages')
-        .select('*')
+        .select('*, sms_media(*)')
         .eq('family_id', familyId)
         .order('created_at', { ascending: false })
         .limit(50)
@@ -7669,7 +7671,7 @@ export function useSmsByInvoice(invoiceId: string) {
     queryKey: queryKeys.sms.byInvoice(invoiceId),
     queryFn: async () => {
       const { data, error } = await supabase.from('sms_messages')
-        .select('*')
+        .select('*, sms_media(*)')
         .eq('invoice_id', invoiceId)
         .order('created_at', { ascending: false })
         .limit(50)

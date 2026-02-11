@@ -1,4 +1,4 @@
-import { MessageSquare, AlertCircle } from 'lucide-react'
+import { MessageSquare, AlertCircle, Image } from 'lucide-react'
 import { useSmsByFamily, useSmsByInvoice } from '../../lib/hooks'
 import { SmsStatusBadge } from '../ui/SmsStatusBadge'
 import { formatPhoneDisplay } from '../../lib/phoneUtils'
@@ -69,11 +69,40 @@ export function SmsHistory({ familyId, invoiceId, limit = 50, showEmpty = true }
               <MessageSquare className="h-4 w-4 text-zinc-400" aria-hidden="true" />
               <span className="text-sm text-zinc-400">To: {formatPhoneDisplay(msg.to_phone)}</span>
             </div>
-            <SmsStatusBadge status={msg.status} />
+            <div className="flex items-center gap-2">
+              {msg.sms_media && msg.sms_media.length > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-purple-600/20 text-purple-400 rounded">
+                  <Image className="h-3 w-3" aria-hidden="true" />
+                  MMS
+                </span>
+              )}
+              <SmsStatusBadge status={msg.status} />
+            </div>
           </div>
 
           {/* Message body */}
           <p className="text-sm text-zinc-300 whitespace-pre-wrap mb-2">{msg.message_body}</p>
+
+          {/* Media thumbnails */}
+          {msg.sms_media && msg.sms_media.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {msg.sms_media.map((media) => (
+                <a
+                  key={media.id}
+                  href={media.public_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block"
+                >
+                  <img
+                    src={media.public_url}
+                    alt={media.name || 'MMS attachment'}
+                    className="max-h-32 rounded border border-zinc-700 hover:border-blue-500 transition-colors"
+                  />
+                </a>
+              ))}
+            </div>
+          )}
 
           {/* Footer */}
           <div className="flex items-center justify-between text-xs text-zinc-500">

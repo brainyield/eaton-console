@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Send, AlertCircle, User, Hash, Loader2 } from 'lucide-react'
+import { Send, AlertCircle, User, Hash, Loader2, Image, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { AccessibleModal } from '../ui/AccessibleModal'
 import { useSmsMutations } from '../../lib/hooks'
 import { normalizePhone, formatPhoneDisplay, isValidPhone } from '../../lib/phoneUtils'
@@ -51,6 +51,10 @@ export function SmsComposeModal({
   const [message, setMessage] = useState('')
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateKey | ''>('')
   const [error, setError] = useState<string | null>(null)
+  const [mediaUrl, setMediaUrl] = useState('')
+  const [mediaPreviewLoaded, setMediaPreviewLoaded] = useState(false)
+  const [mediaError, setMediaError] = useState('')
+  const [showMediaInput, setShowMediaInput] = useState(false)
 
   const { showSuccess, showError } = useToast()
   const { sendSms } = useSmsMutations()
@@ -59,13 +63,18 @@ export function SmsComposeModal({
   const charCount = message.length
   const segmentCount = calculateSegments(message)
   const recipientCount = isBulkSend ? familyIds.length : 1
-  const cost = estimateCost(recipientCount, segmentCount)
+  const hasMedia = !!mediaUrl && mediaPreviewLoaded && !mediaError
+  const cost = estimateCost(recipientCount, segmentCount, hasMedia)
 
   // Reset form when modal opens with new data
   useEffect(() => {
     if (isOpen) {
       setPhone(toPhone)
       setError(null)
+      setMediaUrl('')
+      setMediaPreviewLoaded(false)
+      setMediaError('')
+      setShowMediaInput(false)
 
       // Auto-fill from template if provided
       if (suggestedTemplate && templateData) {
@@ -121,6 +130,7 @@ export function SmsComposeModal({
           messageType: selectedTemplate || 'custom',
           templateKey: selectedTemplate || undefined,
           mergeData: templateData as Record<string, unknown> | undefined,
+          mediaUrls: hasMedia ? [mediaUrl] : undefined,
           sentBy: 'admin',
         },
         {
@@ -166,6 +176,7 @@ export function SmsComposeModal({
         invoiceId: invoiceId || undefined,
         templateKey: selectedTemplate || undefined,
         mergeData: templateData as Record<string, unknown> | undefined,
+        mediaUrls: hasMedia ? [mediaUrl] : undefined,
         sentBy: 'admin',
       },
       {
@@ -283,9 +294,92 @@ export function SmsComposeModal({
                 {charCount} / 1600 characters
               </span>
               <span className="text-zinc-500">
-                {segmentCount} segment{segmentCount !== 1 ? 's' : ''} (~${cost.toFixed(3)})
+                {segmentCount} segment{segmentCount !== 1 ? 's' : ''}{hasMedia ? ' + image' : ''} (~${cost.toFixed(3)})
               </span>
             </div>
+          </div>
+
+          {/* Attach Image */}
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowMediaInput(!showMediaInput)}
+              className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              <Image className="h-4 w-4" aria-hidden="true" />
+              Attach Image
+              {showMediaInput ? (
+                <ChevronUp className="h-3 w-3" aria-hidden="true" />
+              ) : (
+                <ChevronDown className="h-3 w-3" aria-hidden="true" />
+              )}
+              {hasMedia && <span className="text-xs px-1.5 py-0.5 bg-blue-600/20 text-blue-400 rounded">1</span>}
+            </button>
+
+            {showMediaInput && (
+              <div className="mt-2 space-y-2">
+                <div className="relative">
+                  <input
+                    type="url"
+                    value={mediaUrl}
+                    onChange={(e) => {
+                      setMediaUrl(e.target.value)
+                      setMediaPreviewLoaded(false)
+                      setMediaError('')
+                    }}
+                    placeholder="Paste image URL (JPEG, PNG, GIF)"
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 pr-8"
+                  />
+                  {mediaUrl && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMediaUrl('')
+                        setMediaPreviewLoaded(false)
+                        setMediaError('')
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  )}
+                </div>
+
+                <p className="text-xs text-zinc-500">
+                  URL must be publicly accessible. Max 5MB. Supported: JPEG, PNG, GIF.
+                </p>
+
+                {mediaUrl && (
+                  <div className="relative">
+                    {!mediaPreviewLoaded && !mediaError && (
+                      <div className="flex items-center gap-2 text-xs text-zinc-500">
+                        <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                        Loading preview...
+                      </div>
+                    )}
+                    <img
+                      src={mediaUrl}
+                      alt="MMS attachment preview"
+                      className={`max-h-32 rounded border border-zinc-700 ${!mediaPreviewLoaded ? 'hidden' : ''}`}
+                      onLoad={() => {
+                        setMediaPreviewLoaded(true)
+                        setMediaError('')
+                      }}
+                      onError={() => {
+                        setMediaPreviewLoaded(false)
+                        setMediaError('Image URL could not be loaded')
+                      }}
+                    />
+                    {mediaError && (
+                      <p className="text-xs text-red-400 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" aria-hidden="true" />
+                        {mediaError}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
@@ -310,8 +404,8 @@ export function SmsComposeModal({
               </>
             ) : (
               <>
-                <Send className="h-4 w-4" aria-hidden="true" />
-                Send SMS
+                {hasMedia ? <Image className="h-4 w-4" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
+                {hasMedia ? 'Send MMS' : 'Send SMS'}
               </>
             )}
           </button>

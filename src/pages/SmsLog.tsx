@@ -1,5 +1,5 @@
 import { useState, useMemo, Fragment } from 'react'
-import { MessageSquare, Search, Filter, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { MessageSquare, Search, Filter, RefreshCw, ChevronDown, ChevronUp, Image } from 'lucide-react'
 import { useSmsMessages, type SmsStatus, type SmsMessageType } from '../lib/hooks'
 import { SmsStatusBadge } from '../components/ui/SmsStatusBadge'
 import { formatPhoneDisplay } from '../lib/phoneUtils'
@@ -210,9 +210,16 @@ export default function SmsLog() {
                         {msg.family?.display_name || '-'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className="text-xs px-2 py-0.5 bg-zinc-700 text-zinc-300 rounded">
-                          {msg.message_type.replace(/_/g, ' ')}
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs px-2 py-0.5 bg-zinc-700 text-zinc-300 rounded">
+                            {msg.message_type.replace(/_/g, ' ')}
+                          </span>
+                          {msg.sms_media && msg.sms_media.length > 0 && (
+                            <span className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 bg-purple-600/20 text-purple-400 rounded" title="MMS with image">
+                              <Image className="h-3 w-3" aria-hidden="true" />
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <SmsStatusBadge status={msg.status} />
@@ -235,6 +242,29 @@ export default function SmsLog() {
                                 {msg.message_body}
                               </p>
                             </div>
+
+                            {msg.sms_media && msg.sms_media.length > 0 && (
+                              <div>
+                                <div className="text-xs text-zinc-500 mb-1">Attachments</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {msg.sms_media.map((media) => (
+                                    <a
+                                      key={media.id}
+                                      href={media.public_url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="block"
+                                    >
+                                      <img
+                                        src={media.public_url}
+                                        alt={media.name || 'MMS attachment'}
+                                        className="max-h-32 rounded border border-zinc-700 hover:border-blue-500 transition-colors"
+                                      />
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                             <div className="grid grid-cols-3 gap-4 text-sm">
                               <div>
