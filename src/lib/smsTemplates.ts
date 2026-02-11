@@ -93,7 +93,7 @@ export const eventReminderTemplate: TemplateConfig<'event_reminder'> = {
   requiredFields: ['familyName', 'eventName', 'eventDate', 'eventTime'],
   generate: (data) => {
     const locationPart = data.location ? ` at ${data.location}` : ''
-    return `Hi ${data.familyName}, reminder: ${data.eventName} is ${data.eventDate} at ${data.eventTime}${locationPart}. We look forward to seeing you!\n\n- Eaton Academic${OPT_OUT_FOOTER}`
+    return `Hi ${data.familyName}, reminder: ${data.eventName} is ${data.eventDate} at ${data.eventTime}${locationPart}. We look forward to seeing you!\n\n- The Eaton Team${OPT_OUT_FOOTER}`
   },
 }
 
@@ -106,7 +106,7 @@ export const announcementTemplate: TemplateConfig<'announcement'> = {
   description: 'Custom announcement with standard footer',
   requiredFields: ['customMessage'],
   generate: (data) => {
-    return `${data.customMessage}\n\n- Eaton Academic${OPT_OUT_FOOTER}`
+    return `${data.customMessage}\n\n- The Eaton Team${OPT_OUT_FOOTER}`
   },
 }
 
