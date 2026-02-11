@@ -14,8 +14,12 @@
 ## Revenue Records
 
 - `revenue_records` tracks by `family_id`, `student_id`, `service_id` — no `enrollment_id` FK
-- `location_id` added directly for location-based reporting
+- `location_id` derived from service code in `create_revenue_records_on_payment()` trigger via CASE mapping
+- Two data sources: `source='import'` (historical Aug-Dec 2025) and `source='invoice'` (trigger-generated Jan 2026+)
+- `period_start` = service period (accrual basis); `created_at` ≈ payment date (cash basis) — use the right one for the right metric
+- `get_revenue_by_month` groups by `period_start`; for cash-basis totals, query `invoices.amount_paid` directly
 - For tables >1000 rows, use `.rpc()` with database functions (see `get_revenue_by_month`, `get_revenue_by_location`)
+- Service→location mapping: `learning_pod`/`eaton_hub`/`elective_classes` → kendall; `eaton_online`/`consulting*`/`academic_coaching`/Spanish 101 → remote
 
 ## Lead Conversion Flow
 

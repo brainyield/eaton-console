@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
 import { formatDateLocal, parseLocalDate, dateAtMidnight, daysBetween } from '../lib/dateUtils'
+import { addMoney } from '../lib/moneyUtils'
 import {
   BarChart,
   Bar,
@@ -183,13 +184,13 @@ export default function Reports() {
       records.forEach((rec: { month: string; service_id: string | null; total_revenue: number | null }) => {
         const monthKey = rec.month
         const revenue = Number(rec.total_revenue) || 0
-        const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'unknown'
+        const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'other'
 
         // Total by month
         if (!monthlyData[monthKey]) {
           monthlyData[monthKey] = 0
         }
-        monthlyData[monthKey] += revenue
+        monthlyData[monthKey] = addMoney(monthlyData[monthKey], revenue)
 
         // By service
         if (!monthlyByService[monthKey]) {
@@ -198,7 +199,7 @@ export default function Reports() {
         if (!monthlyByService[monthKey][serviceCode]) {
           monthlyByService[monthKey][serviceCode] = 0
         }
-        monthlyByService[monthKey][serviceCode] += revenue
+        monthlyByService[monthKey][serviceCode] = addMoney(monthlyByService[monthKey][serviceCode], revenue)
         allServices.add(serviceCode)
       })
 
@@ -230,7 +231,25 @@ export default function Reports() {
         })
 
       const serviceKeys = Array.from(allServices).sort()
-      const totalRevenue = chartData.reduce((sum, d) => sum + d.revenue, 0)
+      const totalRevenue = chartData.reduce((sum, d) => addMoney(sum, d.revenue), 0)
+
+      // Ensure 'other' service has a display name
+      if (allServices.has('other')) {
+        serviceNameMap['other'] = 'Other / Unlinked'
+      }
+
+      // Cash-basis revenue: sum of actual payments collected (for margin calculation)
+      const { data: cashData } = await supabase
+        .from('invoices')
+        .select('amount_paid')
+        .eq('status', 'paid')
+        .gte('invoice_date', startDate)
+        .limit(5000)
+
+      const cashCollected = (cashData || []).reduce(
+        (sum: number, inv: { amount_paid: number | null }) => addMoney(sum, Number(inv.amount_paid) || 0),
+        0
+      )
 
       return {
         revenueData: chartData,
@@ -238,6 +257,7 @@ export default function Reports() {
         serviceKeys,
         serviceNameMap,
         totalRevenue,
+        cashCollected,
       }
     },
   })
@@ -337,19 +357,19 @@ export default function Reports() {
 
         if (daysPastDue <= 0) {
           // Not yet due or due today
-          buckets['Current'].amount += amount
+          buckets['Current'].amount = addMoney(buckets['Current'].amount, amount)
           buckets['Current'].count++
         } else if (daysPastDue <= 30) {
-          buckets['1-30 Days'].amount += amount
+          buckets['1-30 Days'].amount = addMoney(buckets['1-30 Days'].amount, amount)
           buckets['1-30 Days'].count++
         } else if (daysPastDue <= 60) {
-          buckets['31-60 Days'].amount += amount
+          buckets['31-60 Days'].amount = addMoney(buckets['31-60 Days'].amount, amount)
           buckets['31-60 Days'].count++
         } else if (daysPastDue <= 90) {
-          buckets['61-90 Days'].amount += amount
+          buckets['61-90 Days'].amount = addMoney(buckets['61-90 Days'].amount, amount)
           buckets['61-90 Days'].count++
         } else {
-          buckets['90+ Days'].amount += amount
+          buckets['90+ Days'].amount = addMoney(buckets['90+ Days'].amount, amount)
           buckets['90+ Days'].count++
         }
       })
@@ -360,7 +380,7 @@ export default function Reports() {
         count: data.count,
       }))
 
-      const totalOutstanding = chartData.reduce((sum, d) => sum + d.amount, 0)
+      const totalOutstanding = chartData.reduce((sum, d) => addMoney(sum, d.amount), 0)
 
       return {
         balanceData: chartData,
@@ -411,22 +431,23 @@ export default function Reports() {
           monthlyData[monthKey] = { amount: 0, count: 0 }
         }
 
-        monthlyData[monthKey].amount += Number(p.total_amount) || 0
+        monthlyData[monthKey].amount = addMoney(monthlyData[monthKey].amount, Number(p.total_amount) || 0)
         monthlyData[monthKey].count++
       })
 
       // Add batch payroll runs
       const runs = (payrollRuns || []) as PayrollRunRow[]
       runs.forEach((r) => {
-        // paid_at is a timestamp, extract date portion
-        const date = new Date(r.paid_at)
+        // paid_at is a timestamp — extract date portion to avoid timezone shift
+        const datePart = r.paid_at.includes('T') ? r.paid_at.split('T')[0] : r.paid_at.split(' ')[0]
+        const date = parseLocalDate(datePart)
         const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 
         if (!monthlyData[monthKey]) {
           monthlyData[monthKey] = { amount: 0, count: 0 }
         }
 
-        monthlyData[monthKey].amount += Number(r.total_adjusted) || 0
+        monthlyData[monthKey].amount = addMoney(monthlyData[monthKey].amount, Number(r.total_adjusted) || 0)
         monthlyData[monthKey].count++
       })
 
@@ -443,7 +464,7 @@ export default function Reports() {
           }
         })
 
-      const totalPayroll = chartData.reduce((sum, d) => sum + d.amount, 0)
+      const totalPayroll = chartData.reduce((sum, d) => addMoney(sum, d.amount), 0)
 
       return {
         payrollData: chartData,
@@ -503,6 +524,7 @@ export default function Reports() {
   const serviceKeys = revenueResult?.serviceKeys ?? []
   const serviceNameMap = revenueResult?.serviceNameMap ?? {}
   const totalRevenue = revenueResult?.totalRevenue ?? 0
+  const cashCollected = revenueResult?.cashCollected ?? 0
 
   const enrollmentData = enrollmentResult?.enrollmentData ?? []
   const activeEnrollments = enrollmentResult?.activeEnrollments ?? 0
@@ -897,7 +919,7 @@ export default function Reports() {
             <p className="text-xl font-bold text-red-500">
               ${balanceData
                 .filter((d) => d.bucket !== 'Current')
-                .reduce((sum, d) => sum + d.amount, 0)
+                .reduce((sum, d) => addMoney(sum, d.amount), 0)
                 .toLocaleString()}
             </p>
           </div>
@@ -907,13 +929,13 @@ export default function Reports() {
               <span className="relative group">
                 <Info className="w-3.5 h-3.5 text-gray-500 cursor-help" />
                 <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 text-xs text-gray-200 bg-gray-800 border border-gray-600 rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
-                  Cash collected minus teacher payments,<br />as % of collections. Based on payment<br />dates, not service periods.
+                  Invoice payments minus teacher payroll,<br />as % of collections. Both based on<br />invoice/payment dates.
                 </span>
               </span>
             </p>
             <p className="text-xl font-bold text-green-500">
-              {totalRevenue > 0 && totalPayroll > 0
-                ? `${Math.round(((totalRevenue - totalPayroll) / totalRevenue) * 100)}%`
+              {cashCollected > 0 && totalPayroll > 0
+                ? `${Math.round(((cashCollected - totalPayroll) / cashCollected) * 100)}%`
                 : '—'}
             </p>
           </div>

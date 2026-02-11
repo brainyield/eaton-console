@@ -193,6 +193,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** leave triggers referencing deprecated tables/columns — they silently fail. Audit triggers in Dashboard after schema changes.
 - **DON'T** assume `payment_updates_invoice` fires on UPDATE — it only fires on INSERT. When transferring payments, manually reset the source invoice's `amount_paid`.
 - **DON'T** change the fuzzy match threshold (0.55) in `process_class_registration` without testing — catches typos (score ~0.62) while staying above sibling-to-sibling scores (0.3-0.4).
+- **DON'T** modify `create_revenue_records_on_payment()` without including the `location_id` CASE mapping (service code → location). New service codes must be added to both the trigger and the backfill.
 
 ### Database Schema Relationships
 
@@ -229,6 +230,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** store names in "First Last" or "XYZ Family" format — use `formatNameLastFirst()` which handles all variants and is idempotent.
 - **DON'T** hardcode age group values — use `AGE_GROUP_OPTIONS`, `getAgeGroup(dob)`, and `getAgeGroupSortValue()` from `utils.ts`.
 - **DON'T** store phone numbers inconsistently — use `normalizePhone()` for E.164 storage (+1XXXXXXXXXX), `formatPhoneDisplay()` for display.
+- **DON'T** use `new Date()` on Supabase `timestamptz` columns for month/date grouping — extract the date part first with `.split('T')[0]` or `.split(' ')[0]`, then use `parseLocalDate()`. `new Date()` + `.getMonth()` returns the local timezone month, which can differ from the UTC date.
 
 ### UI & Frontend
 
