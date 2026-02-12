@@ -12,7 +12,7 @@
 | Type | Template | Subject | Use Case |
 |------|----------|---------|----------|
 | `send` | Invoice (Blue) | "Invoice INV-0001 from Eaton Academic" | Initial invoice send |
-| `reminder_7` | Friendly (Blue) | "Friendly Reminder: Invoice INV-0001 Due Soon" | 1-13 days overdue |
+| `reminder_7` | Friendly (Blue) | "Friendly Reminder: Invoice INV-0001 is Past Due" | 1-13 days overdue |
 | `reminder_14` | Past Due (Amber) | "Payment Reminder: Invoice INV-0001 is Past Due" | 14-29 days overdue |
 | `reminder_30` | Urgent (Red) | "Urgent: Invoice INV-0001 is X Days Overdue" | 30+ days overdue |
 
@@ -63,12 +63,12 @@ The workflow uses a **Switch node** to route to exactly one email template based
 ```
 Webhook --> Switch (type)
                |
-    +----------+----------+----------+----------+
-    |          |          |          |          |
-  "send"  "reminder_7" "reminder_14" "reminder_30" (fallback)
-    |          |          |          |          |
-    v          v          v          v          v
-  Invoice    7-Day      14-Day     30-Day    Error 400
+    +----------+----------+----------+
+    |          |          |          |
+  "send"  "reminder_7" "reminder_14" "reminder_30"
+    |          |          |          |
+    v          v          v          v
+  Invoice    7-Day      14-Day     30-Day
   (Blue)    (Blue)     (Amber)     (Red)
     |          |          |          |
     +----------+----------+----------+
@@ -80,7 +80,7 @@ Webhook --> Switch (type)
 
 **Key Design Points:**
 - Switch node ensures **mutual exclusivity** - only one branch executes
-- Unknown types return HTTP 400 with error message
+- Unknown types are silently dropped (no matching route)
 - All successful sends return consistent JSON response
 
 ---
@@ -95,7 +95,8 @@ Webhook --> Switch (type)
 ### 7-Day Reminder (type: reminder_7)
 - Header: Blue gradient (#3b82f6 to #1d4ed8)
 - Button: Blue (#3b82f6)
-- Tone: Friendly, "just a reminder"
+- Tone: Friendly but accurate — says invoice "was due on [date] and is now X days past due"
+- Shows due date and days overdue in body
 
 ### 14-Day Reminder (type: reminder_14)
 - Header: Amber gradient (#f59e0b to #d97706)
@@ -344,6 +345,11 @@ If you're receiving duplicate emails (e.g., invoice + reminder at the same time)
 ---
 
 ## Changelog
+
+### v3.1 (Feb 12, 2026)
+- **Fixed**: 7-day reminder subject changed from "Due Soon" to "is Past Due" (was misleading for overdue invoices)
+- **Fixed**: 7-day reminder body now says "was due on [date] and is now X days past due" instead of "is due on [date]"
+- **Removed**: Disconnected "Error - Unknown Type" fallback node (was not wired to Switch output)
 
 ### v3 (Dec 26, 2024)
 - **Fixed**: Replaced parallel IF nodes with Switch node to prevent duplicate emails
