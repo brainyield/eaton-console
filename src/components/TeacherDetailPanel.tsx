@@ -804,7 +804,9 @@ function PayrollTab({
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '—'
-  const date = parseLocalDate(dateStr)
+  // paid_at is timestamptz — extract date part before parsing
+  const datePart = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.split(' ')[0]
+  const date = parseLocalDate(datePart)
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
@@ -814,8 +816,10 @@ function formatDate(dateStr: string): string {
 
 function formatDateRange(start: string, end: string): string {
   if (!start || !end) return '—'
-  const startDate = parseLocalDate(start)
-  const endDate = parseLocalDate(end)
+  const startPart = start.includes('T') ? start.split('T')[0] : start.split(' ')[0]
+  const endPart = end.includes('T') ? end.split('T')[0] : end.split(' ')[0]
+  const startDate = parseLocalDate(startPart)
+  const endDate = parseLocalDate(endPart)
 
   const startStr = startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
   const endStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
