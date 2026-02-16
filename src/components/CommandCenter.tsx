@@ -3,7 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { queryKeys } from '../lib/queryClient'
-import { formatDateLocal } from '../lib/dateUtils'
+import { formatDateLocal, parseLocalDate, daysBetween } from '../lib/dateUtils'
+import { formatCurrency as formatCurrencyExact } from '../lib/moneyUtils'
 import {
   Users,
   GraduationCap,
@@ -16,8 +17,9 @@ import {
   Target,
   UserPlus,
   Mail,
-  MailOpen,
   Phone,
+  AlertTriangle,
+  CheckCircle2,
   CalendarCheck,
   Percent,
   ArrowUpRight,
@@ -71,6 +73,14 @@ interface UpcomingBooking {
   invitee_phone: string | null
   scheduled_at: string
   student_name?: string
+}
+
+interface AcDeadbeat {
+  familyName: string
+  familyId: string
+  invoiceCount: number
+  totalAcAmount: number
+  maxOverdueDays: number
 }
 
 // Custom hook for dashboard stats
@@ -374,6 +384,81 @@ function useUpcomingBookings() {
   })
 }
 
+// Hook for academic coaching deadbeats (families with AC invoices overdue 5+ days)
+function useAcademicCoachingDeadbeats() {
+  return useQuery({
+    queryKey: [...queryKeys.stats.dashboard(), 'ac-deadbeats'],
+    queryFn: async (): Promise<AcDeadbeat[]> => {
+      const now = new Date()
+      const fiveDaysAgo = formatDateLocal(new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000))
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          id,
+          family_id,
+          due_date,
+          families(display_name),
+          invoice_line_items(
+            amount,
+            enrollment:enrollments(
+              service:services(code)
+            )
+          )
+        `)
+        .in('status', ['sent', 'overdue', 'partial'])
+        .lte('due_date', fiveDaysAgo)
+
+      if (error) throw error
+
+      interface RawLineItem {
+        amount: number | null
+        enrollment: { service: { code: string } | null } | null
+      }
+      interface RawInvoice {
+        id: string
+        family_id: string
+        due_date: string | null
+        families: { display_name: string } | null
+        invoice_line_items: RawLineItem[]
+      }
+
+      const invoices = (data || []) as RawInvoice[]
+      const familyMap = new Map<string, AcDeadbeat>()
+
+      for (const invoice of invoices) {
+        const acLineItems = invoice.invoice_line_items.filter(
+          li => li.enrollment?.service?.code === 'academic_coaching'
+        )
+        if (acLineItems.length === 0) continue
+
+        const acAmount = acLineItems.reduce((sum, li) => sum + (li.amount || 0), 0)
+        const overdueDays = invoice.due_date
+          ? daysBetween(parseLocalDate(invoice.due_date), now)
+          : 0
+
+        const existing = familyMap.get(invoice.family_id)
+        if (existing) {
+          existing.invoiceCount += 1
+          existing.totalAcAmount += acAmount
+          existing.maxOverdueDays = Math.max(existing.maxOverdueDays, overdueDays)
+        } else {
+          familyMap.set(invoice.family_id, {
+            familyId: invoice.family_id,
+            familyName: invoice.families?.display_name || 'Unknown',
+            invoiceCount: 1,
+            totalAcAmount: acAmount,
+            maxOverdueDays: overdueDays,
+          })
+        }
+      }
+
+      return Array.from(familyMap.values()).sort((a, b) => b.totalAcAmount - a.totalAcAmount)
+    },
+    staleTime: 60 * 1000,
+  })
+}
+
 // Change indicator component
 function ChangeIndicator({ value, suffix = '%' }: { value: number; suffix?: string }) {
   if (Math.abs(value) < 0.1) {
@@ -393,6 +478,7 @@ export default function CommandCenter() {
   const navigate = useNavigate()
   const { data: stats, isLoading, error } = useDashboardStats()
   const { data: upcomingBookings = [] } = useUpcomingBookings()
+  const { data: acDeadbeats = [] } = useAcademicCoachingDeadbeats()
   const [showAllBookings, setShowAllBookings] = useState(false)
 
   // Pagination for bookings - show 5 by default, all when expanded
@@ -787,31 +873,61 @@ export default function CommandCenter() {
           )}
         </div>
 
-        {/* Invoice Health */}
+        {/* AC Deadbeats */}
         <div className="bg-card border border-border rounded-lg p-4">
           <div className="flex items-center gap-2 mb-4">
-            <MailOpen className="w-5 h-5 text-yellow-400" />
-            <h2 className="font-semibold">Invoice Health</h2>
+            <AlertTriangle className="w-5 h-5 text-amber-400" />
+            <h2 className="font-semibold">AC Deadbeats</h2>
+            {acDeadbeats.length > 0 && (
+              <span className="ml-auto text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400">
+                {acDeadbeats.length}
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 rounded bg-background">
-              <div className="text-2xl font-bold text-status-churned">{stats?.overdueInvoices30Plus ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Overdue 30+ days</div>
+          {acDeadbeats.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-green-400">
+              <CheckCircle2 className="w-4 h-4" />
+              No overdue academic coaching invoices
             </div>
-            <div className="p-3 rounded bg-background">
-              <div className="text-2xl font-bold text-yellow-400">{stats?.unopenedInvoices ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Sent but unopened</div>
-            </div>
-            <div className="p-3 rounded bg-background">
-              <div className="text-2xl font-bold text-status-paused">{stats?.unbilledHubSessions ?? 0}</div>
-              <div className="text-xs text-muted-foreground">Unbilled Hub sessions</div>
-            </div>
-            <div className="p-3 rounded bg-background">
-              <div className="text-2xl font-bold text-blue-400">{formatCurrency(stats?.outstandingBalance ?? 0)}</div>
-              <div className="text-xs text-muted-foreground">Total outstanding</div>
-            </div>
-          </div>
+          ) : (
+            <>
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {acDeadbeats.map((d) => (
+                  <div
+                    key={d.familyId}
+                    className={`flex items-center justify-between p-2 rounded-md bg-background border-l-2 ${
+                      d.maxOverdueDays >= 30
+                        ? 'border-l-red-500'
+                        : d.maxOverdueDays >= 14
+                          ? 'border-l-amber-400'
+                          : 'border-l-transparent'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <button
+                        onClick={() => navigate('/directory')}
+                        className="text-sm font-medium text-primary hover:underline truncate"
+                      >
+                        {d.familyName}
+                      </button>
+                      <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground shrink-0">
+                        {d.invoiceCount}
+                      </span>
+                    </div>
+                    <span className={`text-sm font-bold shrink-0 ml-2 ${
+                      d.maxOverdueDays >= 30 ? 'text-red-400' : 'text-red-400/80'
+                    }`}>
+                      {formatCurrencyExact(d.totalAcAmount)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 pt-3 border-t border-border text-xs text-muted-foreground">
+                {acDeadbeats.length} {acDeadbeats.length === 1 ? 'family' : 'families'} | {formatCurrencyExact(acDeadbeats.reduce((sum, d) => sum + d.totalAcAmount, 0))} total overdue
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
