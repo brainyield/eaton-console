@@ -26,7 +26,7 @@ interface AddAssignmentModalProps {
 type AssignmentMode = 'select' | 'service' | 'enrollment'
 
 // Services that support service-level assignments
-const SERVICE_LEVEL_SERVICES = ['learning_pod', 'elective_classes', 'eaton_hub']
+const SERVICE_LEVEL_SERVICES = ['learning_pod', 'elective_classes', 'eaton_hub', 'microschool']
 
 export function AddAssignmentModal({
   isOpen,
@@ -223,7 +223,7 @@ export function AddAssignmentModal({
               <div>
                 <p className="font-medium text-white">Service Assignment</p>
                 <p className="text-sm text-zinc-400">
-                  Learning Pod, Elective Classes, Eaton Hub
+                  Learning Pod, Elective Classes, Eaton Hub, Microschool
                 </p>
               </div>
             </button>
