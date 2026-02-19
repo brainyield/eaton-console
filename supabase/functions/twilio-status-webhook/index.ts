@@ -62,35 +62,6 @@ Deno.serve(async (req) => {
       status = 'sent'
     }
 
-    // Status priority - only allow forward transitions to prevent
-    // out-of-order callbacks from downgrading status
-    // (e.g. a late "sent" callback overwriting "delivered")
-    const STATUS_PRIORITY: Record<string, number> = {
-      sent: 1,
-      delivered: 2,
-      undelivered: 2,
-      failed: 2,
-    }
-
-    // Check current status before updating
-    const { data: existing } = await supabase
-      .from('sms_messages')
-      .select('status')
-      .eq('twilio_sid', messageSid)
-      .maybeSingle()
-
-    if (existing) {
-      const currentPriority = STATUS_PRIORITY[existing.status] || 0
-      const newPriority = STATUS_PRIORITY[status || ''] || 0
-      if (newPriority < currentPriority) {
-        console.log('Skipping status downgrade:', { messageSid, current: existing.status, incoming: status })
-        return new Response(
-          JSON.stringify({ success: true, skipped: 'status_downgrade' }),
-          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-    }
-
     // Build update object
     const updateData: Record<string, unknown> = {
       status,
@@ -112,11 +83,16 @@ Deno.serve(async (req) => {
       updateData.failed_at = now
     }
 
-    // Update the message record
-    const { error } = await supabase
+    // Atomic priority guard: the WHERE clause ensures that once a message
+    // reaches a terminal status (delivered, undelivered, failed), no
+    // subsequent callback can overwrite it. This prevents race conditions
+    // where a late "sent" callback overwrites a terminal status written
+    // by a concurrent callback.
+    const { error, count } = await supabase
       .from('sms_messages')
-      .update(updateData)
+      .update(updateData, { count: 'exact' })
       .eq('twilio_sid', messageSid)
+      .in('status', ['pending', 'sent'])
 
     if (error) {
       console.error('Error updating SMS status:', error)
@@ -124,7 +100,11 @@ Deno.serve(async (req) => {
       // Log but respond with 200 to prevent infinite retries
     }
 
-    console.log('Updated SMS status:', { messageSid, status })
+    if (count === 0) {
+      console.log('Skipped status update (already terminal):', { messageSid, incoming: status })
+    } else {
+      console.log('Updated SMS status:', { messageSid, status })
+    }
 
     return new Response(
       JSON.stringify({ success: true }),
