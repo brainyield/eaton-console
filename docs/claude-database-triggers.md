@@ -20,6 +20,15 @@
 - If transferring payments by updating `invoice_id`, the source invoice's `amount_paid` becomes stale
 - Must manually reset source invoice's `amount_paid` (e.g., set to 0 when voiding)
 
+### `trigger_sync_family_status_to_mailchimp`
+- Fires AFTER UPDATE OF `status` on `families`
+- Conditions: status actually changed, `primary_email` is not null, new status in (`active`, `trial`, `churned`, `paused`)
+- Uses `pg_net` (async HTTP) to POST to the `mailchimp` edge function with action `sync_family_status`
+- Swaps Mailchimp tags: removes old status tag, adds new one (`active/trial` → `active-family`, `lead` → `lead`, `churned/paused` → `churned`)
+- Writes back `mailchimp_id`, `mailchimp_status`, `mailchimp_last_synced_at` to the family record
+- Also covers lead → active conversions (lead conversion sets `status = 'active'`, which fires this trigger)
+- Migration: `20260219_mailchimp_auto_sync_on_status_change.sql`
+
 ## Common Gotchas
 
 - **BEFORE INSERT triggers can't use FK to the new row** — the row doesn't exist yet. Use AFTER INSERT.

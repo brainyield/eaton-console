@@ -194,6 +194,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** assume `payment_updates_invoice` fires on UPDATE — it only fires on INSERT. When transferring payments, manually reset the source invoice's `amount_paid`.
 - **DON'T** change the fuzzy match threshold (0.55) in `process_class_registration` without testing — catches typos (score ~0.62) while staying above sibling-to-sibling scores (0.3-0.4).
 - **DON'T** modify `create_revenue_records_on_payment()` without including the `location_id` CASE mapping (service code → location). New service codes must be added to both the trigger and the backfill.
+- **DON'T** forget `trigger_sync_family_status_to_mailchimp` fires on family status changes — it auto-syncs to Mailchimp via `pg_net`. When changing a family's status, the Mailchimp tags will be updated automatically.
 
 ### Database Schema Relationships
 
@@ -222,6 +223,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** look for Calendly phone numbers on the invitee — they're in `scheduled_event.location.location` for outbound calls. Priority: location > text_reminder_number > form answers.
 - **DON'T** use Google Forms published ID format (`/forms/d/e/{id}/`) — use the edit ID format (`/forms/d/{id}/`).
 - **DON'T** pass raw Twilio statuses to `sms_messages` — map via `mapTwilioStatus()` in `send-sms/index.ts` (`queued`/`sending` → `sent`).
+- **DON'T** pass `leadId` to the Mailchimp edge function — it expects `familyId`. The `mailchimp.ts` client remaps this automatically, but direct edge function calls must use `familyId`.
 - **DON'T** allow Twilio status callbacks to downgrade status — callbacks arrive out of order (e.g. `sent` after `delivered`). The `twilio-status-webhook` uses an atomic `.in('status', ['pending', 'sent'])` WHERE clause on the UPDATE to lock terminal statuses. Never use a separate SELECT-then-UPDATE for this — it causes race conditions.
 - **DON'T** use ASCII ranges for GSM character detection — use the explicit character sets in `smsTemplates.ts`.
 

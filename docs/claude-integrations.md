@@ -30,8 +30,14 @@
 
 ## Mailchimp
 
+- Audience ID: `693d484108` ("Eaton Academic LLC"), server `us13`
 - Integration goes through a Supabase Edge Function (`src/lib/mailchimp.ts` calls it)
 - Not a direct API call from the frontend
+- **Tags are additive** — status tags (`active-family`, `lead`, `churned`) are swapped on status change, other tags (e.g. `event`, `Online Class`) are preserved
+- **Auto-sync**: DB trigger `trigger_sync_family_status_to_mailchimp` fires on family status changes → calls edge function action `sync_family_status`
+- **Manual sync**: Single-lead sync on LeadDetailPanel, bulk sync on Marketing page (both call `sync_lead` / `bulk_sync` actions)
+- **Edge function expects `familyId`** (not `leadId`) — `mailchimp.ts` remaps `leadId` to `familyId` before calling
+- **n8n newsletter workflow** (`zueutqemoLNaAPk7`): "Weekly Blog Newsletter" sends every Monday at 10:00 AM EST to the full audience
 
 ## General Webhook Patterns
 

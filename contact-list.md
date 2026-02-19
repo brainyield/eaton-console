@@ -346,7 +346,7 @@ Generated: 2026-02-19
 | Kerr, Jackie | kerrlife84@gmail.com |
 | King, Joseline | joselineeking@gmail.com |
 | Laura | lbohorquez9@gmail.com |
-| laurafernandeztrabajo (Lead) | laurafernandeztrabajo@gnail.com |
+| laurafernandeztrabajo (Lead) | laurafernandeztrabajo@gmail.com |
 | Lecusay, Jennifer | jenniferlecusay@gmail.com |
 | Lennette | lennmarq@gmail.com |
 | Leoni, Mariamely | mleoni19@gmail.com |

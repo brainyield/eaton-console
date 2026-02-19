@@ -106,7 +106,9 @@ export async function syncLeadToMailchimp(lead: {
   status?: string
   phone?: string | null
 }): Promise<SyncLeadResult> {
-  return callMailchimpFunction<SyncLeadResult>('sync_lead', lead)
+  // Edge function expects 'familyId' for DB writeback
+  const { leadId, ...rest } = lead
+  return callMailchimpFunction<SyncLeadResult>('sync_lead', { ...rest, familyId: leadId })
 }
 
 /**
@@ -181,7 +183,8 @@ interface BulkEngagementResult {
  * Sync engagement data for a single lead
  */
 export async function syncLeadEngagement(leadId: string, email: string): Promise<EngagementResult> {
-  return callMailchimpFunction<EngagementResult>('sync_engagement', { leadId, email })
+  // Edge function expects 'familyId' not 'leadId'
+  return callMailchimpFunction<EngagementResult>('sync_engagement', { familyId: leadId, email })
 }
 
 /**
