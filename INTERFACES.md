@@ -1324,6 +1324,10 @@ When multiple triggers exist on the same table/event, PostgreSQL fires BEFORE tr
 
 ### T2. Revenue Records on Payment
 
+**T2 has two triggers that work together:**
+
+#### T2a — Status change to paid (UPDATE)
+
 | Field | Value |
 |-------|-------|
 | **Trigger** | `trigger_create_revenue_on_payment` |
@@ -1331,12 +1335,23 @@ When multiple triggers exist on the same table/event, PostgreSQL fires BEFORE tr
 | **Event** | AFTER UPDATE (every row) |
 | **Function** | `create_revenue_records_on_payment()` |
 
-**What it does:** When an invoice's status changes TO `paid` (and was not already `paid`), creates one `revenue_records` row per line item. Only processes invoices dated `>= 2026-01-01`.
+**What it does:** When an invoice's status changes TO `paid` (and was not already `paid`), creates one `revenue_records` row per line item. Only processes invoices dated `>= 2026-01-01`. This fires when T3 (payment recalculation) promotes an invoice to `paid`.
 
-**Reads:** `invoice_line_items` (amounts), `enrollments` (student, service, class_title), `services` (code for location mapping), `locations` (id lookup by code)
-**Writes:** `revenue_records` (INSERT with `ON CONFLICT DO NOTHING` on `source_line_item_id`)
+#### T2b — Direct insert as paid (INSERT)
 
-**Location mapping (hardcoded in function):**
+| Field | Value |
+|-------|-------|
+| **Trigger** | `trigger_create_revenue_on_invoice_insert` |
+| **Table** | `invoices` |
+| **Event** | AFTER INSERT (every row) |
+| **Function** | `create_revenue_records_on_invoice_insert()` |
+
+**What it does:** When an invoice is inserted directly with `status='paid'` (e.g., `createHistoricalInvoice`), creates one `revenue_records` row per line item. Uses the same date guard (`>= 2026-01-01`), location mapping, and `ON CONFLICT DO NOTHING` behavior as T2a.
+
+**Reads (both triggers):** `invoice_line_items` (amounts), `enrollments` (student, service, class_title), `services` (code for location mapping), `locations` (id lookup by code)
+**Writes (both triggers):** `revenue_records` (INSERT with `ON CONFLICT DO NOTHING` on `source_line_item_id`)
+
+**Location mapping (hardcoded in both functions):**
 
 | Service Code | Location |
 |-------------|----------|
@@ -1350,10 +1365,10 @@ When multiple triggers exist on the same table/event, PostgreSQL fires BEFORE tr
 - Reports page charts and Command Center MRR metric depend on this data
 
 **Gotchas:**
-- Fires on UPDATE only, not INSERT. An invoice inserted directly as `paid` will NOT generate revenue records.
-- Idempotent: re-paying an invoice (void → re-pay cycle) won't duplicate records thanks to `ON CONFLICT`.
-- New service codes must be added to the CASE mapping manually — unmapped services get `location_id = NULL`.
-- Pre-2026 invoices are excluded (`invoice_date < '2026-01-01'`).
+- T2a fires on UPDATE only; T2b fires on INSERT only. Together they cover all paid invoice paths.
+- Idempotent: both use `ON CONFLICT DO NOTHING` on `source_line_item_id` — re-paying won't duplicate records.
+- New service codes must be added to the CASE mapping in **both** functions manually — unmapped services get `location_id = NULL`.
+- Pre-2026 invoices are excluded by both triggers (`invoice_date < '2026-01-01'`).
 
 ---
 
@@ -1611,7 +1626,7 @@ families.status changed
 
 ### Important Gotchas (Consolidated)
 
-1. **T2 fires on UPDATE only** — inserting an invoice directly as `paid` skips revenue record creation.
+1. **T2 has two triggers** — T2a (`trigger_create_revenue_on_payment`) fires on UPDATE for status changes to `paid`; T2b (`trigger_create_revenue_on_invoice_insert`) fires on INSERT for direct paid inserts (e.g., `createHistoricalInvoice`). Both use the same date guard and location mapping.
 2. **T3 recalculates both OLD and NEW invoices** on payment transfer — no manual reset needed. When total_paid drops to 0, status resets to `draft`.
 3. **T6 uses `pg_net` (async HTTP)** — Mailchimp sync failures are completely silent. Check Mailchimp directly if tags seem wrong.
 4. **T6 does not fire for `lead` status** — only `active`, `trial`, `churned`, `paused`.
@@ -1837,7 +1852,7 @@ Env var: `VITE_N8N_BASE_URL`
 | **Hooks** | `useInvoices`, `useInvoicesByFamily`, `useInvoicesWithDetails`, `useInvoiceMutations` (18 functions), `useExistingInvoicesForPeriod`, `useInvoiceEmails`, `useInvoicePayments`, `useInvoiceEmailsByFamily`, `calculateFamilyBalances` (reads `balance_due`), `usePaginatedFamilies` (via `calculateFamilyBalances`) |
 | **Edge Functions** | `stripe-webhook` (R/W — reads by `public_id`, writes `status`/`amount_paid`, creates payments), `create-checkout-session` (R — reads for Stripe session), `mark-invoice-viewed` (W — sets `viewed_at`) |
 | **N8N Workflows** | `invoice-send` webhook (send/reminder emails with invoice data) |
-| **Triggers** | T1 `invoice_number_trigger` (BEFORE INSERT — auto-generates `invoice_number`), T2 `revenue_records` (AFTER UPDATE — creates revenue when status→paid), T3 `payment_updates_invoice` (writes `amount_paid`, `status` from payment totals) |
+| **Triggers** | T1 `invoice_number_trigger` (BEFORE INSERT — auto-generates `invoice_number`), T2a `trigger_create_revenue_on_payment` (AFTER UPDATE — creates revenue when status→paid), T2b `trigger_create_revenue_on_invoice_insert` (AFTER INSERT — creates revenue when inserted directly as paid), T3 `payment_updates_invoice` (writes `amount_paid`, `status` from payment totals) |
 | **UI Components** | `Invoicing`, `EditInvoiceModal`, `ImportHistoricalInvoiceModal`, `GenerateDraftsModal`, `InvoiceDetailPanel`, `FamilyDetailPanel`, `PayrollRunDetail`, `EmailHistory`, `CommandCenter` (direct — outstanding balance, overdue count, revenue), `Reports` (direct — cash received, balances), `PublicInvoicePage` (direct — full invoice render) |
 
 **High-risk columns:** `status` (drives T2 revenue generation, dashboard metrics, public invoice display), `amount_paid` (generated by T3 from payment sums — don't write directly), `balance_due` (GENERATED column = `total_amount - amount_paid` — don't UPDATE), `public_id` (used by Stripe webhook + public invoice page), `invoice_number` (auto-generated by T1).

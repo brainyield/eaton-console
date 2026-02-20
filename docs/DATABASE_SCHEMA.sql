@@ -799,6 +799,69 @@ CREATE TRIGGER invoice_number_trigger
   FOR EACH ROW
   EXECUTE FUNCTION set_invoice_number();
 
+-- Revenue records on direct paid invoice INSERT (complements T2 UPDATE trigger)
+-- Fires when invoices are inserted directly with status='paid' (e.g., historical imports)
+-- Uses same location_id CASE mapping and date guard as create_revenue_records_on_payment()
+CREATE OR REPLACE FUNCTION create_revenue_records_on_invoice_insert()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.status != 'paid' THEN
+    RETURN NEW;
+  END IF;
+
+  IF NEW.invoice_date < '2026-01-01'::date THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO revenue_records (
+    family_id,
+    student_id,
+    service_id,
+    location_id,
+    period_start,
+    period_end,
+    revenue,
+    source,
+    source_invoice_id,
+    source_line_item_id,
+    class_title
+  )
+  SELECT
+    NEW.family_id,
+    e.student_id,
+    e.service_id,
+    CASE
+      WHEN s.code IN ('learning_pod', 'eaton_hub') THEN (SELECT id FROM locations WHERE code = 'kendall')
+      WHEN s.code = 'elective_classes' AND (e.class_title ILIKE '%spanish 101%') THEN (SELECT id FROM locations WHERE code = 'remote')
+      WHEN s.code = 'elective_classes' THEN (SELECT id FROM locations WHERE code = 'kendall')
+      WHEN s.code IN ('eaton_online', 'consulting', 'consulting_with_teacher', 'consulting_only', 'academic_coaching') THEN (SELECT id FROM locations WHERE code = 'remote')
+      ELSE NULL
+    END,
+    COALESCE(NEW.period_start, NEW.invoice_date),
+    COALESCE(NEW.period_end, NEW.due_date, NEW.invoice_date),
+    li.amount,
+    'invoice',
+    NEW.id,
+    li.id,
+    e.class_title
+  FROM invoice_line_items li
+  LEFT JOIN enrollments e ON e.id = li.enrollment_id
+  LEFT JOIN services s ON s.id = e.service_id
+  WHERE li.invoice_id = NEW.id
+    AND li.amount IS NOT NULL
+    AND li.amount > 0
+  ON CONFLICT (source_line_item_id) WHERE source_line_item_id IS NOT NULL
+  DO NOTHING;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trigger_create_revenue_on_invoice_insert
+  AFTER INSERT ON invoices
+  FOR EACH ROW
+  EXECUTE FUNCTION create_revenue_records_on_invoice_insert();
+
 -- ============================================================================
 -- STRIPE PAYMENT INTEGRATION
 -- ============================================================================

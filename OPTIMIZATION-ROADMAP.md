@@ -296,8 +296,8 @@
 |---|------|----------|--------|----------------|
 | 1 | Mailchimp sync logging | 🔴 P0 | ⬜ Not started | |
 | 2 | Payment transfer fix | 🔴 P0 | ✅ Complete | 2026-02-20 |
-| 3 | Historical invoice revenue | 🔴 P0 | ⬜ Not started | |
-| 4 | Teacher deletion guard | 🔴 P0 | ⬜ Not started | |
+| 3 | Historical invoice revenue | 🔴 P0 | ✅ Complete | 2026-02-20 |
+| 4 | Teacher deletion guard | 🔴 P0 | ✅ Complete | 2026-02-20 |
 | 5 | CommandCenter hooks | 🟠 P1 | ⬜ Not started | |
 | 6 | Reports hooks | 🟠 P1 | ⬜ Not started | |
 | 7 | Service-location mapping | 🟠 P1 | ⬜ Not started | |
