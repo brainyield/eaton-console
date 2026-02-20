@@ -2,7 +2,7 @@
 
 > Single source of truth for how every module, service, and integration in this system talks to everything else.
 > Describes interfaces only — not implementation details. Input > magic > output.
-> Last updated: 2026-02-19
+> Last updated: 2026-02-20
 
 ---
 
@@ -39,7 +39,8 @@
                     │  Triggers: T1 invoice_number, T2 revenue,   │
                     │  T3 payment→invoice, T4/T5 lead_convert,     │
                     │  T6 mailchimp_sync, T7-T10 event_reg,        │
-                    │  T11 desk_token, T12 updated_at (×13)        │
+                    │  T11 desk_token, T12 updated_at (×13),       │
+                    │  T13 hours_per_week sync                     │
                     │                                              │
                     │  RPCs: get_revenue_by_month,                 │
                     │        get_revenue_by_location               │
@@ -228,6 +229,11 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 | `useServices()` | Query | — | `Service[]` | `services` |
 | `useActiveServices()` | Query | — | `Service[]` (status='active') | `services` |
 | `useActiveLocations()` | Query | — | `Location[]` (is_active=true) | `locations` |
+| `useAllLocations()` | Query | — | `Location[]` (all, ordered by name, 5min staleTime) | `locations` |
+
+| Mutation Hook | Function | Inputs | Returns | Invalidates |
+|---------------|----------|--------|---------|-------------|
+| `useLocationMutations()` | `toggleStatus` | `{ id, is_active }` | `{ id, is_active }` | `locations.*` |
 
 ---
 
@@ -308,6 +314,7 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 | `useInvoiceEmails(invoiceId)` | `invoiceId: string` | `InvoiceEmail[]` | `invoice_emails` |
 | `useInvoicePayments(invoiceId)` | `invoiceId: string` | `Payment[]` | `payments` |
 | `useInvoiceEmailsByFamily(familyId)` | `familyId: string` | `InvoiceEmail[]` | `invoice_emails`, `invoices` |
+| `usePublicInvoice(publicId)` | `publicId: string` | `PublicInvoiceData` (invoice + family + lineItems + consolidatedInvoice) | `invoices`, `families`, `invoice_line_items` |
 
 **Mutation hook — `useInvoiceMutations()`:**
 
@@ -365,6 +372,7 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 | `createAdjustment` | `{ teacher_id, amount, reason, ... }` | `PayrollAdjustment` | `payroll.*` |
 | `deletePayrollRun` | `runId: string` (cascades: deletes line items) | `void` | `payroll.*`, `reports.all` |
 | `bulkUpdateTeacherHours` | `{ lineItemUpdates: { id, hours }[] }` | `void` | `payroll.*` |
+| `sendPayrollNotifications` | `{ run: PayrollRunWithDetails, teacherGroups }` (fire-and-forget — sends per-teacher email via N8N) | `void` | — |
 
 **Exported utilities (non-hook):** `calculatePeriodHours(start, end, hoursPerWeek)`, `resolveHourlyRate(assignment, service, teacher)`, `generatePayrollCSV(run, items)`, `downloadPayrollCSV(run, items)`
 
@@ -450,6 +458,7 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 |------|------|--------|---------|--------------|
 | `useEvents()` | Query | — | `EventWithStats[]` (event_type='event', includes attendee_count, revenue) | `event_events`, `event_attendees`, `event_orders` |
 | `useAllAttendees()` | Query | — | `AttendeeWithDetails[]` (event_type='event', paid/stepup_pending, joins families) | `event_attendee_list` (view), `families` |
+| `useEventAttendees(eventId)` | Query | `eventId: string` | `AttendeeWithOrder[]` (attendees + orders + families, 5min staleTime) | `event_attendees`, `event_orders`, `families` |
 
 ---
 
@@ -690,18 +699,19 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 
 **Constants:** `CHART_COLORS`, `PIE_COLORS`, `SERVICE_COLORS`, `LOCATION_COLORS`, `TOOLTIP_STYLE`, `AXIS_STYLE`, `GRID_STYLE`
 
-#### 3k. Status Colors (`statusColors.ts`)
+#### 3k. Status Constants (`ui/statusConstants.ts`)
 
 | Field | Value |
 |-------|-------|
-| **What** | Tailwind CSS class maps for all entity statuses |
+| **What** | Canonical Tailwind CSS class maps for all entity statuses |
 | **Inputs** | Status string |
 | **Outputs** | Tailwind class string |
-| **Talks to** | StatusBadge component, all list views |
+| **Talks to** | `StatusBadge` component (imports + re-exports), all list views import from `StatusBadge.tsx` |
 | **External deps** | None |
 
 **Maps:** `CUSTOMER_STATUS_COLORS`, `ENROLLMENT_STATUS_COLORS`, `INVOICE_STATUS_COLORS`, `LEAD_STATUS_COLORS`, `LEAD_ENGAGEMENT_COLORS`, `LEAD_TYPE_COLORS` (each with `_WITH_BORDER` variant)
 **Labels:** `CUSTOMER_STATUS_LABELS`, `ENROLLMENT_STATUS_LABELS`, `INVOICE_STATUS_LABELS`, `LEAD_STATUS_LABELS`
+**Architecture:** `statusConstants.ts` → defines all constants. `StatusBadge.tsx` → imports + re-exports. All consumers import from `StatusBadge.tsx`.
 
 #### 3l. Selection State (`useSelectionState.ts`)
 
@@ -862,8 +872,8 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 | **Route** | `/payroll` |
 | **Inputs** | `usePayrollRuns()`, `usePayrollRunWithItems()`, `usePendingPayrollAdjustments()` |
 | **Outputs** | Run details, CSV export, adjustment list |
-| **Talks to** | `CreatePayrollRunModal`, `PayrollRunDetail`, `PayrollAdjustmentModal`, N8N (`payroll-notification` webhook) |
-| **External deps** | N8N (payroll notifications) |
+| **Talks to** | `CreatePayrollRunModal`, `PayrollRunDetail`, `PayrollAdjustmentModal` |
+| **External deps** | N8N (payroll notifications — via `usePayrollMutations().sendPayrollNotifications`) |
 
 **Tabs:** current, history, adjustments
 **Statuses:** draft → review → approved → paid
@@ -902,9 +912,9 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 |-------|-------|
 | **What** | App configuration for business info, invoicing, payments, rates, locations |
 | **Route** | `/settings` |
-| **Inputs** | `app_settings` table, `locations` table |
+| **Inputs** | `useSettings()`, `useAllLocations()` |
 | **Outputs** | Saved configuration values |
-| **Talks to** | Supabase (`app_settings`, `locations` tables) |
+| **Talks to** | `useSettingMutations()`, `useLocationMutations()` |
 | **External deps** | None |
 
 **Tabs:** business, invoicing, payments, rates, locations
@@ -998,9 +1008,9 @@ User Action → React Component → Hook (mutation) → Supabase / Edge Function
 | Field | Value |
 |-------|-------|
 | **What** | Event details with attendees and revenue |
-| **Inputs** | Event ID |
-| **Outputs** | Read-only display |
-| **Talks to** | `useEvents()`, `useAllAttendees()` |
+| **Inputs** | Event object (passed as prop from Events page) |
+| **Outputs** | Read-only display with sortable attendee list, CSV export, SMS reminder |
+| **Talks to** | `useEventAttendees(eventId)`, `SmsComposeModal` |
 
 ---
 
@@ -1071,7 +1081,7 @@ All modals use `AccessibleModal` wrapper with focus trap, Escape key, and ARIA a
 | **What** | Customer-facing invoice view with Stripe payment |
 | **Inputs** | Invoice public ID |
 | **Outputs** | Invoice display, payment redirect |
-| **Talks to** | `mark-invoice-viewed` edge function, `create-checkout-session` edge function |
+| **Talks to** | `usePublicInvoice(publicId)` hook, `mark-invoice-viewed` edge function, `create-checkout-session` edge function |
 | **External deps** | Stripe Checkout |
 
 ---
@@ -1085,7 +1095,7 @@ All modals use `AccessibleModal` wrapper with focus trap, Escape key, and ARIA a
 | `SortableTableHeader` | `ui/SortableTableHeader.tsx` | Table header with sort indicators |
 | `FamilyItemGroup` | `ui/FamilyItemGroup.tsx` | Reusable family row renderer |
 | `SmsStatusBadge` | `ui/SmsStatusBadge.tsx` | SMS delivery status badge |
-| `StatusBadge` | `components/StatusBadge.tsx` | Universal status badge (family, enrollment, invoice, lead, payroll) |
+| `StatusBadge` | `ui/StatusBadge.tsx` | Universal status badge (family, enrollment, invoice, lead, payroll). All color constants consolidated in `ui/statusConstants.ts` and re-exported from `StatusBadge.tsx`. |
 | `CommandPalette` | `components/CommandPalette.tsx` | Global search (Cmd+K) — queries families, students, teachers via Supabase |
 
 ---
@@ -1575,6 +1585,26 @@ Same function as T9. Fires when an order's `payment_status` transitions TO paid/
 
 ---
 
+### T13. `hours_per_week` Bidirectional Sync Triggers
+
+Two AFTER UPDATE triggers keep `enrollments.hours_per_week` and `teacher_assignments.hours_per_week` in sync when exactly 1 active assignment exists for the enrollment.
+
+| Trigger | Table | Function |
+|---------|-------|----------|
+| `sync_hours_assignment_to_enrollment` | `teacher_assignments` | `sync_hours_assignment_to_enrollment()` |
+| `sync_hours_enrollment_to_assignment` | `enrollments` | `sync_hours_enrollment_to_assignment()` |
+
+**What they do:**
+1. Check if `hours_per_week` actually changed (early exit via `IS NOT DISTINCT FROM`)
+2. Verify the enrollment has exactly 1 active assignment (multi-assignment enrollments are NOT synced)
+3. Update the counterpart only if values differ (`IS DISTINCT FROM` in WHERE — prevents circular trigger)
+
+**Gotchas:**
+- Multi-assignment enrollments require manual updates to both tables.
+- The `IS DISTINCT FROM` guard prevents infinite loops but means a no-op UPDATE won't cascade.
+
+---
+
 ### T12. `updated_at` Timestamp Triggers
 
 The following triggers all do the same thing: set `NEW.updated_at = NOW()` before any UPDATE. They exist to keep `updated_at` columns accurate without requiring application code to set them.
@@ -1662,7 +1692,7 @@ Env var: `VITE_N8N_BASE_URL`
 | `/gmail-thread` | POST | `gmail.ts` | `{ threadId }` | Fetch full Gmail thread |
 | `/gmail-send` | POST | `gmail.ts` | `{ threadId?, to, subject, body, htmlBody? }` | Send email via Gmail |
 | `/invoice-send` | POST | `hooks.ts` | `{ type: 'send'\|'early_reminder'\|'overdue_reminder', invoice_id, family_id, family_name, email, invoice_number, amount_due, due_date, invoice_url }` | Send invoice emails/reminders |
-| `/payroll-notification` | POST | `PayrollRunDetail.tsx` | `{ action: 'created'\|'published', payroll_run_id, period, total_amount, teacher_count }` | Notify about payroll runs |
+| `/payroll-notification` | POST | `hooks.ts` (`sendPayrollNotifications`) | Per-teacher payroll breakdowns (payment_id, teacher, amounts, period, line_items) | Send individual payroll notification emails to teachers |
 | `/checkin-notify` | POST | `hooks.ts` | `{ type: 'initial'\|'reminder', teacher_email, teacher_name, desk_token, desk_url, event_date, event_name }` | Send teacher check-in invites |
 | `/checkin-training` | POST | `hooks.ts` | `{ teacher_email, teacher_name, assessment_results, training_requested }` | Training request notifications |
 
@@ -1799,7 +1829,7 @@ Env var: `VITE_N8N_BASE_URL`
 
 > **Purpose:** For any schema or behavior change to a major entity, this section answers "what breaks?" by listing every hook, edge function, N8N workflow, database trigger, and UI component that depends on it. This is the blast-radius reference — check it before modifying any table.
 >
-> **How to read:** Each entity lists its dependents across all system layers. A component marked with `(direct)` queries Supabase directly (bypassing hooks), meaning it's also sensitive to column renames and type changes. Components without `(direct)` consume data through hooks, so hook-level changes cascade to them automatically.
+> **How to read:** Each entity lists its dependents across all system layers. All page/detail components now consume data through hooks, so hook-level changes cascade automatically. No components bypass the hook layer as of 2026-02-20.
 
 ---
 
@@ -1811,7 +1841,7 @@ Env var: `VITE_N8N_BASE_URL`
 | **Edge Functions** | `calendly-webhook` (R/W — lookup by email, create leads), `ingest-lead` (R/W — lookup by email, create leads), `send-sms` (R — phone, opt-out check), `twilio-opt-out-webhook` (R/W — phone lookup, set `sms_opt_out`), `mailchimp` (R/W — subscriber sync, write `mailchimp_*` fields), `create-checkout-session` (R — family name for Stripe) |
 | **N8N Workflows** | Exit intent / waitlist form → `ingest-lead` (creates lead families) |
 | **Triggers** | T4/T5 `auto_convert_leads` (writes `status`, `lead_status`, `converted_at`), T6 `mailchimp_sync` (fires on `status` change), T7/T8 `event_order_lead` (may INSERT new lead families), T9/T10 `process_class_registration` (calls `find_or_create_family_for_purchase`) |
-| **UI Components** | `Directory`, `AddFamilyModal`, `EditFamilyModal`, `LinkEventOrdersModal`, `LinkHubBookingsModal`, `AddEnrollmentModal`, `ImportHistoricalInvoiceModal`, `QuickSend`, `FamilyDetailPanel`, `Marketing`, `LeadDetailPanel`, `EditLeadModal`, `ImportLeadsModal`, `AddFamilyModal` (lead matching), `ConversionAnalytics`, `CampaignAnalytics`, `CommandCenter` (direct), `PublicInvoicePage` (direct), `EventDetailPanel` (direct) |
+| **UI Components** | `Directory`, `AddFamilyModal`, `EditFamilyModal`, `LinkEventOrdersModal`, `LinkHubBookingsModal`, `AddEnrollmentModal`, `ImportHistoricalInvoiceModal`, `QuickSend`, `FamilyDetailPanel`, `Marketing`, `LeadDetailPanel`, `EditLeadModal`, `ImportLeadsModal`, `AddFamilyModal` (lead matching), `ConversionAnalytics`, `CampaignAnalytics`, `CommandCenter`, `PublicInvoicePage`, `EventDetailPanel` |
 
 **High-risk columns:** `status` (triggers T6 Mailchimp sync; drives lead vs. customer distinction everywhere), `primary_email` (used for dedup in 4 edge functions + T4/T5 cross-match), `primary_phone` (SMS sending + Twilio opt-out matching), `sms_opt_out` (gates all SMS sends), `display_name` (used in name-based matching, formatted by `formatNameLastFirst`).
 
@@ -1838,8 +1868,8 @@ Env var: `VITE_N8N_BASE_URL`
 | **Hooks** | `useEnrollments`, `useEnrollmentsByFamily`, `useEnrollment`, `useEnrollmentMutations`, `useBillableEnrollments`, `useExistingInvoicesForPeriod`, `useEnrollmentOnboarding`, `useOnboardingMutations`, `useTeachersWithLoad` (joins), `usePayrollMutations.createPayrollRun` (reads for line item generation) |
 | **Edge Functions** | `send-onboarding` (R — enrollment + service for config), `check-onboarding-status` (R/W — enrollment status), `get-pending-onboarding` (R), `ingest-lead` (R — checks for existing enrollments), `calendly-webhook` (R — checks for existing enrollments) |
 | **N8N Workflows** | Onboarding email, document creation, nudge, and status-check workflows |
-| **Triggers** | T2 `revenue_records` (reads enrollments for student/service/class info on paid invoices), T4 `auto_convert_leads` (fires on INSERT when status=active/trial), T5 `auto_convert_leads` (fires on UPDATE to active/trial), T9/T10 `process_class_registration` (INSERT enrollments from class registrations) |
-| **UI Components** | `ActiveRoster`, `AddEnrollmentModal`, `EditEnrollmentModal`, `EndEnrollmentModal`, `FamilyDetailPanel`, `GenerateDraftsModal`, `EnrollmentDetailPanel`, `SendFormsModal`, `CommandCenter` (direct — active count, trial count, new enrollments) |
+| **Triggers** | T2 `revenue_records` (reads enrollments for student/service/class info on paid invoices), T4 `auto_convert_leads` (fires on INSERT when status=active/trial), T5 `auto_convert_leads` (fires on UPDATE to active/trial), T9/T10 `process_class_registration` (INSERT enrollments from class registrations), T13 `sync_hours_enrollment_to_assignment` (AFTER UPDATE — syncs hours_per_week to single active assignment) |
+| **UI Components** | `ActiveRoster`, `AddEnrollmentModal`, `EditEnrollmentModal`, `EndEnrollmentModal`, `FamilyDetailPanel`, `GenerateDraftsModal`, `EnrollmentDetailPanel`, `SendFormsModal`, `CommandCenter` |
 
 **High-risk columns:** `status` (drives T4/T5 lead conversion, roster visibility, billability, dashboard metrics), `hours_per_week` (auto-synced with `teacher_assignments.hours_per_week` via bidirectional triggers when only 1 active assignment exists), `service_id` / `student_id` / `family_id` (FK joins across invoicing, payroll, revenue).
 
@@ -1855,7 +1885,7 @@ Env var: `VITE_N8N_BASE_URL`
 | **Edge Functions** | `stripe-webhook` (R/W — reads by `public_id`, writes `status`/`amount_paid`, creates payments), `create-checkout-session` (R — reads for Stripe session), `mark-invoice-viewed` (W — sets `viewed_at`) |
 | **N8N Workflows** | `invoice-send` webhook (send/reminder emails with invoice data) |
 | **Triggers** | T1 `invoice_number_trigger` (BEFORE INSERT — auto-generates `invoice_number`), T2a `trigger_create_revenue_on_payment` (AFTER UPDATE — creates revenue when status→paid), T2b `trigger_create_revenue_on_invoice_insert` (AFTER INSERT — creates revenue when inserted directly as paid), T3 `payment_updates_invoice` (writes `amount_paid`, `status` from payment totals) |
-| **UI Components** | `Invoicing`, `EditInvoiceModal`, `ImportHistoricalInvoiceModal`, `GenerateDraftsModal`, `InvoiceDetailPanel`, `FamilyDetailPanel`, `PayrollRunDetail`, `EmailHistory`, `CommandCenter` (direct — outstanding balance, overdue count, revenue), `Reports` (direct — cash received, balances), `PublicInvoicePage` (direct — full invoice render) |
+| **UI Components** | `Invoicing`, `EditInvoiceModal`, `ImportHistoricalInvoiceModal`, `GenerateDraftsModal`, `InvoiceDetailPanel`, `FamilyDetailPanel`, `PayrollRunDetail`, `EmailHistory`, `CommandCenter`, `Reports`, `PublicInvoicePage` |
 
 **High-risk columns:** `status` (drives T2 revenue generation, dashboard metrics, public invoice display), `amount_paid` (generated by T3 from payment sums — don't write directly), `balance_due` (GENERATED column = `total_amount - amount_paid` — don't UPDATE), `public_id` (used by Stripe webhook + public invoice page), `invoice_number` (auto-generated by T1).
 
@@ -1927,11 +1957,11 @@ Env var: `VITE_N8N_BASE_URL`
 |-------|----------|
 | **Hooks** | `usePayrollRuns`, `usePayrollRunWithItems`, `usePayrollLineItemsByTeacher`, `usePendingPayrollAdjustments`, `usePayrollMutations` (8 functions), `useTeacherPaymentsByTeacher`, `useTeacherPaymentMutations` (legacy) |
 | **Edge Functions** | — |
-| **N8N Workflows** | `payroll-notification` webhook (receives run summary from `PayrollRunDetail.tsx` — direct call, not via hook) |
+| **N8N Workflows** | `payroll-notification` webhook (receives per-teacher payroll breakdowns from `hooks.ts` → `sendPayrollNotifications`) |
 | **Triggers** | — |
-| **UI Components** | `Payroll`, `PayrollRunDetail`, `CreatePayrollRunModal`, `PayrollAdjustmentModal`, `AddManualLineItemModal`, `BulkAdjustHoursModal`, `TeacherDetailPanel` (payment history), `EditTeacherModal` (legacy payments), `RecordTeacherPaymentModal` (legacy), `Reports` (direct — queries BOTH `teacher_payments` and `payroll_run`/`payroll_line_item`) |
+| **UI Components** | `Payroll`, `PayrollRunDetail`, `CreatePayrollRunModal`, `PayrollAdjustmentModal`, `AddManualLineItemModal`, `BulkAdjustHoursModal`, `TeacherDetailPanel` (payment history), `EditTeacherModal` (legacy payments), `Reports` |
 
-**High-risk note:** Two separate payroll systems — `teacher_payments` (legacy Sep–Dec 2025) and `payroll_run`/`payroll_line_item` (Jan 2026+). Reports queries both with no unified interface. Schema changes to either must account for the other. `PayrollRunDetail.tsx` directly calls an N8N webhook (`payroll-notification`) outside the hook layer.
+**High-risk note:** Two separate payroll systems — `teacher_payments` (legacy Sep–Dec 2025) and `payroll_run`/`payroll_line_item` (Jan 2026+). Unified hooks (`useTeacherPayrollHistory`, `usePayrollByMonth`, `useTeacherHasPayments`) merge both systems. Schema changes to either must account for the other.
 
 ---
 
@@ -1971,11 +2001,11 @@ Env var: `VITE_N8N_BASE_URL`
 
 | Layer | Affected |
 |-------|----------|
-| **Hooks** | `useEvents`, `useAllAttendees`, `useEventOrderMutations`, `useHubBookingMutations`, `usePendingEventOrders`, `usePendingClassRegistrationFees`, `useEventLeads` |
+| **Hooks** | `useEvents`, `useAllAttendees`, `useEventAttendees`, `useEventOrderMutations`, `useHubBookingMutations`, `usePendingEventOrders`, `usePendingClassRegistrationFees`, `useEventLeads` |
 | **Edge Functions** | `stripe-webhook` (W — updates `event_orders.payment_status` on checkout completion) |
 | **N8N Workflows** | — |
 | **Triggers** | T7/T8 `event_order_lead` (BEFORE INSERT/UPDATE on `event_orders` — creates lead families for event purchases), T9 `process_class_registration` (AFTER INSERT on `event_attendees` — creates students + enrollments for class registrations), T10 `process_class_registration` (AFTER UPDATE on `event_orders` when payment_status→paid — triggers T9 logic) |
-| **UI Components** | `Events`, `EventDetailPanel` (direct — queries `event_attendees`, `event_orders`, `families`), `LinkEventOrdersModal`, `LinkHubBookingsModal`, `GenerateDraftsModal` (pending orders), `CommandCenter` (direct — `event_stepup_pending` view, event lead counts) |
+| **UI Components** | `Events`, `EventDetailPanel`, `LinkEventOrdersModal`, `LinkHubBookingsModal`, `GenerateDraftsModal` (pending orders), `CommandCenter` |
 
 **High-risk columns:** `event_orders.payment_status` (drives T7/T8 lead creation and T10 class registration — changing valid values breaks triggers), `event_events.event_type` (`'event'` vs `'class'` — triggers T7/T8 vs T9/T10 use this to decide which path to execute), `event_attendees.attendee_name` (fuzzy-matched by T9 at threshold 0.55 — spelling affects student dedup).
 
@@ -1987,18 +2017,18 @@ Env var: `VITE_N8N_BASE_URL`
 
 | Table | Referenced By (as FK/join) |
 |-------|--------------------------|
-| `invoice_line_items` | `useInvoicesWithDetails`, `useInvoiceMutations`, T2 `revenue_records` (reads amounts + enrollment refs), `PublicInvoicePage` (direct), `Reports` (direct) |
+| `invoice_line_items` | `useInvoicesWithDetails`, `useInvoiceMutations`, `usePublicInvoice`, T2 `revenue_records` (reads amounts + enrollment refs), `Reports` |
 | `revenue_records` | T2 creates records; `get_revenue_by_month` / `get_revenue_by_location` RPCs aggregate them; `Reports` displays charts |
 | `enrollment_onboarding` | `useEnrollmentOnboarding`, `useOnboardingMutations`, `send-onboarding`, `check-onboarding-status`, `get-pending-onboarding`, `form-submitted` edge functions |
 | `lead_activities` | `useLeadActivities`, `useLeadActivityMutations`, `useConversionAnalytics`, `ingest-lead` (W), `calendly-webhook` (W) |
 | `lead_follow_ups` | `useLeadFollowUps`, `useUpcomingFollowUps`, `useFollowUpMutations` |
 | `email_campaigns` / `lead_campaign_engagement` | `useEmailCampaigns`, `useCampaignEngagement`, `useLeadCampaignEngagement`, `mailchimp` edge function (R/W) |
-| `calendly_bookings` | `calendly-webhook` (R/W), `CommandCenter` (direct — recent bookings) |
+| `calendly_bookings` | `calendly-webhook` (R/W), `CommandCenter` (via `useUpcomingBookings`) |
 | `family_merge_log` | `useFamilyMergeLog`, `ingest-lead` (W), `calendly-webhook` (W) |
 | `app_settings` / `locations` | `useSettings`, `useSettingMutations`, `useActiveLocations`, `Settings` (direct) |
 | `invoice_number_counter` | T1 `invoice_number_trigger` (R/W — atomic counter increment) |
 | `stripe_invoice_webhooks` | `stripe-webhook` (R/W — idempotency tracking) |
-| `hub_sessions` | `usePendingHubSessions`, `useHubBookingMutations`, `CommandCenter` (direct) |
+| `hub_sessions` | `usePendingHubSessions`, `useHubBookingMutations`, `CommandCenter` (via `useDashboardStats`) |
 | `error_log` | `PublicErrorBoundary` (W — logs rendering errors from public pages: TeacherDesk, CheckinForm, PublicInvoicePage) |
 
 ---
@@ -2011,9 +2041,9 @@ These components query Supabase directly. They are sensitive to column renames, 
 |-----------|------------------------|
 | ~~`CommandCenter.tsx`~~ | ~~Fully refactored (2026-02-20) — now uses `useDashboardStats`, `useUpcomingBookings`, `useAcademicCoachingDeadbeats`~~ |
 | ~~`Reports.tsx`~~ | ~~Fully refactored (2026-02-20) — now uses `usePayrollByMonth`, `useRevenueByMonth`, `useEnrollmentsByService`, `useBalanceAging`, `useRevenueByLocation`~~ |
-| `PublicInvoicePage.tsx` | `invoices`, `families`, `invoice_line_items` |
-| `EventDetailPanel.tsx` | `event_attendees`, `event_orders`, `families` |
-| `Settings.tsx` | `app_settings`, `locations` |
+| ~~`PublicInvoicePage.tsx`~~ | ~~Refactored (2026-02-20) — now uses `usePublicInvoice(publicId)`. Only remaining direct Supabase call is `supabase.auth.getSession()` for view-tracking gate (not a data query).~~ |
+| ~~`EventDetailPanel.tsx`~~ | ~~Refactored (2026-02-20) — now uses `useEventAttendees(eventId)`. Zero direct Supabase queries.~~ |
+| ~~`Settings.tsx`~~ | ~~Refactored (2026-02-20) — now uses `useSettings()`, `useAllLocations()`, `useSettingMutations()`, `useLocationMutations()`. Zero direct Supabase queries.~~ |
 
 ---
 
@@ -2022,8 +2052,8 @@ These components query Supabase directly. They are sensitive to column renames, 
 | Module | Issue |
 |--------|-------|
 | ~~`CommandCenter.tsx`~~ | ~~Refactored (2026-02-20) — `useDashboardStats`, `useUpcomingBookings`, `useAcademicCoachingDeadbeats` extracted to hooks.ts. Zero direct Supabase queries.~~ |
-| `PayrollRunDetail.tsx` | Directly calls N8N webhook (`payroll-notification`) instead of going through a hook or service module. Mixes UI rendering with external service calls. |
-| `statusColors.ts` vs `StatusBadge.tsx` | Status color definitions split between a constants file and a component. Some components import colors directly, others use StatusBadge. No single canonical source. |
+| ~~`PayrollRunDetail.tsx`~~ | ~~Refactored (2026-02-20) — N8N `payroll-notification` call moved to `usePayrollMutations().sendPayrollNotifications` in hooks.ts. Component now calls `sendPayrollNotifications.mutate()` instead of inline fetch.~~ |
+| ~~`statusColors.ts` vs `StatusBadge.tsx`~~ | ~~Consolidated (2026-02-20) — Canonical source is `statusConstants.ts` (all color/label maps). `StatusBadge.tsx` imports from it and re-exports all constants. All consumers import from `StatusBadge.tsx` — no file imports directly from `statusConstants.ts` except `StatusBadge.tsx` itself.~~ |
 
 ---
 
