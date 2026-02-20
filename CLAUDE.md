@@ -23,6 +23,8 @@ If build/lint fails, fix the issues before considering the task complete.
 
 ## Project Structure
 
+> See `INTERFACES.md` at project root for the full architecture reference — every module's inputs, outputs, external dependencies, database triggers, edge functions, and N8N webhooks.
+
 ```
 src/
 ├── App.tsx              # Main router (React Router)
