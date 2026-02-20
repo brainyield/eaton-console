@@ -4799,6 +4799,75 @@ export function usePayrollMutations() {
     },
   })
 
+  /**
+   * Send payroll notification emails to teachers via n8n webhook.
+   * Fire-and-forget — does not block UI on failure.
+   */
+  const sendPayrollNotifications = useMutation({
+    mutationFn: async ({
+      run,
+      teacherGroups,
+    }: {
+      run: PayrollRunWithDetails
+      teacherGroups: [string, { name: string; items: PayrollLineItemWithDetails[] }][]
+    }) => {
+      const teacherPayrollData = teacherGroups.map(([teacherId, group]) => {
+        const teacher = group.items[0]?.teacher
+        return {
+          teacherId,
+          teacherName: group.name,
+          teacherEmail: teacher?.email || '',
+          totalHours: group.items.reduce((sum, item) => sum + item.actual_hours, 0),
+          totalAmount: group.items.reduce((sum, item) => sum + item.final_amount, 0),
+          items: group.items.map(item => {
+            const isManualItem = !item.teacher_assignment_id
+            const studentLabel = item.enrollment?.student?.full_name
+              || (isManualItem ? 'Miscellaneous' : 'Service Assignment')
+            return {
+              student: studentLabel,
+              service: item.service?.name || item.description || 'Unknown',
+              hours: item.actual_hours,
+              rate: item.hourly_rate,
+              amount: item.final_amount,
+            }
+          }),
+        }
+      })
+
+      const notifications = teacherPayrollData
+        .filter(data => data.teacherEmail)
+        .map(async (data) => {
+          const payload = {
+            payment_id: `bulk-${run.id}-${data.teacherId}`,
+            teacher: {
+              id: data.teacherId,
+              name: data.teacherName,
+              email: data.teacherEmail,
+            },
+            amounts: {
+              total: data.totalAmount,
+              hours: data.totalHours,
+            },
+            period: {
+              start: run.period_start,
+              end: run.period_end,
+            },
+            line_items: data.items,
+            payment_method: 'Bulk Payroll',
+            timestamp: new Date().toISOString(),
+          }
+
+          await fetch('https://eatonacademic.app.n8n.cloud/webhook/payroll-notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
+        })
+
+      await Promise.allSettled(notifications)
+    },
+  })
+
   return {
     createPayrollRun,
     updateRunStatus,
@@ -4808,6 +4877,7 @@ export function usePayrollMutations() {
     createAdjustment,
     deletePayrollRun,
     bulkUpdateTeacherHours,
+    sendPayrollNotifications,
   }
 }
 
@@ -7821,5 +7891,105 @@ export function useMailchimpSyncLog(options?: { familyId?: string; status?: stri
         family: { display_name: string; primary_email: string } | null
       }>
     },
+  })
+}
+
+// ============================================================
+// Public Invoice (no auth required)
+// ============================================================
+
+export interface PublicInvoiceData {
+  invoice: {
+    id: string
+    family_id: string
+    public_id: string
+    invoice_number: string
+    invoice_date: string
+    due_date: string | null
+    period_start: string | null
+    period_end: string | null
+    subtotal: number | null
+    total_amount: number | null
+    amount_paid: number
+    balance_due: number | null
+    status: string
+    notes: string | null
+    consolidated_into: string | null
+  }
+  family: {
+    id: string
+    display_name: string
+    primary_email: string | null
+  } | null
+  lineItems: Array<{
+    id: string
+    description: string
+    quantity: number
+    unit_price: number | null
+    amount: number | null
+    sort_order: number
+  }>
+  consolidatedInvoice: {
+    invoice_number: string
+    public_id: string
+  } | null
+}
+
+export function usePublicInvoice(publicId: string) {
+  return useQuery({
+    queryKey: ['public-invoice', publicId],
+    queryFn: async (): Promise<PublicInvoiceData> => {
+      // Fetch invoice by public_id
+      const { data: invoiceData, error: invoiceError } = await supabase
+        .from('invoices')
+        .select('*')
+        .eq('public_id', publicId)
+        .single()
+
+      if (invoiceError) {
+        if (invoiceError.code === 'PGRST116') {
+          throw new Error('Invoice not found')
+        }
+        throw invoiceError
+      }
+
+      const inv = invoiceData as PublicInvoiceData['invoice']
+
+      // If voided and consolidated, fetch the target invoice
+      let consolidatedInvoice: PublicInvoiceData['consolidatedInvoice'] = null
+      if (inv.consolidated_into) {
+        const { data: consolidatedData } = await supabase
+          .from('invoices')
+          .select('invoice_number, public_id')
+          .eq('id', inv.consolidated_into)
+          .maybeSingle()
+
+        if (consolidatedData) {
+          consolidatedInvoice = consolidatedData as PublicInvoiceData['consolidatedInvoice']
+        }
+      }
+
+      // Fetch family info
+      const { data: familyData } = await supabase
+        .from('families')
+        .select('id, display_name, primary_email')
+        .eq('id', inv.family_id)
+        .single()
+
+      // Fetch line items
+      const { data: lineItemsData } = await supabase
+        .from('invoice_line_items')
+        .select('*')
+        .eq('invoice_id', inv.id)
+        .order('sort_order', { ascending: true })
+
+      return {
+        invoice: inv,
+        family: (familyData as PublicInvoiceData['family']) || null,
+        lineItems: (lineItemsData || []) as PublicInvoiceData['lineItems'],
+        consolidatedInvoice,
+      }
+    },
+    enabled: !!publicId,
   })
 }

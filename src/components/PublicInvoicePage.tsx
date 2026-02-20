@@ -1,40 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { usePublicInvoice } from '../lib/hooks';
 import { CheckCircle, Clock, AlertCircle, FileText, Building2, Calendar, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
-
-interface Invoice {
-  id: string;
-  family_id: string;
-  public_id: string;
-  invoice_number: string;
-  invoice_date: string;
-  due_date: string | null;
-  period_start: string | null;
-  period_end: string | null;
-  subtotal: number | null;
-  total_amount: number | null;
-  amount_paid: number;
-  balance_due: number | null;
-  status: string;
-  notes: string | null;
-  consolidated_into: string | null;
-}
-
-interface Family {
-  id: string;
-  display_name: string;
-  primary_email: string | null;
-}
-
-interface LineItem {
-  id: string;
-  description: string;
-  quantity: number;
-  unit_price: number | null;
-  amount: number | null;
-  sort_order: number;
-}
 
 interface PublicInvoicePageProps {
   publicId: string;
@@ -120,22 +88,21 @@ function getStatusConfig(status: string) {
 
 export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) {
   const [searchParams] = useSearchParams();
-  const [invoice, setInvoice] = useState<Invoice | null>(null);
-  const [family, setFamily] = useState<Family | null>(null);
-  const [lineItems, setLineItems] = useState<LineItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: invoiceData, isLoading: loading, error: queryError } = usePublicInvoice(publicId);
   const [isLoadingStripe, setIsLoadingStripe] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [consolidatedInvoice, setConsolidatedInvoice] = useState<{ invoice_number: string; public_id: string } | null>(null);
+
+  const invoice = invoiceData?.invoice ?? null;
+  const family = invoiceData?.family ?? null;
+  const lineItems = invoiceData?.lineItems ?? [];
+  const consolidatedInvoice = invoiceData?.consolidatedInvoice ?? null;
+  const error = queryError ? (queryError.message === 'Invoice not found' ? 'Invoice not found' : 'Unable to load invoice') : null;
 
   // Check for payment status from URL params (redirect from Stripe)
   const paymentStatus = searchParams.get('payment');
 
+  // Track invoice view (only for customers, not logged-in admins)
   useEffect(() => {
-    fetchInvoice();
-
-    // Track invoice view (only for customers, not logged-in admins)
     const trackView = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -162,70 +129,6 @@ export default function PublicInvoicePage({ publicId }: PublicInvoicePageProps) 
 
     trackView();
   }, [publicId]);
-
-  async function fetchInvoice() {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch invoice by public_id
-      const { data: invoiceData, error: invoiceError } = await supabase
-        .from('invoices')
-        .select('*')
-        .eq('public_id', publicId)
-        .single();
-
-      if (invoiceError) {
-        if (invoiceError.code === 'PGRST116') {
-          setError('Invoice not found');
-        } else {
-          throw invoiceError;
-        }
-        return;
-      }
-
-      const inv = invoiceData as Invoice;
-      setInvoice(inv);
-
-      // If voided and consolidated, fetch the target invoice
-      if (inv.consolidated_into) {
-        const { data: consolidatedData } = await supabase
-          .from('invoices')
-          .select('invoice_number, public_id')
-          .eq('id', inv.consolidated_into)
-          .maybeSingle();
-
-        if (consolidatedData) {
-          setConsolidatedInvoice(consolidatedData as { invoice_number: string; public_id: string });
-        }
-      }
-
-      // Fetch family info
-      const { data: familyData } = await supabase
-        .from('families')
-        .select('id, display_name, primary_email')
-        .eq('id', inv.family_id)
-        .single();
-
-      setFamily(familyData as Family | null);
-
-      // Fetch line items
-      const { data: lineItemsData } = await supabase
-        .from('invoice_line_items')
-        .select('*')
-        .eq('invoice_id', inv.id)
-        .order('sort_order', { ascending: true });
-
-      type LineItemRow = LineItem;
-      setLineItems((lineItemsData || []) as LineItemRow[]);
-
-    } catch (err) {
-      console.error('Error fetching invoice:', err);
-      setError('Unable to load invoice');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   async function handleStripePayment() {
     setIsLoadingStripe(true);

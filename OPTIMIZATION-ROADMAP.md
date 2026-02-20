@@ -302,8 +302,8 @@
 | 6 | Reports hooks | 🟠 P1 | ⬜ Not started | |
 | 7 | Service-location mapping | 🟠 P1 | ⬜ Not started | |
 | 8 | Unified payroll | 🟠 P1 | ⬜ Not started | |
-| 9 | PublicInvoicePage hooks | 🟠 P1 | ⬜ Not started | |
-| 10 | PayrollRunDetail N8N | 🟠 P1 | ⬜ Not started | |
+| 9 | PublicInvoicePage hooks | 🟠 P1 | ✅ Complete | 2026-02-20 |
+| 10 | PayrollRunDetail N8N | 🟠 P1 | ✅ Complete | 2026-02-20 |
 | 11 | EventDetailPanel hooks | 🟡 P2 | ⬜ Not started | |
 | 12 | Settings hooks | 🟡 P2 | ⬜ Not started | |
 | 13 | StatusBadge consolidation | 🟡 P2 | ⬜ Not started | |

@@ -283,104 +283,12 @@ function TeacherSection({
 }
 
 // ============================================================================
-// Webhook Helper
-// ============================================================================
-
-interface TeacherPayrollData {
-  teacherId: string
-  teacherName: string
-  teacherEmail: string
-  totalHours: number
-  totalAmount: number
-  items: {
-    student: string
-    service: string
-    hours: number
-    rate: number
-    amount: number
-  }[]
-}
-
-async function triggerBulkPayrollNotifications(
-  run: PayrollRunWithDetails,
-  teacherGroups: [string, { name: string; items: PayrollLineItemWithDetails[] }][]
-): Promise<void> {
-  // Group data by teacher for individual notifications
-  const teacherPayrollData: TeacherPayrollData[] = teacherGroups.map(([teacherId, group]) => {
-    const teacher = group.items[0]?.teacher
-    return {
-      teacherId,
-      teacherName: group.name,
-      teacherEmail: teacher?.email || '',
-      totalHours: group.items.reduce((sum, item) => sum + item.actual_hours, 0),
-      totalAmount: group.items.reduce((sum, item) => sum + item.final_amount, 0),
-      items: group.items.map(item => {
-        // Determine the label based on item type:
-        // - Student assignment: student name
-        // - Service-level assignment: "Service Assignment"
-        // - Manual line item: "Miscellaneous"
-        const isManualItem = !item.teacher_assignment_id
-        const studentLabel = item.enrollment?.student?.full_name
-          || (isManualItem ? 'Miscellaneous' : 'Service Assignment')
-
-        return {
-          student: studentLabel,
-          service: item.service?.name || item.description || 'Unknown',
-          hours: item.actual_hours,
-          rate: item.hourly_rate,
-          amount: item.final_amount,
-        }
-      }),
-    }
-  })
-
-  // Send notification for each teacher (fire and forget, don't block UI)
-  const notifications = teacherPayrollData
-    .filter(data => data.teacherEmail) // Only notify teachers with email
-    .map(async (data) => {
-      try {
-        const payload = {
-          payment_id: `bulk-${run.id}-${data.teacherId}`,
-          teacher: {
-            id: data.teacherId,
-            name: data.teacherName,
-            email: data.teacherEmail,
-          },
-          amounts: {
-            total: data.totalAmount,
-            hours: data.totalHours,
-          },
-          period: {
-            start: run.period_start,
-            end: run.period_end,
-          },
-          line_items: data.items,
-          payment_method: 'Bulk Payroll',
-          timestamp: new Date().toISOString(),
-        }
-
-        await fetch('https://eatonacademic.app.n8n.cloud/webhook/payroll-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-      } catch (err) {
-        console.error(`Failed to notify teacher ${data.teacherName}:`, err)
-        // Don't throw - continue with other notifications
-      }
-    })
-
-  // Wait for all notifications to complete (but don't fail if some fail)
-  await Promise.allSettled(notifications)
-}
-
-// ============================================================================
 // Main Component
 // ============================================================================
 
 export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
   const { showError, showSuccess } = useToast()
-  const { updateRunStatus, updateLineItem, deleteLineItem } = usePayrollMutations()
+  const { updateRunStatus, updateLineItem, deleteLineItem, sendPayrollNotifications } = usePayrollMutations()
   const [isUpdating, setIsUpdating] = useState(false)
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set())
   const [showBulkAdjustModal, setShowBulkAdjustModal] = useState(false)
@@ -502,9 +410,7 @@ export default function PayrollRunDetail({ run, onClose, onExportCSV }: Props) {
 
       // Trigger bulk notifications when payroll is marked as paid
       if (newStatus === 'paid') {
-        triggerBulkPayrollNotifications(run, teacherGroups).catch(() => {
-          // Silently handle notification errors - status was already updated successfully
-        })
+        sendPayrollNotifications.mutate({ run, teacherGroups })
       }
     } catch (error) {
       console.error('Failed to update status:', error)
