@@ -1,0 +1,92 @@
+ Eaton Academic Brand Style Guide (for HTML Emails)
+                                                                                                                                                                                  Brand Identity
+
+  - Company: Eaton Academic
+  - Website: https://eatonacademic.com
+  - Tagline: "Empowering homeschool families with expert-led classes, social learning pods, and a curriculum that inspires curiosity."
+  - Logo (SVG): https://cms.eatonacademic.com/wp-content/uploads/2025/12/eaton-logo-with-text-vector.svg
+
+  Colors
+
+  ┌───────────────┬─────────┬───────────────────────────────────────────────────┐
+  │     Token     │   Hex   │                       Usage                       │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Orange        │ #F97316 │ Primary CTA buttons, links, accents, list markers │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Orange Light  │ #FED7AA │ Subtle highlights                                 │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Orange Dark   │ #EA580C │ Button hover states                               │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Navy          │ #0B3C5D │ Headings, secondary buttons, strong text          │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Navy Light    │ #2D5A87 │ Navy hover states                                 │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Seafoam       │ #D1EDE5 │ Section backgrounds, callout blocks               │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Seafoam Light │ #E8F5F0 │ Lighter section backgrounds                       │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Gray 50       │ #F9FAFB │ Light backgrounds (blockquotes, table headers)    │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Gray 100      │ #F3F4F6 │ Subtle backgrounds                                │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Gray 400      │ #9CA3AF │ Eyebrow/label text, captions                      │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Gray 600      │ #4B5563 │ Body text color                                   │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ Gray 900      │ #111827 │ Darkest text (rarely used)                        │
+  ├───────────────┼─────────┼───────────────────────────────────────────────────┤
+  │ White         │ #FFFFFF │ Page background, button text on dark backgrounds  │
+  └───────────────┴─────────┴───────────────────────────────────────────────────┘
+
+  Typography
+
+  ┌──────────────────┬──────────────────┬───────────────────────────────┬──────────────────────────────────────┐
+  │       Role       │       Font       │            Weight             │            Fallback Stack            │
+  ├──────────────────┼──────────────────┼───────────────────────────────┼──────────────────────────────────────┤
+  │ Body text        │ Inter            │ 400 (regular), 600 (semibold) │ ui-sans-serif, system-ui, sans-serif │
+  ├──────────────────┼──────────────────┼───────────────────────────────┼──────────────────────────────────────┤
+  │ Headings (h1-h3) │ DM Serif Display │ 400 only                      │ Georgia, serif                       │
+  ├──────────────────┼──────────────────┼───────────────────────────────┼──────────────────────────────────────┤
+  │ Accent/script    │ Pacifico         │ 400                           │ cursive                              │
+  └──────────────────┴──────────────────┴───────────────────────────────┴──────────────────────────────────────┘
+
+  Email-safe fallback: Since DM Serif Display and Inter may not render in all email clients, use these web-safe fallbacks:
+  - Headings: Georgia, 'Times New Roman', serif
+  - Body: Arial, Helvetica, sans-serif
+  - Include a web font <link> for clients that support it (Gmail app, Apple Mail, iOS Mail)
+
+  Heading sizes (desktop):
+  - H1: 56px, line-height 1.1
+  - H2: 42px, line-height 1.2
+  - H3: 28px, line-height 1.3
+
+  Body text: 16px mobile / 18px desktop, line-height 1.7, color #4B5563
+
+  Buttons
+
+  Primary (Orange):
+  - Background: #F97316, text: white, font-weight: 600
+  - Padding: 14px 28px, border-radius: 8px
+  - Hover: #EA580C with box-shadow: 0 4px 14px rgba(249, 115, 22, 0.3)
+
+  Secondary (Navy):
+  - Background: #0B3C5D, text: white, font-weight: 600
+  - Padding: 14px 28px, border-radius: 8px
+  - Hover: #2D5A87
+
+  Visual Patterns
+
+  - Headings are always Navy (#0B3C5D) — never black
+  - Links are Orange (#F97316) with underline, no-underline on hover
+  - Bold/strong text uses font-weight: 600 and Navy color (#1E3A5F)
+  - Blockquotes/callouts: left border 4px solid #F97316, background #F9FAFB
+  - Card hover effect: translateY(-4px) with box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12)
+  - Eyebrow labels: 12px, uppercase, letter-spacing: 0.1em, color #9CA3AF
+  - Border radius: 8px for buttons, 12-16px for images/cards
+  - Max content width: 1200px (centered), 600px recommended for email
+
+  Tone
+
+  - Warm, encouraging, parent-friendly
+  - Education-focused but not stuffy
+  - Community-oriented (South Florida based)

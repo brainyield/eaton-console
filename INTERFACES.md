@@ -2030,7 +2030,7 @@ Every consumer that needs "teacher payment history" must query both systems and 
 |----------|-------------|---------------|
 | `Reports.tsx` (payroll chart) | Queries `teacher_payments.pay_date + total_amount` and `payroll_run.paid_at + total_adjusted`, groups by month, sums amounts | Two separate queries → merge into `monthlyData` map by month key |
 | `TeacherDetailPanel.tsx` (`PayrollTab`) | Shows per-teacher payment history from both systems as a unified sorted list | Queries `useTeacherPaymentsByTeacher` + `usePayrollLineItemsByTeacher` → maps to `UnifiedPayment[]` (manual vs. bulk), groups batch items by `payroll_run_id` |
-| `EditTeacherModal.tsx` | Checks if teacher has any legacy payments (blocks delete if so) | Queries `useTeacherPaymentsByTeacher` only |
+| `EditTeacherModal.tsx` | Checks if teacher has any payroll history (blocks delete if so) — guards against orphaned records in EITHER `teacher_payments` (legacy) OR `payroll_line_item` (batch) | Queries `useTeacherPaymentsByTeacher` + `usePayrollLineItemsByTeacher`; deletion blocked when combined count > 0 |
 
 #### Schema Comparison
 
