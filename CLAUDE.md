@@ -19,6 +19,10 @@ After making ANY code changes, ALWAYS run:
 
 If build/lint fails, fix the issues before considering the task complete.
 
+## Interface Impact Protocol
+
+Before making any change that affects module inputs, outputs, database schemas, triggers, edge function payloads, or N8N webhook contracts, consult `INTERFACES.md` to assess impact. After completing any such change, update `INTERFACES.md` to reflect the new state.
+
 ---
 
 ## Project Structure
