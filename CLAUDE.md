@@ -70,7 +70,8 @@ src/
 │       ├── SmsStatusBadge.tsx
 │       ├── SortableTableHeader.tsx
 │       ├── StatusBadge.tsx
-│       └── statusConstants.ts
+│       ├── statusConstants.ts
+│       └── PublicErrorBoundary.tsx
 ```
 
 > **Note:** Most route components (Directory, Events, Invoicing, etc.) live in `components/`, not `pages/`. The `pages/` directory is reserved for components that don't fit the standard layout pattern.
@@ -249,7 +250,8 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** use only `contentStyle` for Recharts tooltips in dark mode — also add `itemStyle={{ color: '#e5e7eb' }}` and `labelStyle={{ color: '#9ca3af' }}`.
 - **DON'T** use `window.location.origin` for URLs in emails — use `import.meta.env.VITE_APP_URL || window.location.origin`.
 - **DON'T** create local Toast components — use `const { showSuccess, showError } = useToast()` from `src/lib/toast.tsx`.
-- **DON'T** duplicate STATUS_COLORS across files — use shared constants or a `<StatusBadge>` component.
+- **DON'T** duplicate STATUS_COLORS across files — use shared constants from `statusConstants.ts` or `<StatusBadge>` component.
+- **DON'T** add public-facing pages without wrapping in `<PublicErrorBoundary>` — it catches rendering errors, shows a friendly fallback, and logs to `error_log` table. See `App.tsx` wrappers.
 
 ### Error Handling
 

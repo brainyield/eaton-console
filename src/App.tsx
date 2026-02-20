@@ -10,6 +10,7 @@ import Payroll from './components/Payroll'
 import PublicInvoicePage from './components/PublicInvoicePage'
 import TeacherDesk from './components/TeacherDesk'
 import CheckinForm from './components/CheckinForm'
+import { PublicErrorBoundary } from './components/ui/PublicErrorBoundary'
 import ActiveRoster from './components/ActiveRoster'
 import Events from './components/Events'
 import Marketing from './components/Marketing'
@@ -177,7 +178,11 @@ function PublicInvoiceWrapper() {
   if (!publicId) {
     return <div className="p-8 text-center">Invoice ID not provided</div>
   }
-  return <PublicInvoicePage publicId={publicId} />
+  return (
+    <PublicErrorBoundary pageName="PublicInvoicePage">
+      <PublicInvoicePage publicId={publicId} />
+    </PublicErrorBoundary>
+  )
 }
 
 // Wrapper to extract token param for teacher desk
@@ -190,7 +195,11 @@ function TeacherDeskWrapper() {
       </div>
     )
   }
-  return <TeacherDesk token={token} />
+  return (
+    <PublicErrorBoundary pageName="TeacherDesk">
+      <TeacherDesk token={token} />
+    </PublicErrorBoundary>
+  )
 }
 
 // Wrapper to extract params for check-in form
@@ -203,7 +212,11 @@ function CheckinFormWrapper() {
       </div>
     )
   }
-  return <CheckinForm token={token} periodId={periodId} />
+  return (
+    <PublicErrorBoundary pageName="CheckinForm">
+      <CheckinForm token={token} periodId={periodId} />
+    </PublicErrorBoundary>
+  )
 }
 
 function App() {

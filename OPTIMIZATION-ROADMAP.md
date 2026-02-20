@@ -310,10 +310,10 @@
 | 14 | hours_per_week sync | 🟡 P2 | ✅ Complete | 2026-02-20 |
 | 15 | T6 Mailchimp scope | 🟡 P2 | ✅ Complete | 2026-02-20 |
 | 16 | pg_net monitoring | 🟡 P2 | ✅ Complete | 2026-02-20 |
-| 17 | updated_at consolidation | 🟢 P3 | ⬜ Not started | |
-| 18 | Invoice counter monitoring | 🟢 P3 | ⬜ Not started | |
-| 19 | Public page error boundaries | 🟢 P3 | ⬜ Not started | |
-| 20 | N8N workflow documentation | 🟢 P3 | ⬜ Not started | |
+| 17 | updated_at consolidation | 🟢 P3 | ✅ Complete | 2026-02-20 |
+| 18 | Invoice counter monitoring | 🟢 P3 | ✅ Complete | 2026-02-20 |
+| 19 | Public page error boundaries | 🟢 P3 | ✅ Complete | 2026-02-20 |
+| 20 | N8N workflow documentation | 🟢 P3 | ✅ Complete | 2026-02-20 |
 
 ---
 

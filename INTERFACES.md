@@ -1579,23 +1579,23 @@ Same function as T9. Fires when an order's `payment_status` transitions TO paid/
 
 The following triggers all do the same thing: set `NEW.updated_at = NOW()` before any UPDATE. They exist to keep `updated_at` columns accurate without requiring application code to set them.
 
-| Trigger | Table | Function |
-|---------|-------|----------|
-| `update_families_updated_at` | `families` | `update_updated_at_column()` |
-| `update_enrollments_updated_at` | `enrollments` | `update_updated_at_column()` |
-| `update_invoices_updated_at` | `invoices` | `update_updated_at_column()` |
-| `update_students_updated_at` | `students` | `update_updated_at_column()` |
-| `update_teachers_updated_at` | `teachers` | `update_updated_at_column()` |
-| `update_email_templates_updated_at` | `email_templates` | `update_updated_at_column()` |
-| `calendly_bookings_updated_at` | `calendly_bookings` | `update_updated_at()` |
-| `checkin_periods_updated_at` | `checkin_periods` | `update_checkin_periods_updated_at()` |
-| `email_campaigns_updated_at` | `email_campaigns` | `update_email_campaigns_updated_at()` |
-| `enrollment_onboarding_updated_at` | `enrollment_onboarding` | `update_enrollment_onboarding_updated_at()` |
-| `lead_campaign_engagement_updated_at` | `lead_campaign_engagement` | `update_lead_campaign_engagement_updated_at()` |
-| `trigger_update_lead_follow_ups_updated_at` | `lead_follow_ups` | `update_lead_follow_ups_updated_at()` |
-| `sms_messages_updated_at` | `sms_messages` | `update_sms_messages_updated_at()` |
+All triggers use the single shared function `update_updated_at_column()`:
 
-**Note:** Three different function names (`update_updated_at_column`, `update_updated_at`, `update_<table>_updated_at`) all have identical bodies. This is historical — new tables should use `update_updated_at_column()`.
+| Trigger | Table |
+|---------|-------|
+| `update_families_updated_at` | `families` |
+| `update_enrollments_updated_at` | `enrollments` |
+| `update_invoices_updated_at` | `invoices` |
+| `update_students_updated_at` | `students` |
+| `update_teachers_updated_at` | `teachers` |
+| `update_email_templates_updated_at` | `email_templates` |
+| `calendly_bookings_updated_at` | `calendly_bookings` |
+| `checkin_periods_updated_at` | `checkin_periods` |
+| `email_campaigns_updated_at` | `email_campaigns` |
+| `enrollment_onboarding_updated_at` | `enrollment_onboarding` |
+| `lead_campaign_engagement_updated_at` | `lead_campaign_engagement` |
+| `trigger_update_lead_follow_ups_updated_at` | `lead_follow_ups` |
+| `sms_messages_updated_at` | `sms_messages` |
 
 ---
 
@@ -1999,6 +1999,7 @@ Env var: `VITE_N8N_BASE_URL`
 | `invoice_number_counter` | T1 `invoice_number_trigger` (R/W — atomic counter increment) |
 | `stripe_invoice_webhooks` | `stripe-webhook` (R/W — idempotency tracking) |
 | `hub_sessions` | `usePendingHubSessions`, `useHubBookingMutations`, `CommandCenter` (direct) |
+| `error_log` | `PublicErrorBoundary` (W — logs rendering errors from public pages: TeacherDesk, CheckinForm, PublicInvoicePage) |
 
 ---
 
@@ -2230,3 +2231,182 @@ CREATE VIEW teacher_payroll_unified AS
 ```
 
 This moves the merge to the database, but adds a dependency on a VIEW that must be maintained. The hook-level approach (step 1) is safer and more reversible — start there.
+
+---
+
+## 12. N8N Workflow Internals
+
+> **Base URL:** `https://eatonacademic.app.n8n.cloud`
+> All webhook paths below are relative to `/webhook/`. All workflows use Gmail OAuth credentials for email sending.
+
+### Gmail Proxy Workflows
+
+**Gmail Search** (`MihkCsMBs9C0znlo`) — `/webhook/gmail-search` POST
+1. `Webhook` → receives `{ email, maxResults? }`
+2. `List Message IDs` → Gmail API `messages.list` filtered by email
+3. `Extract Message IDs` → parses ID array from response
+4. `Has Messages?` → if empty, returns `[]`
+5. `Fetch Message Details` → Gmail API `messages.get` for each ID (headers + snippet)
+6. `Transform Messages` → extracts subject, from, date, snippet, threadId
+7. `Respond Success` → returns array of message summaries
+- **Error handling:** None — API errors propagate as 500
+
+**Gmail Thread** (`lx3BxbhyAy0NRBgo`) — `/webhook/gmail-thread` POST
+1. `Webhook` → receives `{ threadId }`
+2. `Get Thread from Gmail API` → `threads.get` with full format
+3. `Transform Thread` → extracts messages with from/to/date/body (HTML sanitized)
+4. `Respond Success` → returns thread with messages array
+- **Error handling:** None
+
+**Gmail Send** (`AWnOxelUF9gNN3AM`) — `/webhook/gmail-send` POST
+1. `Webhook` → receives `{ to, subject, body, replyTo?, inReplyTo?, threadId? }`
+2. `Build Email` → constructs RFC 2822 MIME message, base64url encodes
+3. `Send via Gmail API` → `messages.send` HTTP request
+4. `Format Response` → extracts message ID and thread ID
+5. `Respond Success` → returns `{ success, messageId, threadId }`
+- **Error handling:** None
+
+### Invoice & Payment Workflows
+
+**Invoice Send & Reminders v3** (`YHfI8NgqDLT3JO0M`) — `/webhook/invoice-send` POST
+1. `Webhook` → receives `{ type, invoice_number, family, dates, amounts, invoice_url, days_overdue? }`
+2. `Route by Type` → switch on `body.type`: `send`, `reminder_7`, `reminder_14`, `reminder_30`
+3. `Send Invoice` / `Send 7-Day Reminder` / `Send 14-Day Reminder` / `Send 30-Day Urgent` → Gmail with branded HTML email (escalating urgency colors: blue → amber → red)
+4. `Success` → returns `{ success, type, sent_to }`
+- **Error handling:** None — Gmail errors propagate
+- **Email styling:** Each tier has distinct header color and subject line urgency
+
+### Payroll Workflow
+
+**Payroll Notification** (`sIXF5fIRXAvgce3h`) — `/webhook/payroll-notification` POST
+1. `Webhook` → receives payroll run data
+2. `Format Email` → builds HTML with pay period, amount, line items
+3. `Send Email` → Gmail to teacher
+4. `Set Response` → returns success
+- **Error handling:** None
+
+### Event Workflows
+
+**Eaton Event Emails** (`0SOgrAvesnPt2T5s`) — 2 webhooks:
+- `/webhook/event-confirmation` POST → Build confirmation HTML → Gmail
+- `/webhook/event-refund` POST → Build refund HTML → Gmail
+- **Error handling:** None
+
+**Sync Event to Supabase** (`EVAz7FIekB37Aheu`) — `/webhook/sync-event` POST
+1. `Webhook` → receives event data from external source
+2. `HTTP Request` → POSTs to Supabase edge function
+- **Error handling:** None
+
+### Teacher Check-in Workflows
+
+**Teacher Check-in Notifications** (`Ssu6v8Rg2gM9EKVE`) — `/webhook/checkin-notify` POST
+1. `Webhook` → receives `{ type, teacher, period, ... }`
+2. `Route by Type` → switch: `invite` or `reminder`
+3. `Send Invite Email` / `Send Reminder Email` → Gmail
+4. `Success` / `Error - Unknown Type` → respond
+- **Error handling:** Unknown type returns error response
+
+**Teacher Training Request** (`cPL5GfnUhlS3bRen`) — `/webhook/training-request` POST
+1. `Webhook` → receives training request data
+2. `Send Training Email` → Gmail to admin
+3. `Success` → respond
+- **Error handling:** None
+
+### Onboarding Workflows
+
+**Send Onboarding Email** (`zl1qgazU4j9wgsF7`) — `/webhook/send-onboarding-email` POST
+1. `Send Email Webhook` → receives `{ to, email_type, customer_name, student_name, service_name, items }`
+2. `Build Email` → constructs HTML with form links and document links
+3. `Send Gmail` → sends to family
+4. `Respond Success`
+- **Error handling:** None
+
+**New Client Onboarding** (`xTBx3tn2sfdGSI76`) — 2 webhooks:
+
+*Document creation:* `/webhook/create-document` POST
+1. Receives `{ template_id, document_name, parent_folder_id, merge_data }`
+2. `WH Copy Template` → Google Drive API: copies template doc
+3. `WH Share Document` → sets `anyone with link` read access
+4. `WH batchUpdate` → Google Docs API: replaces `{{placeholders}}` with merge data
+5. Returns `{ document_id, document_url, document_name }`
+
+*Form status check:* `/webhook/check-forms` POST
+1. Receives `{ email, items: [{ id, form_id, item_key }] }`
+2. `CF Explode Forms` → splits items for parallel checking
+3. `CF Check Responses` → Google Forms API: fetches responses for each form
+4. `CF Match Responses` → checks if email appears in respondent email or text answers
+5. `CF Aggregate Results` → returns `{ updated, completed_ids, results }`
+
+**Onboarding Nudge** (`Rio44m60uQssO5e6`) — `/webhook/start-nudge` POST (fire-and-forget)
+1. Receives `{ enrollment_id, base, formLinks }`
+2. `Wait 2 Days` → n8n wait node (execution pauses)
+3. `Query Pending Items` → calls `get-pending-onboarding` edge function
+4. If pending items exist → sends reminder email via `/webhook/send-onboarding-email`
+5. `Wait 1 Day` → pauses again
+6. Re-checks pending → if still pending, sends final reminder
+- **Error handling:** `continueRegularOutput` on HTTP errors (won't crash)
+- **Note:** Long-running workflow (spans 3+ days via wait nodes)
+
+### Lead Ingestion Workflows
+
+**Exit Intent → Supabase Lead** (`4bN5AqrQYXn6neej`) — `/webhook/exit-intent` POST
+1. `Exit Intent Webhook` → receives form data from website popup
+2. `Transform & Validate` → normalizes fields, validates email
+3. `Is Valid?` → rejects invalid submissions
+4. `POST to Supabase` → calls `ingest-lead` edge function with `lead_type: 'exit_intent'`
+5. `Build PDF Email` → constructs branded email with curriculum PDF attachment link
+6. `Send PDF Email` → Gmail to lead
+7. `Update Family Timestamp` → updates `last_contacted_at` on the family
+- **Error handling:** Invalid data returns error response; Supabase POST continues on error
+
+**Homestead Location Waitlist** (`4NAAqdzDRlOwc50x`) — n8n Form trigger (not webhook)
+1. `Homestead Location Waitlist Form` → n8n-hosted form
+2. `Transform for API` → maps form fields to `ingest-lead` payload with `lead_type: 'waitlist'`
+3. `POST to Supabase` → calls `ingest-lead` edge function
+4. `Check Success` → routes to success/error logging
+- **Error handling:** Logs success/error via Set nodes
+
+**General Interest Form** (`duFPECXDIJyYuUfT`) — n8n Form trigger
+1. `General Interest Form` → n8n-hosted form
+2. `Format Fields` → normalizes submission
+3. `Add to Google Sheet` → appends to tracking sheet
+4. `Transform for API` → maps to `ingest-lead` payload
+5. `POST to Supabase` → calls `ingest-lead` edge function
+- **Error handling:** None
+
+### Reporting Workflows
+
+**Kendall Roster → Google Sheet** (`wym1sLt8XfVt9HPR`) — Schedule trigger (daily 6 AM ET)
+1. `Fetch Kendall Roster` → HTTP request to Supabase (active enrollments for Kendall location)
+2. `Extract Pod Data` / `Extract Elective Data` → splits by service type
+3. `Clear Learning Pod Tab` / `Clear Elective Classes Tab` → wipes existing sheet data
+4. `Write Learning Pod` / `Write Elective Classes` → writes fresh data
+- **Error handling:** None — schedule trigger, no response needed
+
+### Newsletter Workflow
+
+**Weekly Blog Newsletter** (`zueutqemoLNaAPk7`) — Schedule trigger (Monday 10 AM EST)
+1. `Prepare Config` → sets Mailchimp API key, list ID, from info
+2. `Fetch Blog Posts` → HTTP request to WordPress API for recent posts
+3. `Build Newsletter Email` → generates HTML with post summaries and links
+4. `Create Campaign` → Mailchimp API: creates regular campaign
+5. `Set Campaign Content` → Mailchimp API: sets HTML content
+6. `Send Campaign` → Mailchimp API: sends to list
+7. `Sync to Dashboard` → POSTs campaign data to Supabase for tracking
+- **Error handling:** None
+
+### Check-in Reminder System (Legacy — Google Sheets based)
+
+**Monthly Employee Check-in: Hourly Pending Invite Reminder** (`hTmG6BbIPzi3mwZ0`) — Schedule (hourly)
+1. Reads pending invites from Google Sheet
+2. Filters for unsent reminders
+3. Sends reminder emails via Gmail
+4. Updates send counters in sheet
+- **Note:** Legacy system — newer check-in system uses Supabase tables and the Teacher Check-in Notifications workflow above
+
+**Monthly Employee Check-in: Form Receiver** (`MQbnBnUjfplCZYQr`) — n8n Form trigger
+1. Employee fills check-in form
+2. Normalizes data → appends to Google Sheets responses
+3. Updates invite status in sheet
+4. Checks if training needed → sends confirmation email
+- **Note:** Legacy — coexists with newer Supabase-based check-in system
