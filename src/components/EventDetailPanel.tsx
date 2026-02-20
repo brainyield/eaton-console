@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
 import { formatNameLastFirst } from '../lib/utils'
 import { formatCurrency } from '../lib/moneyUtils'
+import { useEventAttendees } from '../lib/hooks'
 import { type EventReminderData } from '../lib/smsTemplates'
 import { SmsComposeModal } from './sms/SmsComposeModal'
 import {
@@ -33,17 +32,6 @@ interface EventWithStats {
   revenue: number
 }
 
-interface AttendeeWithOrder {
-  id: string
-  attendee_name: string
-  attendee_age: number | null
-  purchaser_name: string | null
-  purchaser_email: string | null
-  payment_status: string
-  family_id: string | null
-  family_name: string | null
-}
-
 interface EventDetailPanelProps {
   event: EventWithStats
   onClose: () => void
@@ -51,76 +39,6 @@ interface EventDetailPanelProps {
 
 type SortField = 'attendee_name' | 'purchaser_name' | 'payment_status' | 'family_name'
 type SortDirection = 'asc' | 'desc'
-
-// Database row types for Supabase queries
-interface EventAttendeeRow {
-  id: string
-  attendee_name: string
-  attendee_age: number | null
-  order_id: string | null
-}
-
-interface EventOrderRow {
-  id: string
-  purchaser_name: string | null
-  purchaser_email: string | null
-  payment_status: string | null
-  family_id: string | null
-}
-
-interface FamilyRow {
-  id: string
-  display_name: string | null
-}
-
-function useEventAttendees(eventId: string) {
-  return useQuery({
-    queryKey: ['events', 'attendees', eventId],
-    staleTime: 5 * 60 * 1000,
-    queryFn: async () => {
-      const { data: attendees, error } = await supabase
-        .from('event_attendees')
-        .select('id, attendee_name, attendee_age, order_id')
-        .eq('event_id', eventId)
-        .returns<EventAttendeeRow[]>()
-
-      if (error) throw error
-      if (!attendees || attendees.length === 0) return []
-
-      const orderIds = [...new Set(attendees.map(a => a.order_id).filter(Boolean))] as string[]
-
-      const { data: orders } = await supabase
-        .from('event_orders')
-        .select('id, purchaser_name, purchaser_email, payment_status, family_id')
-        .in('id', orderIds)
-        .returns<EventOrderRow[]>()
-
-      const familyIds = (orders || []).map(o => o.family_id).filter(Boolean) as string[]
-      const { data: families } = familyIds.length > 0
-        ? await supabase.from('families').select('id, display_name').in('id', familyIds).returns<FamilyRow[]>()
-        : { data: [] as FamilyRow[] }
-
-      const orderMap = new Map((orders || []).map(o => [o.id, o]))
-      const familyMap = new Map((families || []).map(f => [f.id, f]))
-
-      return attendees.map(a => {
-        const order = a.order_id ? orderMap.get(a.order_id) : null
-        const family = order?.family_id ? familyMap.get(order.family_id) : null
-
-        return {
-          id: a.id,
-          attendee_name: a.attendee_name,
-          attendee_age: a.attendee_age,
-          purchaser_name: order?.purchaser_name ?? null,
-          purchaser_email: order?.purchaser_email ?? null,
-          payment_status: order?.payment_status || 'unknown',
-          family_id: order?.family_id ?? null,
-          family_name: family?.display_name ?? null
-        } as AttendeeWithOrder
-      })
-    }
-  })
-}
 
 export function EventDetailPanel({ event, onClose }: EventDetailPanelProps) {
   const navigate = useNavigate()

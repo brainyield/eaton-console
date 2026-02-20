@@ -22,7 +22,7 @@
 
 ### `trigger_sync_family_status_to_mailchimp`
 - Fires AFTER UPDATE OF `status` on `families`
-- Conditions: status actually changed, `primary_email` is not null, new status in (`active`, `trial`, `churned`, `paused`)
+- Conditions: status actually changed, `primary_email` is not null, new status in (`active`, `trial`, `churned`, `paused`, `lead`)
 - Uses `pg_net` (async HTTP) to POST to the `mailchimp` edge function with action `sync_family_status`
 - Swaps Mailchimp tags: removes old status tag, adds new one (`active/trial` → `active-family`, `lead` → `lead`, `churned/paused` → `churned`)
 - Writes back `mailchimp_id`, `mailchimp_status`, `mailchimp_last_synced_at` to the family record

@@ -40,7 +40,7 @@
 
 ## Enrollments ↔ Teacher Assignments
 
-- Both have `hours_per_week` fields that must stay in sync
-- `EditEnrollmentModal` handles this — any new edit flows must also sync both
+- Both have `hours_per_week` fields auto-synced via bidirectional DB triggers (when only 1 active assignment exists for the enrollment)
+- For multi-assignment enrollments, update both manually
 - Active Roster and Teachers views display `teacher_assignments.hours_per_week`
 - Invoicing uses `enrollments.hours_per_week`

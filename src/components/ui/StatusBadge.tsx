@@ -2,39 +2,42 @@ import type { CustomerStatus, EnrollmentStatus, InvoiceStatus, LeadStatus } from
 import {
   CUSTOMER_STATUS_COLORS,
   CUSTOMER_STATUS_COLORS_WITH_BORDER,
+  CUSTOMER_STATUS_LABELS,
   ENROLLMENT_STATUS_COLORS,
   ENROLLMENT_STATUS_COLORS_WITH_BORDER,
+  ENROLLMENT_STATUS_LABELS,
   INVOICE_STATUS_COLORS,
+  INVOICE_STATUS_LABELS,
   LEAD_STATUS_COLORS,
   LEAD_STATUS_COLORS_WITH_BORDER,
-  CUSTOMER_STATUS_LABELS,
-  ENROLLMENT_STATUS_LABELS,
-  INVOICE_STATUS_LABELS,
   LEAD_STATUS_LABELS,
-} from '../../lib/statusColors'
+} from './statusConstants'
 
-// Re-export color constants for backward compatibility
+// Re-export all constants for consumers that import from StatusBadge
 export {
   CUSTOMER_STATUS_COLORS,
   CUSTOMER_STATUS_COLORS_WITH_BORDER,
+  CUSTOMER_STATUS_LABELS,
   ENROLLMENT_STATUS_COLORS,
   ENROLLMENT_STATUS_COLORS_WITH_BORDER,
+  ENROLLMENT_STATUS_LABELS,
   INVOICE_STATUS_COLORS,
+  INVOICE_STATUS_LABELS,
   LEAD_STATUS_COLORS,
   LEAD_STATUS_COLORS_WITH_BORDER,
-  CUSTOMER_STATUS_LABELS,
-  ENROLLMENT_STATUS_LABELS,
-  INVOICE_STATUS_LABELS,
   LEAD_STATUS_LABELS,
-} from '../../lib/statusColors'
+} from './statusConstants'
 
 export {
   LEAD_ENGAGEMENT_COLORS,
   LEAD_ENGAGEMENT_COLORS_WITH_BORDER,
   LEAD_TYPE_COLORS,
-} from '../../lib/statusColors'
+} from './statusConstants'
 
-// Generic StatusBadge component
+// =============================================================================
+// STATUS BADGE COMPONENT
+// =============================================================================
+
 type StatusVariant = 'customer' | 'enrollment' | 'invoice' | 'lead'
 
 interface StatusBadgeProps<T extends string> {

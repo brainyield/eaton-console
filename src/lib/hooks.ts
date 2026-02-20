@@ -1138,6 +1138,22 @@ export function useActiveServices() {
 // LOCATIONS HOOKS
 // =============================================================================
 
+export function useAllLocations() {
+  return useQuery({
+    queryKey: queryKeys.locations.all,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('locations')
+        .select('*')
+        .order('name')
+
+      if (error) throw error
+      return data as Location[]
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
 export function useActiveLocations() {
   return useQuery({
     queryKey: queryKeys.locations.active(),
@@ -1153,6 +1169,28 @@ export function useActiveLocations() {
     },
     staleTime: 5 * 60 * 1000,
   })
+}
+
+export function useLocationMutations() {
+  const queryClient = useQueryClient()
+
+  const toggleStatus = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
+      const { error } = await supabase
+        .from('locations')
+        .update({ is_active })
+        .eq('id', id)
+
+      if (error) throw error
+      return { id, is_active }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.all })
+      queryClient.invalidateQueries({ queryKey: queryKeys.locations.active() })
+    },
+  })
+
+  return { toggleStatus }
 }
 
 // =============================================================================
@@ -3676,7 +3714,21 @@ export function useSettingMutations() {
 
       if (error) throw error
     },
-    onSuccess: () => {
+    onMutate: async ({ key, value }) => {
+      await queryClient.cancelQueries({ queryKey: queryKeys.settings.all })
+      const previous = queryClient.getQueryData(queryKeys.settings.all)
+      queryClient.setQueryData(queryKeys.settings.all, (old: Record<string, unknown> | undefined) => ({
+        ...old,
+        [key]: value,
+      }))
+      return { previous }
+    },
+    onError: (_err, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(queryKeys.settings.all, context.previous)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
     },
   })
@@ -8786,5 +8838,120 @@ export function useAcademicCoachingDeadbeats() {
       return Array.from(familyMap.values()).sort((a, b) => b.totalAcAmount - a.totalAcAmount)
     },
     staleTime: 60 * 1000,
+  })
+}
+
+// =============================================================================
+// EVENT DETAIL HOOKS
+// =============================================================================
+
+export interface AttendeeWithOrder {
+  id: string
+  attendee_name: string
+  attendee_age: number | null
+  purchaser_name: string | null
+  purchaser_email: string | null
+  payment_status: string
+  family_id: string | null
+  family_name: string | null
+}
+
+/**
+ * Event attendees with order and family data joined.
+ * Fetches attendees → orders → families in sequence, then merges.
+ */
+export function useEventAttendees(eventId: string) {
+  return useQuery({
+    queryKey: queryKeys.events.attendeesByEvent(eventId),
+    staleTime: 5 * 60 * 1000,
+    queryFn: async (): Promise<AttendeeWithOrder[]> => {
+      interface EventAttendeeRow {
+        id: string
+        attendee_name: string
+        attendee_age: number | null
+        order_id: string | null
+      }
+      interface EventOrderRow {
+        id: string
+        purchaser_name: string | null
+        purchaser_email: string | null
+        payment_status: string | null
+        family_id: string | null
+      }
+      interface FamilyRow {
+        id: string
+        display_name: string | null
+      }
+
+      const { data: attendees, error } = await supabase
+        .from('event_attendees')
+        .select('id, attendee_name, attendee_age, order_id')
+        .eq('event_id', eventId)
+        .returns<EventAttendeeRow[]>()
+
+      if (error) throw error
+      if (!attendees || attendees.length === 0) return []
+
+      const orderIds = [...new Set(attendees.map(a => a.order_id).filter(Boolean))] as string[]
+
+      const { data: orders } = await supabase
+        .from('event_orders')
+        .select('id, purchaser_name, purchaser_email, payment_status, family_id')
+        .in('id', orderIds)
+        .returns<EventOrderRow[]>()
+
+      const familyIds = (orders || []).map(o => o.family_id).filter(Boolean) as string[]
+      const { data: families } = familyIds.length > 0
+        ? await supabase.from('families').select('id, display_name').in('id', familyIds).returns<FamilyRow[]>()
+        : { data: [] as FamilyRow[] }
+
+      const orderMap = new Map((orders || []).map(o => [o.id, o]))
+      const familyMap = new Map((families || []).map(f => [f.id, f]))
+
+      return attendees.map(a => {
+        const order = a.order_id ? orderMap.get(a.order_id) : null
+        const family = order?.family_id ? familyMap.get(order.family_id) : null
+
+        return {
+          id: a.id,
+          attendee_name: a.attendee_name,
+          attendee_age: a.attendee_age,
+          purchaser_name: order?.purchaser_name ?? null,
+          purchaser_email: order?.purchaser_email ?? null,
+          payment_status: order?.payment_status || 'unknown',
+          family_id: order?.family_id ?? null,
+          family_name: family?.display_name ?? null,
+        }
+      })
+    },
+  })
+}
+
+// =============================================================================
+// PG_NET MONITORING HOOKS
+// =============================================================================
+
+export interface PgNetFailure {
+  id: number
+  status_code: number | null
+  error_msg: string | null
+  timed_out: boolean
+  created: string
+  url: string | null
+}
+
+export function usePgNetFailures(sinceHours = 24) {
+  return useQuery({
+    queryKey: queryKeys.pgnet.failures(sinceHours),
+    queryFn: async () => {
+      // RPC not in auto-generated types yet — use type assertion
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (supabase.rpc as any)('get_pgnet_failures', { since_hours: sinceHours })
+
+      if (error) throw error
+      return (data ?? []) as PgNetFailure[]
+    },
+    staleTime: 5 * 60 * 1000,  // check every 5 minutes
+    refetchInterval: 5 * 60 * 1000,
   })
 }

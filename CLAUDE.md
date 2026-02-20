@@ -68,7 +68,9 @@ src/
 │       ├── AccessibleSlidePanel.tsx
 │       ├── FamilyItemGroup.tsx
 │       ├── SmsStatusBadge.tsx
-│       └── SortableTableHeader.tsx
+│       ├── SortableTableHeader.tsx
+│       ├── StatusBadge.tsx
+│       └── statusConstants.ts
 ```
 
 > **Note:** Most route components (Directory, Events, Invoicing, etc.) live in `components/`, not `pages/`. The `pages/` directory is reserved for components that don't fit the standard layout pattern.
@@ -204,7 +206,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 
 ### Database Schema Relationships
 
-- **DON'T** forget `enrollments` and `teacher_assignments` have separate `hours_per_week` — editing hours must update BOTH. Roster/Teachers use `teacher_assignments`, invoicing uses `enrollments`.
+- **DON'T** forget `enrollments` and `teacher_assignments` have separate `hours_per_week` — bidirectional sync triggers auto-sync when only 1 active assignment exists. For multi-assignment enrollments, update both manually. Roster/Teachers use `teacher_assignments`, invoicing uses `enrollments`.
 - **DON'T** assume `revenue_records` links to enrollments — it tracks by `family_id`, `student_id`, `service_id` with no `enrollment_id` FK. Uses `location_id` for location reporting.
 - **DON'T** query payroll tables directly — use unified hooks: `useTeacherPayrollHistory` (per-teacher history), `usePayrollByMonth` (chart data), `useTeacherHasPayments` (deletion guard). These merge legacy `teacher_payments` (Sep-Dec 2025) and batch `payroll_run` (Jan 2026+) automatically.
 

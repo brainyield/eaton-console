@@ -1450,7 +1450,7 @@ Same function as T4. Fires when an enrollment transitions INTO active/trial from
 | **Event** | AFTER UPDATE OF `status` |
 | **Function** | `sync_family_status_to_mailchimp()` (SECURITY DEFINER) |
 
-**What it does:** When a family's `status` column changes AND the new status is `active`, `trial`, `churned`, or `paused`, fires an async HTTP POST via `pg_net` to the `mailchimp` edge function with action `sync_family_status`.
+**What it does:** When a family's `status` column changes AND the new status is `active`, `trial`, `churned`, `paused`, or `lead`, fires an async HTTP POST via `pg_net` to the `mailchimp` edge function with action `sync_family_status`.
 
 **Reads:** `NEW.id`, `NEW.primary_email`, `NEW.primary_contact_name`, `NEW.display_name`, `NEW.primary_phone`, `NEW.status`, `OLD.status`
 **Writes:** Nothing directly — the edge function handles Mailchimp API calls and may write back `mailchimp_id`, `mailchimp_status`, `mailchimp_last_synced_at` to `families`
@@ -1464,7 +1464,7 @@ Same function as T4. Fires when an enrollment transitions INTO active/trial from
 **Gotchas:**
 - Uses `pg_net` (async HTTP) — the trigger call itself is fire-and-forget, but the edge function now logs results to `mailchimp_sync_log`.
 - Only fires when `primary_email IS NOT NULL` (checked in function body, not WHEN clause).
-- Does NOT fire for `lead` status — only `active`, `trial`, `churned`, `paused`. Lead → active conversion triggers it because the new status is `active`.
+- Fires for ALL family statuses: `active`, `trial`, `churned`, `paused`, and `lead`. Tag mapping: `active`/`trial` → `active-family`, `lead` → `lead`, `churned`/`paused` → `churned`.
 - Uses `SECURITY DEFINER` with a hardcoded service role key for the edge function call.
 
 ---
@@ -1486,7 +1486,7 @@ Same function as T4. Fires when an enrollment transitions INTO active/trial from
 
 **Downstream effects:**
 - New lead family creation means it appears in Marketing pipeline.
-- Does NOT fire T6 (Mailchimp sync) because new families are created as `lead` status, which T6 skips.
+- Fires T6 (Mailchimp sync) because T6 now includes `lead` status — new lead families get the `lead` tag in Mailchimp.
 
 **Gotchas:**
 - BEFORE trigger — modifies `NEW.family_id` before the row is inserted.
@@ -1623,15 +1623,15 @@ enrollments INSERT (active/trial)
        └─→ T6: Mailchimp tags synced
 
 families.status changed
-  └─→ T6: Mailchimp tags synced (async, silent failures)
+  └─→ T6: Mailchimp tags synced (async, monitored via usePgNetFailures)
 ```
 
 ### Important Gotchas (Consolidated)
 
 1. **T2 has two triggers** — T2a (`trigger_create_revenue_on_payment`) fires on UPDATE for status changes to `paid`; T2b (`trigger_create_revenue_on_invoice_insert`) fires on INSERT for direct paid inserts (e.g., `createHistoricalInvoice`). Both use the same date guard and location mapping.
 2. **T3 recalculates both OLD and NEW invoices** on payment transfer — no manual reset needed. When total_paid drops to 0, status resets to `draft`.
-3. **T6 uses `pg_net` (async HTTP)** — Mailchimp sync failures are completely silent. Check Mailchimp directly if tags seem wrong.
-4. **T6 does not fire for `lead` status** — only `active`, `trial`, `churned`, `paused`.
+3. **T6 uses `pg_net` (async HTTP)** — failures are logged to `net._http_response`. The `usePgNetFailures()` hook monitors this and surfaces alerts on the Command Center dashboard.
+4. **T6 fires for all statuses** including `lead` — tag mapping: `active`/`trial` → `active-family`, `lead` → `lead`, `churned`/`paused` → `churned`.
 5. **T9 fuzzy match threshold is 0.55** — do NOT change without testing against real sibling name pairs.
 6. **T2 location mapping is hardcoded** — new service codes need manual addition to the CASE statement.
 7. **T3 + T2 chain** — a payment INSERT can cascade through two triggers to create revenue records. Both are idempotent.
@@ -1841,7 +1841,7 @@ Env var: `VITE_N8N_BASE_URL`
 | **Triggers** | T2 `revenue_records` (reads enrollments for student/service/class info on paid invoices), T4 `auto_convert_leads` (fires on INSERT when status=active/trial), T5 `auto_convert_leads` (fires on UPDATE to active/trial), T9/T10 `process_class_registration` (INSERT enrollments from class registrations) |
 | **UI Components** | `ActiveRoster`, `AddEnrollmentModal`, `EditEnrollmentModal`, `EndEnrollmentModal`, `FamilyDetailPanel`, `GenerateDraftsModal`, `EnrollmentDetailPanel`, `SendFormsModal`, `CommandCenter` (direct — active count, trial count, new enrollments) |
 
-**High-risk columns:** `status` (drives T4/T5 lead conversion, roster visibility, billability, dashboard metrics), `hours_per_week` (synced with `teacher_assignments.hours_per_week` — must update both), `service_id` / `student_id` / `family_id` (FK joins across invoicing, payroll, revenue).
+**High-risk columns:** `status` (drives T4/T5 lead conversion, roster visibility, billability, dashboard metrics), `hours_per_week` (auto-synced with `teacher_assignments.hours_per_week` via bidirectional triggers when only 1 active assignment exists), `service_id` / `student_id` / `family_id` (FK joins across invoicing, payroll, revenue).
 
 **Chain reaction:** `enrollments INSERT (status=active)` → T4 converts matching leads → T6 syncs to Mailchimp.
 
@@ -1900,10 +1900,10 @@ Env var: `VITE_N8N_BASE_URL`
 | **Hooks** | `useTeacherAssignmentsByEnrollment`, `useTeacherAssignmentsByTeacher`, `useTeacherAssignmentMutations`, `useTeachersWithLoad`, `useTeacherWithLoad`, `useTeacherStudents`, `usePayrollMutations.createPayrollRun` (reads assignments for hours/rate) |
 | **Edge Functions** | — |
 | **N8N Workflows** | — |
-| **Triggers** | — |
+| **Triggers** | `sync_hours_assignment_to_enrollment` (AFTER UPDATE of `hours_per_week` — syncs to enrollment if only 1 active assignment), `sync_hours_enrollment_to_assignment` (AFTER UPDATE on enrollments — syncs back) |
 | **UI Components** | `EnrollmentDetailPanel`, `TeacherDetailPanel`, `AddAssignmentModal`, `EditAssignmentModal`, `TransferTeacherModal`, `RecordTeacherPaymentModal`, `AddEnrollmentModal`, `EditEnrollmentModal`, `EndEnrollmentModal`, `CheckinForm` (via `useTeacherStudents`) |
 
-**High-risk columns:** `hours_per_week` (must stay synced with `enrollments.hours_per_week` — update both), `hourly_rate` (first in payroll rate resolution; overrides service/teacher defaults), `is_active` (filters for current load calculations, check-in student lists), `enrollment_id` (nullable — service-level assignments have NULL).
+**High-risk columns:** `hours_per_week` (auto-synced with `enrollments.hours_per_week` via bidirectional triggers when only 1 active assignment exists), `hourly_rate` (first in payroll rate resolution; overrides service/teacher defaults), `is_active` (filters for current load calculations, check-in student lists), `enrollment_id` (nullable — service-level assignments have NULL).
 
 ---
 

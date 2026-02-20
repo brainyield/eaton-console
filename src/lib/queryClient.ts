@@ -267,6 +267,7 @@ export const queryKeys = {
     list: () => ['events', 'list'] as const,
     detail: (id: string) => ['events', 'detail', id] as const,
     attendees: () => ['events', 'all-attendees'] as const,
+    attendeesByEvent: (eventId: string) => ['events', 'attendees', eventId] as const,
   },
 
   // Reports
@@ -312,5 +313,10 @@ export const queryKeys = {
   smsMedia: {
     all: ['sms-media'] as const,
     list: () => ['sms-media', 'list'] as const,
+  },
+
+  // pg_net monitoring
+  pgnet: {
+    failures: (hours: number) => ['pgnet', 'failures', hours] as const,
   },
 }

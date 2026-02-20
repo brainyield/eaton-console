@@ -5,6 +5,7 @@ import {
   useDashboardStats,
   useUpcomingBookings,
   useAcademicCoachingDeadbeats,
+  usePgNetFailures,
 } from '../lib/hooks'
 import {
   Users,
@@ -58,6 +59,7 @@ export default function CommandCenter() {
   const { data: stats, isLoading, error } = useDashboardStats()
   const { data: upcomingBookings = [] } = useUpcomingBookings()
   const { data: acDeadbeats = [] } = useAcademicCoachingDeadbeats()
+  const { data: pgnetFailures = [] } = usePgNetFailures(24)
   const [showAllBookings, setShowAllBookings] = useState(false)
 
   // Pagination for bookings - show 5 by default, all when expanded
@@ -106,6 +108,16 @@ export default function CommandCenter() {
         link: '/directory?reengagement=true'
       })
     }
+  }
+
+  if (pgnetFailures.length > 0) {
+    alerts.push({
+      type: 'error',
+      message: 'async trigger failures (pg_net) in last 24h',
+      count: pgnetFailures.length,
+      action: 'Check Settings',
+      link: '/settings'
+    })
   }
 
   const formatCurrency = (amount: number) => {

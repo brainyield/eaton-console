@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Settings as SettingsIcon,
   Building2,
@@ -15,11 +14,10 @@ import {
   ToggleLeft,
   ToggleRight
 } from 'lucide-react'
-import { supabase } from '../lib/supabase'
-import { queryKeys } from '../lib/queryClient'
+import { useSettings, useSettingMutations, useAllLocations, useLocationMutations } from '../lib/hooks'
 import { useToast } from '../lib/toast'
 
-// Types for settings
+// Types for settings form state
 interface BusinessInfo {
   name: string
   email: string
@@ -38,34 +36,11 @@ interface MonthlyRates {
   elective_classes: { default: number }
 }
 
-// Type for app_settings row from Supabase
-interface AppSettingRow {
-  key: string
-  value: unknown
-  description?: string
-  updated_at?: string
-}
-
 type TabId = 'business' | 'invoicing' | 'payments' | 'rates' | 'locations'
-
-// Location type
-interface LocationRow {
-  id: string
-  code: string
-  name: string
-  address_line1: string | null
-  city: string | null
-  state: string | null
-  zip: string | null
-  phone: string | null
-  is_active: boolean
-  created_at: string
-}
 
 export default function Settings() {
   const [activeTab, setActiveTab] = useState<TabId>('business')
   const { showSuccess, showError } = useToast()
-  const queryClient = useQueryClient()
 
   // Local form state (initialized from query data)
   const [businessInfo, setBusinessInfo] = useState<BusinessInfo>({
@@ -96,38 +71,11 @@ export default function Settings() {
     { id: 'locations' as TabId, label: 'Locations', icon: MapPin }
   ]
 
-  // React Query - fetch all settings
-  const { data: settings, isLoading } = useQuery({
-    queryKey: queryKeys.settings.all,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('key, value')
-
-      if (error) throw error
-
-      // Transform array into object for easier access
-      const settingsMap: Record<string, unknown> = {}
-      ;(data as AppSettingRow[] || []).forEach((setting) => {
-        settingsMap[setting.key] = setting.value
-      })
-      return settingsMap
-    },
-  })
-
-  // Fetch locations
-  const { data: locations = [], isLoading: loadingLocations } = useQuery({
-    queryKey: queryKeys.locations.all,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('locations')
-        .select('*')
-        .order('name')
-
-      if (error) throw error
-      return data as LocationRow[]
-    },
-  })
+  // Hooks
+  const { data: settings, isLoading } = useSettings()
+  const { data: locations = [], isLoading: loadingLocations } = useAllLocations()
+  const { updateSetting: updateSettingMutation } = useSettingMutations()
+  const { toggleStatus: toggleLocationStatus } = useLocationMutations()
 
   // Initialize local form state from query data (only once)
   useEffect(() => {
@@ -151,74 +99,17 @@ export default function Settings() {
     }
   }, [settings, hasInitialized])
 
-  // Mutation for saving settings
-  const updateSetting = useMutation({
-    mutationFn: async ({ key, value }: { key: string; value: unknown }) => {
-      const { error } = await supabase
-        .from('app_settings')
-        .update({ value, updated_at: new Date().toISOString() } as never)
-        .eq('key', key)
+  const saving = updateSettingMutation.isPending
 
-      if (error) throw error
-      return { key, value }
-    },
-    onMutate: async ({ key, value }) => {
-      // Cancel in-flight queries
-      await queryClient.cancelQueries({ queryKey: queryKeys.settings.all })
-      
-      // Snapshot previous value
-      const previous = queryClient.getQueryData(queryKeys.settings.all)
-      
-      // Optimistically update
-      queryClient.setQueryData(queryKeys.settings.all, (old: Record<string, unknown> | undefined) => ({
-        ...old,
-        [key]: value,
-      }))
-      
-      return { previous }
-    },
-    onError: (_err, _variables, context) => {
-      // Rollback on error
-      if (context?.previous) {
-        queryClient.setQueryData(queryKeys.settings.all, context.previous)
-      }
-      showError('Failed to save settings')
-    },
-    onSuccess: () => {
-      showSuccess('Settings saved successfully')
-    },
-    onSettled: () => {
-      // Refetch to ensure sync
-      queryClient.invalidateQueries({ queryKey: queryKeys.settings.all })
-    },
-  })
-
-  const saving = updateSetting.isPending
-
-  // Toggle location active status
-  const toggleLocationStatus = useMutation({
-    mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
-        .from('locations')
-        .update({ is_active })
-        .eq('id', id)
-
-      if (error) throw error
-      return { id, is_active }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.locations.all })
-      queryClient.invalidateQueries({ queryKey: queryKeys.locations.active() })
-      showSuccess('Location status updated')
-    },
-    onError: () => {
-      showError('Failed to update location status')
-    },
-  })
-
-  // Save a setting
+  // Save a setting with toast feedback
   function saveSetting(key: string, value: unknown) {
-    updateSetting.mutate({ key, value })
+    updateSettingMutation.mutate(
+      { key, value },
+      {
+        onSuccess: () => showSuccess('Settings saved successfully'),
+        onError: () => showError('Failed to save settings'),
+      }
+    )
   }
 
   // Add payment method
@@ -645,10 +536,13 @@ export default function Settings() {
                       </div>
                     </div>
                     <button
-                      onClick={() => toggleLocationStatus.mutate({
-                        id: location.id,
-                        is_active: !location.is_active
-                      })}
+                      onClick={() => toggleLocationStatus.mutate(
+                        { id: location.id, is_active: !location.is_active },
+                        {
+                          onSuccess: () => showSuccess('Location status updated'),
+                          onError: () => showError('Failed to update location status'),
+                        }
+                      )}
                       disabled={toggleLocationStatus.isPending}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                         location.is_active

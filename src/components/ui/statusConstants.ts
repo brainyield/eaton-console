@@ -1,7 +1,8 @@
-import type { CustomerStatus, EnrollmentStatus, InvoiceStatus, LeadStatus } from './hooks'
+import type { CustomerStatus, EnrollmentStatus, InvoiceStatus, LeadStatus } from '../../lib/hooks'
 
-// Unified status color mappings
-// These provide consistent visual styling across the entire application
+// =============================================================================
+// STATUS COLOR CONSTANTS
+// =============================================================================
 
 export const CUSTOMER_STATUS_COLORS: Record<CustomerStatus, string> = {
   lead: 'bg-violet-500/20 text-violet-400',
