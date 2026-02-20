@@ -69,6 +69,7 @@ CREATE TABLE services (
   requires_teacher boolean NOT NULL DEFAULT true,
   description text,
   is_active boolean NOT NULL DEFAULT true,
+  default_location_id uuid REFERENCES locations(id),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -801,7 +802,7 @@ CREATE TRIGGER invoice_number_trigger
 
 -- Revenue records on direct paid invoice INSERT (complements T2 UPDATE trigger)
 -- Fires when invoices are inserted directly with status='paid' (e.g., historical imports)
--- Uses same location_id CASE mapping and date guard as create_revenue_records_on_payment()
+-- Uses services.default_location_id for location mapping (spanish 101 override still in trigger)
 CREATE OR REPLACE FUNCTION create_revenue_records_on_invoice_insert()
 RETURNS TRIGGER AS $$
 BEGIN

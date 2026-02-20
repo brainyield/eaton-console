@@ -174,6 +174,8 @@ export const queryKeys = {
   stats: {
     dashboard: () => ['stats', 'dashboard'] as const,
     roster: () => ['stats', 'roster'] as const,
+    upcomingBookings: () => ['stats', 'upcomingBookings'] as const,
+    acDeadbeats: () => ['stats', 'acDeadbeats'] as const,
   },
 
   // Gmail
@@ -196,6 +198,10 @@ export const queryKeys = {
       teacherId
         ? ['payroll', 'adjustments', 'pending', teacherId] as const
         : ['payroll', 'adjustments', 'pending'] as const,
+    // Unified payroll hooks
+    teacherHistory: (teacherId: string) => ['payroll', 'teacherHistory', teacherId] as const,
+    teacherHasPayments: (teacherId: string) => ['payroll', 'teacherHasPayments', teacherId] as const,
+    byMonth: (startDate: string) => ['payroll', 'byMonth', startDate] as const,
   },
 
   // Leads

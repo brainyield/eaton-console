@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tansta
 import { supabase } from './supabase'
 import { queryKeys } from './queryClient'
 import { searchGmail, getGmailThread, sendGmail } from './gmail'
-import { getTodayString, parseLocalDate } from './dateUtils'
+import { getTodayString, formatDateLocal, parseLocalDate, dateAtMidnight, daysBetween } from './dateUtils'
 import { addMoney, centsToDollars, multiplyMoney, sumMoney } from './moneyUtils'
 import { formatNameLastFirst } from './utils'
 import type { GmailSearchParams } from '../types/gmail'
@@ -1665,92 +1665,11 @@ export function useTeacherAssignmentMutations() {
 }
 
 // =============================================================================
-// TEACHER PAYMENTS HOOKS
+// TEACHER PAYMENTS HOOKS (legacy — frozen Sep-Dec 2025 data)
 // =============================================================================
-
-// FIXED: Added options parameter to support { enabled } option
-export function useTeacherPaymentsByTeacher(
-  teacherId: string,
-  options?: { enabled?: boolean }
-) {
-  return useQuery({
-    queryKey: queryKeys.teacherPayments.byTeacher(teacherId),
-    queryFn: async () => {
-      const { data, error } = await supabase.from('teacher_payments')
-        .select(`
-          *,
-          line_items:teacher_payment_line_items(*)
-        `)
-        .eq('teacher_id', teacherId)
-        .order('pay_date', { ascending: false })
-
-      if (error) throw error
-      return data as (TeacherPayment & { line_items: unknown[] })[]
-    },
-    enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
-  })
-}
-
-export function useTeacherPaymentMutations() {
-  const queryClient = useQueryClient()
-
-  const createPayment = useMutation({
-    mutationFn: async (data: {
-      teacher_id: string
-      pay_period_start: string
-      pay_period_end: string
-      pay_date: string
-      total_amount: number
-      payment_method?: string | null
-      reference?: string | null
-      notes?: string | null
-      line_items: {
-        description: string
-        hours?: number
-        hourly_rate?: number
-        amount: number
-        service_id?: string
-        enrollment_id?: string
-      }[]
-    }) => {
-      const { line_items, ...paymentData } = data
-
-      // Convert null to undefined for optional fields
-      const cleanedPaymentData = {
-        ...paymentData,
-        payment_method: paymentData.payment_method || undefined,
-        reference: paymentData.reference || undefined,
-        notes: paymentData.notes || undefined,
-      }
-
-      // Create payment
-      const { data: payment, error } = await supabase.from('teacher_payments')
-        .insert(cleanedPaymentData)
-        .select()
-        .single()
-      if (error) throw error
-
-      // Create line items
-      if (line_items.length > 0) {
-        const { error: itemsError } = await supabase.from('teacher_payment_line_items')
-          .insert(line_items.map(li => ({
-            ...li,
-            teacher_payment_id: payment.id,
-          })))
-        if (itemsError) throw itemsError
-      }
-
-      return payment
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.teacherPayments.all })
-      // Invalidate reports - Teacher Payroll metric and payroll-by-month chart
-      queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
-    },
-  })
-
-  return { createPayment }
-}
+// Legacy hooks removed. Teacher payment history is now accessed through
+// unified payroll hooks: useTeacherPayrollHistory, usePayrollByMonth,
+// useTeacherHasPayments. No new writes to teacher_payments table.
 
 // =============================================================================
 // INVOICE TYPES
@@ -4229,68 +4148,507 @@ export function usePayrollRunWithItems(runId: string | undefined) {
   })
 }
 
-/**
- * Fetch payroll line items for a specific teacher from paid payroll runs
- * This is used in TeacherDetailPanel to show bulk payroll history
- */
-export interface TeacherPayrollLineItem {
+// =============================================================================
+// UNIFIED PAYROLL HOOKS
+// =============================================================================
+
+export interface UnifiedPayrollRecord {
   id: string
-  payroll_run_id: string
+  source: 'legacy' | 'batch'
+  teacher_id: string
   period_start: string
   period_end: string
-  paid_at: string
+  paid_date: string
+  total_amount: number
+  total_hours: number | null
+  payment_method: string
+  status: 'paid'
+  line_items: UnifiedPayrollLineItem[]
+}
+
+export interface UnifiedPayrollLineItem {
   description: string
-  actual_hours: number
-  hourly_rate: number
-  final_amount: number
+  hours: number | null
+  hourly_rate: number | null
+  amount: number
   service_name: string | null
   student_name: string | null
 }
 
-export function usePayrollLineItemsByTeacher(teacherId: string, options?: { enabled?: boolean }) {
+export interface PayrollMonthSummary {
+  month: string
+  monthLabel: string
+  total_amount: number
+  payment_count: number
+  sources: { legacy: number; batch: number }
+}
+
+/**
+ * Unified teacher payroll history — merges legacy teacher_payments and batch payroll_run
+ * into a single sorted list. Replaces direct use of useTeacherPaymentsByTeacher +
+ * usePayrollLineItemsByTeacher in components.
+ */
+export function useTeacherPayrollHistory(teacherId: string, options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: queryKeys.payroll.byTeacher(teacherId),
-    queryFn: async () => {
-      // Fetch line items from paid payroll runs for this teacher
-      const { data, error } = await payrollDb.from('payroll_line_item')
+    queryKey: queryKeys.payroll.teacherHistory(teacherId),
+    queryFn: async (): Promise<UnifiedPayrollRecord[]> => {
+      const unified: UnifiedPayrollRecord[] = []
+
+      // Fetch legacy teacher_payments
+      const { data: legacyPayments, error: legacyError } = await supabase
+        .from('teacher_payments')
         .select(`
-          id,
-          payroll_run_id,
-          description,
-          actual_hours,
-          hourly_rate,
-          final_amount,
+          *,
+          line_items:teacher_payment_line_items(
+            description, hours, hourly_rate, amount,
+            service:services(name),
+            enrollment:enrollments(student:students(full_name))
+          )
+        `)
+        .eq('teacher_id', teacherId)
+        .order('pay_date', { ascending: false })
+
+      if (legacyError) throw legacyError
+
+      for (const p of legacyPayments || []) {
+        const lineItems = (p.line_items || []) as {
+          description: string
+          hours: number | null
+          hourly_rate: number | null
+          amount: number
+          service: { name: string } | null
+          enrollment: { student: { full_name: string } | null } | null
+        }[]
+
+        unified.push({
+          id: `legacy-${p.id}`,
+          source: 'legacy',
+          teacher_id: p.teacher_id,
+          period_start: p.pay_period_start,
+          period_end: p.pay_period_end,
+          paid_date: p.pay_date,
+          total_amount: p.total_amount || 0,
+          total_hours: lineItems.reduce((sum, li) => addMoney(sum, li.hours || 0), 0) || null,
+          payment_method: p.payment_method || 'Manual',
+          status: 'paid',
+          line_items: lineItems.map(li => ({
+            description: li.description,
+            hours: li.hours,
+            hourly_rate: li.hourly_rate,
+            amount: li.amount,
+            service_name: li.service?.name || null,
+            student_name: li.enrollment?.student?.full_name || null,
+          })),
+        })
+      }
+
+      // Fetch batch payroll line items from paid runs
+      const { data: batchItems, error: batchError } = await payrollDb
+        .from('payroll_line_item')
+        .select(`
+          id, payroll_run_id, description, actual_hours, hourly_rate, final_amount,
           service:services(name),
           enrollment:enrollments(student:students(full_name)),
-          payroll_run:payroll_run!inner(
-            period_start,
-            period_end,
-            paid_at,
-            status
-          )
+          payroll_run:payroll_run!inner(id, period_start, period_end, paid_at, status)
         `)
         .eq('teacher_id', teacherId)
         .eq('payroll_run.status', 'paid')
         .order('payroll_run(paid_at)', { ascending: false })
 
-      if (error) throw error
+      if (batchError) throw batchError
 
-      // Transform the data to flatten the nested structure
-      return (data || []).map(item => ({
-        id: item.id,
-        payroll_run_id: item.payroll_run_id,
-        period_start: item.payroll_run?.period_start,
-        period_end: item.payroll_run?.period_end,
-        paid_at: item.payroll_run?.paid_at,
-        description: item.description,
-        actual_hours: item.actual_hours,
-        hourly_rate: item.hourly_rate,
-        final_amount: item.final_amount,
-        service_name: item.service?.name || null,
-        student_name: item.enrollment?.student?.full_name || null,
-      })) as TeacherPayrollLineItem[]
+      // Group batch items by payroll_run_id
+      const byRun: Record<string, {
+        run_id: string
+        period_start: string
+        period_end: string
+        paid_at: string
+        items: UnifiedPayrollLineItem[]
+        total_amount: number
+        total_hours: number
+      }> = {}
+
+      for (const item of batchItems || []) {
+        const runId = item.payroll_run_id
+        if (!byRun[runId]) {
+          const paidAtRaw = item.payroll_run?.paid_at || ''
+          const paidDate = paidAtRaw.includes('T') ? paidAtRaw.split('T')[0] : paidAtRaw.split(' ')[0]
+          byRun[runId] = {
+            run_id: runId,
+            period_start: item.payroll_run?.period_start || '',
+            period_end: item.payroll_run?.period_end || '',
+            paid_at: paidDate,
+            items: [],
+            total_amount: 0,
+            total_hours: 0,
+          }
+        }
+        byRun[runId].items.push({
+          description: item.description,
+          hours: item.actual_hours,
+          hourly_rate: item.hourly_rate,
+          amount: item.final_amount,
+          service_name: item.service?.name || null,
+          student_name: item.enrollment?.student?.full_name || null,
+        })
+        byRun[runId].total_amount = addMoney(byRun[runId].total_amount, item.final_amount)
+        byRun[runId].total_hours = addMoney(byRun[runId].total_hours, item.actual_hours || 0)
+      }
+
+      for (const run of Object.values(byRun)) {
+        unified.push({
+          id: `batch-${run.run_id}`,
+          source: 'batch',
+          teacher_id: teacherId,
+          period_start: run.period_start,
+          period_end: run.period_end,
+          paid_date: run.paid_at,
+          total_amount: run.total_amount,
+          total_hours: run.total_hours || null,
+          payment_method: 'Bulk Payroll',
+          status: 'paid',
+          line_items: run.items,
+        })
+      }
+
+      // Sort by paid_date descending
+      unified.sort((a, b) => b.paid_date.localeCompare(a.paid_date))
+      return unified
     },
     enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
+  })
+}
+
+/**
+ * Payroll by month — merges legacy and batch data for charts.
+ * Replaces the inline dual-query in Reports.tsx.
+ */
+export function usePayrollByMonth(startDate: string) {
+  return useQuery({
+    queryKey: queryKeys.payroll.byMonth(startDate),
+    queryFn: async (): Promise<{ payrollData: PayrollMonthSummary[]; totalPayroll: number }> => {
+      // Fetch legacy
+      const { data: legacyPayments, error: legacyError } = await supabase
+        .from('teacher_payments')
+        .select('pay_date, total_amount')
+        .gte('pay_date', startDate)
+        .order('pay_date', { ascending: true })
+
+      if (legacyError) throw legacyError
+
+      // Fetch batch
+      const { data: payrollRuns, error: runsError } = await supabase
+        .from('payroll_run')
+        .select('paid_at, total_adjusted')
+        .eq('status', 'paid')
+        .gte('paid_at', startDate)
+        .order('paid_at', { ascending: true })
+
+      if (runsError) throw runsError
+
+      // Group by month
+      const monthlyData: Record<string, { legacy: number; batch: number; count: number }> = {}
+
+      for (const p of legacyPayments || []) {
+        const date = parseLocalDate(p.pay_date)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        if (!monthlyData[monthKey]) monthlyData[monthKey] = { legacy: 0, batch: 0, count: 0 }
+        monthlyData[monthKey].legacy = addMoney(monthlyData[monthKey].legacy, Number(p.total_amount) || 0)
+        monthlyData[monthKey].count++
+      }
+
+      for (const r of payrollRuns || []) {
+        const paidAt = r.paid_at as string
+        const datePart = paidAt.includes('T') ? paidAt.split('T')[0] : paidAt.split(' ')[0]
+        const date = parseLocalDate(datePart)
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+        if (!monthlyData[monthKey]) monthlyData[monthKey] = { legacy: 0, batch: 0, count: 0 }
+        monthlyData[monthKey].batch = addMoney(monthlyData[monthKey].batch, Number(r.total_adjusted) || 0)
+        monthlyData[monthKey].count++
+      }
+
+      const payrollData: PayrollMonthSummary[] = Object.entries(monthlyData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, data]) => {
+          const [year, m] = month.split('-')
+          const date = new Date(Number(year), Number(m) - 1)
+          return {
+            month,
+            monthLabel: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            total_amount: Math.round(addMoney(data.legacy, data.batch)),
+            payment_count: data.count,
+            sources: { legacy: data.legacy, batch: data.batch },
+          }
+        })
+
+      const totalPayroll = payrollData.reduce((sum, d) => addMoney(sum, d.total_amount), 0)
+
+      return { payrollData, totalPayroll }
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+}
+
+/**
+ * Check if a teacher has any payment records in either system.
+ * Used as a deletion guard — blocks delete if true.
+ */
+export function useTeacherHasPayments(teacherId: string, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: queryKeys.payroll.teacherHasPayments(teacherId),
+    queryFn: async (): Promise<boolean> => {
+      // Check legacy
+      const { count: legacyCount, error: legacyError } = await supabase
+        .from('teacher_payments')
+        .select('id', { count: 'exact', head: true })
+        .eq('teacher_id', teacherId)
+
+      if (legacyError) throw legacyError
+      if ((legacyCount || 0) > 0) return true
+
+      // Check batch
+      const { count: batchCount, error: batchError } = await payrollDb
+        .from('payroll_line_item')
+        .select('id', { count: 'exact', head: true })
+        .eq('teacher_id', teacherId)
+
+      if (batchError) throw batchError
+      return (batchCount || 0) > 0
+    },
+    enabled: options?.enabled !== undefined ? options.enabled && !!teacherId : !!teacherId,
+  })
+}
+
+// =============================================================================
+// REPORTS HOOKS
+// =============================================================================
+
+export interface RevenueByMonth {
+  month: string
+  revenue: number
+}
+
+export interface RevenueByService {
+  month: string
+  [key: string]: string | number
+}
+
+export interface EnrollmentByService {
+  name: string
+  value: number
+  code: string
+}
+
+export interface BalanceAging {
+  bucket: string
+  amount: number
+  count: number
+}
+
+export interface RevenueByLocation {
+  name: string
+  code: string
+  revenue: number
+  enrollments: number
+}
+
+/**
+ * Revenue by month — calls get_revenue_by_month RPC, groups by service,
+ * and fetches cash collected. Replaces Reports.tsx inline query.
+ */
+export function useRevenueByMonth(startDate: string) {
+  return useQuery({
+    queryKey: queryKeys.reports.revenue(startDate),
+    queryFn: async () => {
+      const { data: aggregatedData, error: revenueErr } = await supabase
+        .rpc('get_revenue_by_month', { p_start_date: startDate })
+
+      if (revenueErr) throw revenueErr
+
+      const { data: servicesData } = await supabase
+        .from('services')
+        .select('id, name, code')
+
+      const serviceMap: Record<string, { name: string; code: string }> = {}
+      const serviceNameMap: Record<string, string> = {}
+      ;(servicesData || []).forEach((s: { id: string; name: string; code: string }) => {
+        serviceMap[s.id] = { name: s.name, code: s.code }
+        if (s.code) serviceNameMap[s.code] = s.name
+      })
+
+      const records = aggregatedData || []
+      const monthlyData: Record<string, number> = {}
+      const monthlyByService: Record<string, Record<string, number>> = {}
+      const allServices = new Set<string>()
+
+      records.forEach((rec: { month: string; service_id: string | null; total_revenue: number | null }) => {
+        const monthKey = rec.month
+        const revenue = Number(rec.total_revenue) || 0
+        const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'other'
+
+        if (!monthlyData[monthKey]) monthlyData[monthKey] = 0
+        monthlyData[monthKey] = addMoney(monthlyData[monthKey], revenue)
+
+        if (!monthlyByService[monthKey]) monthlyByService[monthKey] = {}
+        if (!monthlyByService[monthKey][serviceCode]) monthlyByService[monthKey][serviceCode] = 0
+        monthlyByService[monthKey][serviceCode] = addMoney(monthlyByService[monthKey][serviceCode], revenue)
+        allServices.add(serviceCode)
+      })
+
+      const revenueData: RevenueByMonth[] = Object.entries(monthlyData)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month]) => {
+          const [year, m] = month.split('-')
+          const date = new Date(Number(year), Number(m) - 1)
+          return {
+            month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            revenue: Math.round(monthlyData[month]),
+          }
+        })
+
+      const revenueByServiceData: RevenueByService[] = Object.entries(monthlyByService)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, services]) => {
+          const [year, m] = month.split('-')
+          const date = new Date(Number(year), Number(m) - 1)
+          const entry: RevenueByService = {
+            month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          }
+          allServices.forEach((code) => {
+            entry[code] = Math.round(services[code] || 0)
+          })
+          return entry
+        })
+
+      const serviceKeys = Array.from(allServices).sort()
+      const totalRevenue = revenueData.reduce((sum, d) => addMoney(sum, d.revenue), 0)
+
+      if (allServices.has('other')) {
+        serviceNameMap['other'] = 'Other / Unlinked'
+      }
+
+      const { data: cashData } = await supabase
+        .from('invoices')
+        .select('amount_paid')
+        .eq('status', 'paid')
+        .gte('invoice_date', startDate)
+        .limit(5000)
+
+      const cashCollected = (cashData || []).reduce(
+        (sum: number, inv: { amount_paid: number | null }) => addMoney(sum, Number(inv.amount_paid) || 0),
+        0
+      )
+
+      return { revenueData, revenueByServiceData, serviceKeys, serviceNameMap, totalRevenue, cashCollected }
+    },
+  })
+}
+
+/**
+ * Active enrollments by service — for the pie chart.
+ */
+export function useEnrollmentsByService() {
+  return useQuery({
+    queryKey: queryKeys.reports.enrollments(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('enrollments')
+        .select(`
+          id, status, service_id,
+          services (id, name, code)
+        `)
+        .eq('status', 'active')
+
+      if (error) throw error
+
+      const serviceData: Record<string, { name: string; count: number; code: string }> = {}
+      ;(data || []).forEach((e: { services: { id: string; name: string; code: string } | null }) => {
+        const service = e.services
+        if (service) {
+          if (!serviceData[service.id]) serviceData[service.id] = { name: service.name, count: 0, code: service.code }
+          serviceData[service.id].count++
+        }
+      })
+
+      const enrollmentData: EnrollmentByService[] = Object.values(serviceData)
+        .map((s) => ({ name: s.name, value: s.count, code: s.code }))
+        .sort((a, b) => b.value - a.value)
+
+      return { enrollmentData, activeEnrollments: enrollmentData.reduce((sum, d) => sum + d.value, 0) }
+    },
+  })
+}
+
+/**
+ * Invoice balance aging — buckets outstanding invoices by days past due.
+ */
+export function useBalanceAging() {
+  return useQuery({
+    queryKey: queryKeys.reports.balances(),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('invoices')
+        .select('due_date, balance_due, status')
+        .gt('balance_due', 0)
+        .in('status', ['sent', 'partial', 'overdue'])
+
+      if (error) throw error
+
+      const today = dateAtMidnight(new Date())
+      const buckets: Record<string, { amount: number; count: number }> = {
+        'Current': { amount: 0, count: 0 },
+        '1-30 Days': { amount: 0, count: 0 },
+        '31-60 Days': { amount: 0, count: 0 },
+        '61-90 Days': { amount: 0, count: 0 },
+        '90+ Days': { amount: 0, count: 0 },
+      }
+
+      ;(data || []).forEach((inv: { due_date: string | null; balance_due: number | null }) => {
+        if (!inv.due_date) return
+        const dueDate = parseLocalDate(inv.due_date)
+        const pastDue = daysBetween(dueDate, today)
+        const amount = Number(inv.balance_due) || 0
+
+        if (pastDue <= 0) { buckets['Current'].amount = addMoney(buckets['Current'].amount, amount); buckets['Current'].count++ }
+        else if (pastDue <= 30) { buckets['1-30 Days'].amount = addMoney(buckets['1-30 Days'].amount, amount); buckets['1-30 Days'].count++ }
+        else if (pastDue <= 60) { buckets['31-60 Days'].amount = addMoney(buckets['31-60 Days'].amount, amount); buckets['31-60 Days'].count++ }
+        else if (pastDue <= 90) { buckets['61-90 Days'].amount = addMoney(buckets['61-90 Days'].amount, amount); buckets['61-90 Days'].count++ }
+        else { buckets['90+ Days'].amount = addMoney(buckets['90+ Days'].amount, amount); buckets['90+ Days'].count++ }
+      })
+
+      const balanceData: BalanceAging[] = Object.entries(buckets).map(([bucket, d]) => ({
+        bucket, amount: Math.round(d.amount), count: d.count,
+      }))
+
+      return { balanceData, totalOutstanding: balanceData.reduce((sum, d) => addMoney(sum, d.amount), 0) }
+    },
+  })
+}
+
+/**
+ * Revenue by location — calls get_revenue_by_location RPC.
+ */
+export function useRevenueByLocation(startDate: string) {
+  return useQuery({
+    queryKey: queryKeys.reports.location(startDate),
+    queryFn: async () => {
+      const { data: aggregatedData, error: revenueErr } = await supabase
+        .rpc('get_revenue_by_location', { p_start_date: startDate })
+
+      if (revenueErr) throw revenueErr
+
+      const locationData: RevenueByLocation[] = (aggregatedData || [])
+        .map((rec: { location_name: string | null; location_code: string | null; total_revenue: number; record_count: number }) => ({
+          name: rec.location_name || 'No Location',
+          code: rec.location_code || 'none',
+          revenue: Math.round(Number(rec.total_revenue) || 0),
+          enrollments: Number(rec.record_count) || 0,
+        }))
+        .filter((loc: RevenueByLocation) => loc.revenue > 0)
+        .sort((a: RevenueByLocation, b: RevenueByLocation) => b.revenue - a.revenue)
+
+      return { locationData }
+    },
   })
 }
 
@@ -4494,6 +4852,10 @@ export function usePayrollMutations() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.all })
       queryClient.invalidateQueries({ queryKey: queryKeys.payroll.pendingAdjustments() })
+      // Invalidate unified payroll hooks
+      queryClient.invalidateQueries({ queryKey: ['payroll', 'teacherHistory'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll', 'teacherHasPayments'] })
+      queryClient.invalidateQueries({ queryKey: ['payroll', 'byMonth'] })
       // Invalidate reports - payroll by month chart
       queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
     },
@@ -4538,6 +4900,10 @@ export function usePayrollMutations() {
       // so TeacherDetailPanel's payroll tab updates automatically
       if (variables.status === 'paid') {
         queryClient.invalidateQueries({ queryKey: ['payroll', 'teacher'] })
+        // Invalidate unified payroll hooks
+        queryClient.invalidateQueries({ queryKey: ['payroll', 'teacherHistory'] })
+        queryClient.invalidateQueries({ queryKey: ['payroll', 'teacherHasPayments'] })
+        queryClient.invalidateQueries({ queryKey: ['payroll', 'byMonth'] })
         // Invalidate reports - payroll by month chart
         queryClient.invalidateQueries({ queryKey: queryKeys.reports.all })
       }
@@ -7991,5 +8357,434 @@ export function usePublicInvoice(publicId: string) {
       }
     },
     enabled: !!publicId,
+  })
+}
+
+// =============================================================================
+// DASHBOARD / COMMAND CENTER HOOKS
+// =============================================================================
+
+export interface DashboardStats {
+  activeStudents: number
+  activeFamilies: number
+  activeTeachers: number
+  outstandingBalance: number
+  overdueInvoices: number
+  overdueInvoices30Plus: number
+  unbilledHubSessions: number
+  totalMRR: number
+  grossProfitMargin: number
+  avgRevenuePerStudent: number
+  newEnrollmentsThisMonth: number
+  unopenedInvoices: number
+  familiesNeedingReengagement: number
+  leadsExitIntent: number
+  leadsWaitlist: number
+  leadsCalendlyCall: number
+  leadsEvent: number
+  totalLeads: number
+  upcomingCalls: number
+  upcomingHubDropoffs: number
+  enrollmentsLastMonth: number
+  enrollmentsChange: number
+}
+
+export interface UpcomingBooking {
+  id: string
+  event_type: string
+  invitee_name: string
+  invitee_phone: string | null
+  scheduled_at: string
+  student_name?: string
+}
+
+export interface AcDeadbeat {
+  familyName: string
+  familyId: string
+  invoiceCount: number
+  totalAcAmount: number
+  maxOverdueDays: number
+}
+
+/**
+ * Dashboard stats for the Command Center — 16 parallel Supabase queries
+ * covering active counts, MRR, profit margin, leads pipeline, overdue invoices, etc.
+ */
+export function useDashboardStats() {
+  return useQuery({
+    queryKey: queryKeys.stats.dashboard(),
+    queryFn: async (): Promise<DashboardStats> => {
+      const now = new Date()
+      const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+      const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0).toISOString()
+
+      // For 90-day profit margin
+      const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000).toISOString()
+
+      // For 30+ day overdue calculation
+      const thirtyDaysAgo = formatDateLocal(new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000))
+
+      // For unbilled hub sessions (only count past sessions)
+      const today = formatDateLocal(now)
+
+      // Fetch all stats in parallel
+      const [
+        studentsWithActiveEnrollmentsResult,
+        familiesResult,
+        teachersResult,
+        invoicesResult,
+        hubSessionsResult,
+        enrollmentsResult,
+        stepUpPendingResult,
+        profitMarginResult,
+        newEnrollmentsResult,
+        lastMonthEnrollmentsResult,
+        unopenedInvoicesResult,
+        reengagementResult,
+        leadsResult,
+        upcomingCalendlyResult,
+        overdue30PlusResult,
+        eventLeadsViewResult,
+      ] = await Promise.all([
+        // Students with active/trial enrollments
+        supabase
+          .from('enrollments')
+          .select('student_id')
+          .in('status', ['active', 'trial']),
+
+        // Active families
+        supabase
+          .from('families')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'active'),
+
+        // Active teachers
+        supabase
+          .from('teachers')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'active'),
+
+        // Outstanding invoices (sent, partial, overdue)
+        supabase
+          .from('invoices')
+          .select('balance_due, status, total_amount')
+          .in('status', ['sent', 'partial', 'overdue']),
+
+        // Unbilled hub sessions (only past sessions that need billing)
+        supabase
+          .from('hub_sessions')
+          .select('id', { count: 'exact', head: true })
+          .is('invoice_line_item_id', null)
+          .lte('session_date', today),
+
+        // Active enrollments for MRR calculation
+        supabase
+          .from('enrollments')
+          .select('monthly_rate, weekly_tuition, hourly_rate_customer, hours_per_week, daily_rate, service:services(code)')
+          .eq('status', 'active'),
+
+        // Pending Step Up event orders
+        supabase
+          .from('event_stepup_pending')
+          .select('total_cents'),
+
+        // Profit margin from invoice line items (paid invoices in last 90 days)
+        supabase
+          .from('invoice_line_items')
+          .select('amount, profit, invoice:invoices!inner(status, paid_at)')
+          .eq('invoice.status', 'paid')
+          .gte('invoice.paid_at', ninetyDaysAgo),
+
+        // New enrollments this month (based on when enrollment was created, not start_date)
+        supabase
+          .from('enrollments')
+          .select('id', { count: 'exact', head: true })
+          .gte('created_at', monthStart),
+
+        // Total enrollments created last month (full month)
+        supabase
+          .from('enrollments')
+          .select('id', { count: 'exact', head: true })
+          .gte('created_at', lastMonthStart)
+          .lte('created_at', lastMonthEnd),
+
+        // Unopened invoices (sent but never viewed)
+        supabase
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .not('sent_at', 'is', null)
+          .is('viewed_at', null)
+          .in('status', ['sent', 'overdue']),
+
+        // Families needing reengagement
+        supabase
+          .from('families')
+          .select('id', { count: 'exact', head: true })
+          .eq('reengagement_flag', true),
+
+        // Leads by type (new/contacted only) - leads are families with status='lead'
+        supabase
+          .from('families')
+          .select('lead_type')
+          .eq('status', 'lead')
+          .in('lead_status', ['new', 'contacted']),
+
+        // Upcoming Calendly bookings
+        supabase
+          .from('calendly_bookings')
+          .select('event_type')
+          .eq('status', 'scheduled')
+          .gte('scheduled_at', now.toISOString()),
+
+        // Overdue invoices 30+ days (due_date before 30 days ago)
+        supabase
+          .from('invoices')
+          .select('id', { count: 'exact', head: true })
+          .eq('status', 'overdue')
+          .lte('due_date', thirtyDaysAgo),
+
+        // Event purchasers without enrollments (from event_leads view)
+        supabase
+          .from('event_leads')
+          .select('family_id', { count: 'exact', head: true }),
+      ])
+
+      // Type definitions
+      interface InvoiceData {
+        balance_due: number | null
+        status: string | null
+        total_amount: number | null
+      }
+      interface EnrollmentData {
+        monthly_rate: number | null
+        weekly_tuition: number | null
+        hourly_rate_customer: number | null
+        hours_per_week: number | null
+        daily_rate: number | null
+        service: { code: string } | null
+      }
+      interface StepUpPendingData {
+        total_cents: number | null
+      }
+      interface LineItemData {
+        amount: number | null
+        profit: number | null
+      }
+      interface LeadData {
+        lead_type: string
+      }
+      interface CalendlyData {
+        event_type: string
+      }
+      const invoices = (invoicesResult.data || []) as InvoiceData[]
+      const enrollments = (enrollmentsResult.data || []) as EnrollmentData[]
+      const stepUpPending = (stepUpPendingResult.data || []) as StepUpPendingData[]
+      const lineItems = (profitMarginResult.data || []) as LineItemData[]
+      const leads = (leadsResult.data || []) as LeadData[]
+      const calendlyBookings = (upcomingCalendlyResult.data || []) as CalendlyData[]
+
+      // Count unique students with active/trial enrollments
+      interface StudentEnrollmentData {
+        student_id: string | null
+      }
+      const studentsWithEnrollments = (studentsWithActiveEnrollmentsResult.data || []) as StudentEnrollmentData[]
+      const uniqueActiveStudents = new Set(
+        studentsWithEnrollments
+          .map(e => e.student_id)
+          .filter((id): id is string => id !== null)
+      ).size
+
+      // Calculate outstanding balance
+      const outstandingBalance = invoices.reduce(
+        (sum, inv) => sum + (inv.balance_due || 0),
+        0
+      )
+
+      // Count overdue invoices
+      const overdueInvoices = invoices.filter(inv => inv.status === 'overdue').length
+
+      // Calculate MRR from active enrollments
+      const enrollmentMRR = enrollments.reduce((sum, e) => {
+        const serviceCode = e.service?.code
+        if (serviceCode === 'learning_pod') {
+          return sum + (e.daily_rate || 0) * 4
+        }
+        if (serviceCode === 'academic_coaching') {
+          return sum + (e.hourly_rate_customer || 0) * (e.hours_per_week || 0) * 4
+        }
+        if (serviceCode === 'eaton_online') {
+          return sum + (e.weekly_tuition || 0) * 4
+        }
+        if (e.monthly_rate) {
+          return sum + e.monthly_rate
+        }
+        return sum
+      }, 0)
+
+      const stepUpMRR = stepUpPending.reduce((sum, order) => {
+        return sum + (order.total_cents || 0) / 100
+      }, 0)
+
+      const totalMRR = enrollmentMRR + stepUpMRR
+
+      // Calculate gross profit margin
+      const totalRevenue = lineItems.reduce((sum, li) => sum + (li.amount || 0), 0)
+      const totalProfit = lineItems.reduce((sum, li) => sum + (li.profit || 0), 0)
+      const grossProfitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0
+
+      // Average revenue per student
+      const avgRevenuePerStudent = uniqueActiveStudents > 0 ? totalMRR / uniqueActiveStudents : 0
+
+      // Count leads by type (from leads table)
+      const leadsExitIntent = leads.filter(l => l.lead_type === 'exit_intent').length
+      const leadsWaitlist = leads.filter(l => l.lead_type === 'waitlist').length
+      const leadsCalendlyCall = leads.filter(l => l.lead_type === 'calendly_call').length
+      // Event leads = leads table + event_leads view (families with event orders but no enrollments)
+      const eventTypeLeadsCount = leads.filter(l => l.lead_type === 'event').length
+      const eventPurchasersCount = eventLeadsViewResult.count || 0
+      const leadsEvent = eventTypeLeadsCount + eventPurchasersCount
+      const totalLeads = leads.length + eventPurchasersCount
+
+      // Count upcoming Calendly bookings by type
+      const upcomingCalls = calendlyBookings.filter(b => b.event_type === '15min_call').length
+      const upcomingHubDropoffs = calendlyBookings.filter(b => b.event_type === 'hub_dropoff').length
+
+      // Enrollments change
+      const enrollmentsLastMonth = lastMonthEnrollmentsResult.count || 0
+      const newEnrollmentsThisMonth = newEnrollmentsResult.count || 0
+      let enrollmentsChange = 0
+      if (enrollmentsLastMonth > 0) {
+        enrollmentsChange = ((newEnrollmentsThisMonth - enrollmentsLastMonth) / enrollmentsLastMonth) * 100
+      } else if (newEnrollmentsThisMonth > 0) {
+        // If last month was 0 and this month has enrollments, show 100% growth
+        enrollmentsChange = 100
+      }
+
+      return {
+        activeStudents: uniqueActiveStudents,
+        activeFamilies: familiesResult.count || 0,
+        activeTeachers: teachersResult.count || 0,
+        outstandingBalance,
+        overdueInvoices,
+        overdueInvoices30Plus: overdue30PlusResult.count || 0,
+        unbilledHubSessions: hubSessionsResult.count || 0,
+        totalMRR,
+        grossProfitMargin,
+        avgRevenuePerStudent,
+        newEnrollmentsThisMonth,
+        unopenedInvoices: unopenedInvoicesResult.count || 0,
+        familiesNeedingReengagement: reengagementResult.count || 0,
+        leadsExitIntent,
+        leadsWaitlist,
+        leadsCalendlyCall,
+        leadsEvent,
+        totalLeads,
+        upcomingCalls,
+        upcomingHubDropoffs,
+        enrollmentsLastMonth,
+        enrollmentsChange,
+      }
+    },
+    staleTime: 60 * 1000,
+  })
+}
+
+/**
+ * Upcoming Calendly bookings with details (name, phone, student, scheduled time).
+ */
+export function useUpcomingBookings() {
+  return useQuery({
+    queryKey: queryKeys.stats.upcomingBookings(),
+    queryFn: async (): Promise<UpcomingBooking[]> => {
+      const { data, error } = await supabase
+        .from('calendly_bookings')
+        .select('id, event_type, invitee_name, invitee_phone, scheduled_at, student_name')
+        .eq('status', 'scheduled')
+        .gte('scheduled_at', new Date().toISOString())
+        .order('scheduled_at', { ascending: true })
+
+      if (error) throw error
+      return (data || []) as UpcomingBooking[]
+    },
+    staleTime: 60 * 1000,
+  })
+}
+
+/**
+ * Academic coaching deadbeats — families with AC invoices overdue 5+ days,
+ * grouped by family with total amount and max overdue days.
+ */
+export function useAcademicCoachingDeadbeats() {
+  return useQuery({
+    queryKey: queryKeys.stats.acDeadbeats(),
+    queryFn: async (): Promise<AcDeadbeat[]> => {
+      const now = new Date()
+      const fiveDaysAgo = formatDateLocal(new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000))
+
+      const { data, error } = await supabase
+        .from('invoices')
+        .select(`
+          id,
+          family_id,
+          due_date,
+          families(display_name),
+          invoice_line_items(
+            amount,
+            enrollment:enrollments(
+              service:services(code)
+            )
+          )
+        `)
+        .in('status', ['sent', 'overdue', 'partial'])
+        .lte('due_date', fiveDaysAgo)
+
+      if (error) throw error
+
+      interface RawLineItem {
+        amount: number | null
+        enrollment: { service: { code: string } | null } | null
+      }
+      interface RawInvoice {
+        id: string
+        family_id: string
+        due_date: string | null
+        families: { display_name: string } | null
+        invoice_line_items: RawLineItem[]
+      }
+
+      const invoices = (data || []) as RawInvoice[]
+      const familyMap = new Map<string, AcDeadbeat>()
+
+      for (const invoice of invoices) {
+        const acLineItems = invoice.invoice_line_items.filter(
+          li => li.enrollment?.service?.code === 'academic_coaching'
+        )
+        if (acLineItems.length === 0) continue
+
+        const acAmount = acLineItems.reduce((sum, li) => sum + (li.amount || 0), 0)
+        const overdueDays = invoice.due_date
+          ? daysBetween(parseLocalDate(invoice.due_date), now)
+          : 0
+
+        const existing = familyMap.get(invoice.family_id)
+        if (existing) {
+          existing.invoiceCount += 1
+          existing.totalAcAmount += acAmount
+          existing.maxOverdueDays = Math.max(existing.maxOverdueDays, overdueDays)
+        } else {
+          familyMap.set(invoice.family_id, {
+            familyId: invoice.family_id,
+            familyName: invoice.families?.display_name || 'Unknown',
+            invoiceCount: 1,
+            totalAcAmount: acAmount,
+            maxOverdueDays: overdueDays,
+          })
+        }
+      }
+
+      return Array.from(familyMap.values()).sort((a, b) => b.totalAcAmount - a.totalAcAmount)
+    },
+    staleTime: 60 * 1000,
   })
 }

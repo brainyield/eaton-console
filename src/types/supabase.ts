@@ -2374,6 +2374,78 @@ export type Database = {
         }
         Relationships: []
       }
+      mailchimp_sync_log: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          family_id: string | null
+          id: string
+          mailchimp_id: string | null
+          new_status: string | null
+          old_status: string | null
+          sync_status: string
+          tag_applied: string | null
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          family_id?: string | null
+          id?: string
+          mailchimp_id?: string | null
+          new_status?: string | null
+          old_status?: string | null
+          sync_status?: string
+          tag_applied?: string | null
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          family_id?: string | null
+          id?: string
+          mailchimp_id?: string | null
+          new_status?: string | null
+          old_status?: string | null
+          sync_status?: string
+          tag_applied?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mailchimp_sync_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "event_leads"
+            referencedColumns: ["family_id"]
+          },
+          {
+            foreignKeyName: "mailchimp_sync_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "families"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mailchimp_sync_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "family_overview"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mailchimp_sync_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_1_id"]
+          },
+          {
+            foreignKeyName: "mailchimp_sync_log_family_id_fkey"
+            columns: ["family_id"]
+            isOneToOne: false
+            referencedRelation: "potential_duplicate_families"
+            referencedColumns: ["family_2_id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -2843,6 +2915,7 @@ export type Database = {
           code: string
           created_at: string
           default_customer_rate: number | null
+          default_location_id: string | null
           default_teacher_rate: number | null
           description: string | null
           id: string
@@ -2855,6 +2928,7 @@ export type Database = {
           code: string
           created_at?: string
           default_customer_rate?: number | null
+          default_location_id?: string | null
           default_teacher_rate?: number | null
           description?: string | null
           id?: string
@@ -2867,6 +2941,7 @@ export type Database = {
           code?: string
           created_at?: string
           default_customer_rate?: number | null
+          default_location_id?: string | null
           default_teacher_rate?: number | null
           description?: string | null
           id?: string
@@ -2874,7 +2949,15 @@ export type Database = {
           name?: string
           requires_teacher?: boolean
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "services_default_location_id_fkey"
+            columns: ["default_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       sms_media: {
         Row: {

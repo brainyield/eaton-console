@@ -1367,7 +1367,7 @@ When multiple triggers exist on the same table/event, PostgreSQL fires BEFORE tr
 **Gotchas:**
 - T2a fires on UPDATE only; T2b fires on INSERT only. Together they cover all paid invoice paths.
 - Idempotent: both use `ON CONFLICT DO NOTHING` on `source_line_item_id` — re-paying won't duplicate records.
-- New service codes must be added to the CASE mapping in **both** functions manually — unmapped services get `location_id = NULL`.
+- Location mapping reads `services.default_location_id` dynamically — new services just need a `default_location_id` set. Only per-class override (spanish 101 → remote) is still in the trigger.
 - Pre-2026 invoices are excluded by both triggers (`invoice_date < '2026-01-01'`).
 
 ---
@@ -1914,10 +1914,10 @@ Env var: `VITE_N8N_BASE_URL`
 | **Hooks** | `useServices`, `useActiveServices`, joined by: `useEnrollments`, `useEnrollmentsByFamily`, `useBillableEnrollments`, `useTeachersWithLoad`, `useTeacherStudents` |
 | **Edge Functions** | `send-onboarding` (R — reads service onboarding config from `SERVICE_ONBOARDING_CONFIG`) |
 | **N8N Workflows** | — |
-| **Triggers** | T2 `revenue_records` (reads `services.code` for hardcoded location mapping — new codes must be added to CASE statement) |
+| **Triggers** | T2 `revenue_records` (reads `services.default_location_id` for location mapping — set column when adding new services) |
 | **UI Components** | `ActiveRoster`, `AddAssignmentModal`, `AddEnrollmentModal`, `Teachers`, `Reports` (direct — revenue by service) |
 
-**High-risk columns:** `code` (hardcoded in T2's location CASE mapping — adding a new service code without updating T2 causes `location_id = NULL` in revenue records), `status` (filters active services for enrollment/assignment creation), `hourly_rate` (second in payroll rate resolution hierarchy).
+**High-risk columns:** `default_location_id` (used by T2 triggers for revenue location — new services with NULL here get `location_id = NULL` in revenue records), `code` (referenced in T2 for spanish 101 override only), `status` (filters active services for enrollment/assignment creation), `hourly_rate` (second in payroll rate resolution hierarchy).
 
 ---
 
@@ -2008,8 +2008,8 @@ These components query Supabase directly. They are sensitive to column renames, 
 
 | Component | Tables Queried Directly |
 |-----------|------------------------|
-| `CommandCenter.tsx` | `enrollments`, `families`, `teachers`, `invoices`, `hub_sessions`, `invoice_line_items`, `event_stepup_pending` (view), `calendly_bookings`, `event_leads` (view) |
-| `Reports.tsx` | `services`, `invoices`, `enrollments`, `teacher_payments`, `payroll_run` + RPCs `get_revenue_by_month`, `get_revenue_by_location` |
+| ~~`CommandCenter.tsx`~~ | ~~Fully refactored (2026-02-20) — now uses `useDashboardStats`, `useUpcomingBookings`, `useAcademicCoachingDeadbeats`~~ |
+| ~~`Reports.tsx`~~ | ~~Fully refactored (2026-02-20) — now uses `usePayrollByMonth`, `useRevenueByMonth`, `useEnrollmentsByService`, `useBalanceAging`, `useRevenueByLocation`~~ |
 | `PublicInvoicePage.tsx` | `invoices`, `families`, `invoice_line_items` |
 | `EventDetailPanel.tsx` | `event_attendees`, `event_orders`, `families` |
 | `Settings.tsx` | `app_settings`, `locations` |
@@ -2020,17 +2020,15 @@ These components query Supabase directly. They are sensitive to column renames, 
 
 | Module | Issue |
 |--------|-------|
-| `CommandCenter.tsx` | Dashboard stats hook (`useDashboardStats`) inlines 30+ metric calculations with direct Supabase queries rather than composing existing hooks. Interface boundary between "what metrics exist" and "how they're calculated" is not cleanly separated. |
-| `Reports.tsx` | Similar to CommandCenter — builds custom queries inline rather than through the hook layer. Some overlap with `useDashboardStats`. |
+| ~~`CommandCenter.tsx`~~ | ~~Refactored (2026-02-20) — `useDashboardStats`, `useUpcomingBookings`, `useAcademicCoachingDeadbeats` extracted to hooks.ts. Zero direct Supabase queries.~~ |
 | `PayrollRunDetail.tsx` | Directly calls N8N webhook (`payroll-notification`) instead of going through a hook or service module. Mixes UI rendering with external service calls. |
 | `statusColors.ts` vs `StatusBadge.tsx` | Status color definitions split between a constants file and a component. Some components import colors directly, others use StatusBadge. No single canonical source. |
-| Dual payroll systems | `teacher_payments` (legacy Sep-Dec 2025) and `payroll_run`/`payroll_line_item` (Jan 2026+). Reports must query both with no unified interface. See **Unified Payroll Interface Spec** below. |
 
 ---
 
 ### Unified Payroll Interface Spec (Blueprint)
 
-> **Status:** Design only — not yet implemented. This spec defines what a single payroll interface should look like so the rest of the system can stop branching on "which payroll system?" The legacy data (Sep–Dec 2025) is frozen and will never grow, but it must remain queryable for historical reports.
+> **Status:** Implemented (2026-02-20). Three unified hooks created: `useTeacherPayrollHistory`, `usePayrollByMonth`, `useTeacherHasPayments`. Legacy hooks (`useTeacherPaymentsByTeacher`, `useTeacherPaymentMutations`, `usePayrollLineItemsByTeacher`) and `RecordTeacherPaymentModal` removed. All consumers refactored.
 
 #### Problem Statement
 
@@ -2184,38 +2182,16 @@ usePayrollTotal(periodStart: string, periodEnd: string)
 | **Source tagging** | Every unified record carries a `source` field so consumers can distinguish provenance if needed (e.g., showing a "Legacy" badge). |
 | **Query key unification** | Both systems invalidate the same query keys. `usePayrollMutations.*` and `useTeacherPaymentMutations.*` must both invalidate `queryKeys.payroll.teacherHistory(teacherId)` and `queryKeys.reports.payroll(startDate)`. |
 
-#### Affected Code (What Changes During Migration)
+#### Migration Completed (2026-02-20)
 
-| File | Current State | Target State |
-|------|--------------|--------------|
-| `hooks.ts` — `useTeacherPaymentsByTeacher` | Queries `teacher_payments` + `teacher_payment_line_items` | **Keep** as internal helper, unexport. Called only by unified hook. |
-| `hooks.ts` — `usePayrollLineItemsByTeacher` | Queries `payroll_line_item` joined with `payroll_run` | **Keep** as internal helper, unexport. Called only by unified hook. |
-| `hooks.ts` — `useTeacherPaymentMutations` | Creates records in `teacher_payments` | **Remove** or gate with deprecation warning. No new legacy records. |
-| `hooks.ts` — NEW `useTeacherPayrollHistory` | Does not exist | **Create.** Calls both internal helpers, normalizes to `UnifiedPayrollRecord[]`. |
-| `hooks.ts` — NEW `usePayrollByMonth` | Does not exist | **Create.** Replaces Reports.tsx inline query. |
-| `TeacherDetailPanel.tsx` — `PayrollTab` | Imports both hooks, defines local `UnifiedPayment` type, merge logic in `useMemo` | **Simplify.** Import `useTeacherPayrollHistory`, remove merge logic. |
-| `Reports.tsx` — payroll chart query | Inline dual-query to `teacher_payments` + `payroll_run`, manual month grouping | **Replace** with `usePayrollByMonth(startDate)`. |
-| `EditTeacherModal.tsx` | Imports `useTeacherPaymentsByTeacher` to check for legacy payments | **Replace** with `useTeacherHasPayments(teacherId)` (checks both systems). |
-| `RecordTeacherPaymentModal.tsx` | Creates legacy `teacher_payments` records | **Remove** component. Manual recording is replaced by batch payroll. If one-off payments are needed, use `usePayrollMutations.createLineItem` with an ad-hoc run. |
-| `Payroll.tsx` | Only uses batch system hooks | **No change** needed — already clean. |
-
-#### Migration Steps (Recommended Order)
-
-1. **Create unified hooks** (`useTeacherPayrollHistory`, `usePayrollByMonth`, `useTeacherHasPayments`) in `hooks.ts`. These are additive — nothing breaks.
-
-2. **Update `TeacherDetailPanel.tsx`** to use `useTeacherPayrollHistory`. Delete the local `UnifiedPayment` type and the `PayrollTab` merge logic.
-
-3. **Update `Reports.tsx`** to use `usePayrollByMonth`. Delete the inline dual-query and month-grouping logic.
-
-4. **Update `EditTeacherModal.tsx`** to use `useTeacherHasPayments`. This now correctly blocks deletion if a teacher has records in EITHER system.
-
-5. **Deprecate `RecordTeacherPaymentModal`** — remove from `TeacherDetailPanel.tsx` (which is the only place it's rendered). The "Record Manual Payment" button disappears.
-
-6. **Unexport legacy hooks** — make `useTeacherPaymentsByTeacher` and `useTeacherPaymentMutations` internal to `hooks.ts` (or remove exports). If any consumer still references them, update to use unified hooks.
-
-7. **Update query key invalidation** — ensure `usePayrollMutations.*` invalidates `queryKeys.payroll.teacherHistory(*)` and `queryKeys.reports.payroll(*)`.
-
-8. **Run `npm run build` + `npm run lint`** — verify no remaining references to removed exports.
+| File | What Changed |
+|------|-------------|
+| `hooks.ts` | Removed `useTeacherPaymentsByTeacher`, `usePayrollLineItemsByTeacher`, `useTeacherPaymentMutations`, `TeacherPayrollLineItem`. Added `useTeacherPayrollHistory`, `usePayrollByMonth`, `useTeacherHasPayments` with `UnifiedPayrollRecord`, `UnifiedPayrollLineItem`, `PayrollMonthSummary` types. Updated `usePayrollMutations` invalidation to cover unified keys. |
+| `TeacherDetailPanel.tsx` | Replaced dual hook calls with `useTeacherPayrollHistory`. Removed `PayrollTab` merge logic, `UnifiedPayment` type, `RecordTeacherPaymentModal` usage. |
+| `Reports.tsx` | Replaced 80-line inline dual-query with `usePayrollByMonth(startDate)`. Removed `PayrollRow`, `PayrollRunRow`, `PayrollByMonth` types. |
+| `EditTeacherModal.tsx` | Replaced `useTeacherPaymentsByTeacher` + `usePayrollLineItemsByTeacher` with `useTeacherHasPayments`. |
+| `RecordTeacherPaymentModal.tsx` | Deleted — legacy manual payment entry retired. |
+| `queryClient.ts` | Added `payroll.teacherHistory`, `payroll.teacherHasPayments`, `payroll.byMonth` keys. |
 
 #### DB-Level Option (Future, Optional)
 

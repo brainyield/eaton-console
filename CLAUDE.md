@@ -199,14 +199,14 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** leave triggers referencing deprecated tables/columns — they silently fail. Audit triggers in Dashboard after schema changes.
 - **DON'T** worry about stale invoice balances on payment transfer — T3 now recalculates both old and new invoices automatically. However, voiding/deleting invoices with payments should still be done carefully.
 - **DON'T** change the fuzzy match threshold (0.55) in `process_class_registration` without testing — catches typos (score ~0.62) while staying above sibling-to-sibling scores (0.3-0.4).
-- **DON'T** modify `create_revenue_records_on_payment()` without including the `location_id` CASE mapping (service code → location). New service codes must be added to both the trigger and the backfill.
+- **DON'T** forget to set `default_location_id` on new services — T2 triggers use this column for revenue location mapping. Only the spanish 101 elective override is still hardcoded in the trigger.
 - **DON'T** forget `trigger_sync_family_status_to_mailchimp` fires on family status changes — it auto-syncs to Mailchimp via `pg_net`. When changing a family's status, the Mailchimp tags will be updated automatically. Sync results are logged to `mailchimp_sync_log` (pending/success/failed) — use `useMailchimpSyncLog()` to view.
 
 ### Database Schema Relationships
 
 - **DON'T** forget `enrollments` and `teacher_assignments` have separate `hours_per_week` — editing hours must update BOTH. Roster/Teachers use `teacher_assignments`, invoicing uses `enrollments`.
 - **DON'T** assume `revenue_records` links to enrollments — it tracks by `family_id`, `student_id`, `service_id` with no `enrollment_id` FK. Uses `location_id` for location reporting.
-- **DON'T** forget there are TWO payroll systems — `teacher_payments` (legacy, Sep-Dec 2025) and `payroll_run`/`payroll_line_item` (batch, Jan 2026+). Reports must query both; invalidate `queryKeys.reports.all`.
+- **DON'T** query payroll tables directly — use unified hooks: `useTeacherPayrollHistory` (per-teacher history), `usePayrollByMonth` (chart data), `useTeacherHasPayments` (deletion guard). These merge legacy `teacher_payments` (Sep-Dec 2025) and batch `payroll_run` (Jan 2026+) automatically.
 
 ### Business Logic & Lead Management
 
@@ -258,6 +258,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 ### Conventions & Code Quality
 
 - **DON'T** create new hook files — add hooks to `src/lib/hooks.ts`.
+- **DON'T** add inline Supabase queries to page components — `CommandCenter.tsx`, `Reports.tsx`, and `TeacherDetailPanel.tsx` are fully hook-driven. Use existing hooks (`useDashboardStats`, `useRevenueByMonth`, etc.) or create new ones in `hooks.ts`.
 - **DON'T** use `console.log` in committed code.
 - **DON'T** use `Partial<T>` for mutation inputs — use insert types (`FamilyInsert`, `StudentInsert`, etc.).
 - **DON'T** duplicate utility functions — import `formatDateLocal()`, `formatCurrency()`, etc. from their canonical locations.

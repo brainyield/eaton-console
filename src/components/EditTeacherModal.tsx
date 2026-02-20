@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { useTeacherMutations, useTeacherAssignments, useTeacherPaymentsByTeacher, usePayrollLineItemsByTeacher } from '../lib/hooks'
+import { useTeacherMutations, useTeacherAssignments, useTeacherHasPayments } from '../lib/hooks'
 import type { Teacher, EmployeeStatus } from '../lib/hooks'
 import { formatNameLastFirst } from '../lib/utils'
 import { AccessibleModal, ConfirmationModal } from './ui/AccessibleModal'
@@ -40,12 +40,11 @@ export function EditTeacherModal({
 
   // Fetch assignments and payments for validation
   const { data: assignments } = useTeacherAssignments(teacher?.id)
-  const { data: payments } = useTeacherPaymentsByTeacher(teacher?.id || '')
-  const { data: batchPayrollItems } = usePayrollLineItemsByTeacher(teacher?.id || '', { enabled: !!teacher })
+  const { data: hasPayments } = useTeacherHasPayments(teacher?.id || '', { enabled: !!teacher })
 
   // Calculate counts for validation messages
   const validationCounts = useMemo(() => {
-    if (!assignments) return { activeEnrollment: 0, activeService: 0, total: 0, legacyPayments: 0, batchPayrollItems: 0, payments: 0 }
+    if (!assignments) return { activeEnrollment: 0, activeService: 0, total: 0 }
 
     const activeAssignments = assignments.filter(a => a.is_active)
     const enrollmentAssignments = activeAssignments.filter(a => a.enrollment_id !== null)
@@ -55,11 +54,8 @@ export function EditTeacherModal({
       activeEnrollment: enrollmentAssignments.length,
       activeService: serviceAssignments.length,
       total: activeAssignments.length,
-      legacyPayments: payments?.length || 0,
-      batchPayrollItems: batchPayrollItems?.length || 0,
-      payments: (payments?.length || 0) + (batchPayrollItems?.length || 0),
     }
-  }, [assignments, payments, batchPayrollItems])
+  }, [assignments])
 
 
   // Populate form when teacher changes
@@ -174,8 +170,8 @@ export function EditTeacherModal({
     })
   }
 
-  // Can delete only if no active assignments and no payroll history
-  const canDelete = validationCounts.total === 0 && validationCounts.payments === 0
+  // Can delete only if no active assignments and no payroll history (either system)
+  const canDelete = validationCounts.total === 0 && !hasPayments
 
   if (!teacher) return null
 
@@ -191,15 +187,8 @@ export function EditTeacherModal({
     }
     deleteDescriptionParts.push(`Cannot delete — has ${assignmentParts.join(' and ')}. End or transfer all active assignments first.`)
   }
-  if (validationCounts.payments > 0) {
-    const payrollParts = []
-    if (validationCounts.legacyPayments > 0) {
-      payrollParts.push(`${validationCounts.legacyPayments} legacy payment${validationCounts.legacyPayments !== 1 ? 's' : ''}`)
-    }
-    if (validationCounts.batchPayrollItems > 0) {
-      payrollParts.push(`${validationCounts.batchPayrollItems} batch payroll record${validationCounts.batchPayrollItems !== 1 ? 's' : ''}`)
-    }
-    deleteDescriptionParts.push(`Cannot delete — has payroll history (${payrollParts.join(' and ')}). Deactivate this teacher instead.`)
+  if (hasPayments) {
+    deleteDescriptionParts.push('Cannot delete — has payroll history. Deactivate this teacher instead.')
   }
   const deleteDescription = deleteDescriptionParts.length > 0
     ? deleteDescriptionParts.join(' ')

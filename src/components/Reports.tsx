@@ -1,9 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { supabase } from '../lib/supabase'
-import { queryKeys } from '../lib/queryClient'
-import { formatDateLocal, parseLocalDate, dateAtMidnight, daysBetween } from '../lib/dateUtils'
-import { addMoney } from '../lib/moneyUtils'
+import { formatDateLocal } from '../lib/dateUtils'
 import {
   BarChart,
   Bar,
@@ -30,6 +26,7 @@ import {
   RefreshCw,
   Info,
 } from 'lucide-react'
+import { usePayrollByMonth, useRevenueByMonth, useEnrollmentsByService, useBalanceAging, useRevenueByLocation } from '../lib/hooks'
 import { ChartContainer } from './ui/ChartContainer'
 import {
   CHART_COLORS,
@@ -42,70 +39,6 @@ import {
   BAR_RADIUS_TOP,
   BAR_RADIUS_RIGHT,
 } from '../lib/chartTheme'
-
-// Supabase response types
-interface EnrollmentRow {
-  id: string
-  status: string
-  service_id: string
-  services: {
-    id: string
-    name: string
-    code: string
-  } | null
-}
-
-interface BalanceRow {
-  due_date: string
-  balance_due: number | null
-  status: string
-}
-
-interface PayrollRow {
-  pay_date: string
-  total_amount: number | null
-}
-
-interface PayrollRunRow {
-  paid_at: string
-  total_adjusted: number | null
-}
-
-// Chart data types
-interface RevenueByMonth {
-  month: string
-  revenue: number
-}
-
-interface RevenueByService {
-  month: string
-  [key: string]: string | number // dynamic service keys
-}
-
-interface EnrollmentByService {
-  name: string
-  value: number
-  code: string
-}
-
-interface BalanceAging {
-  bucket: string
-  amount: number
-  count: number
-}
-
-interface PayrollByMonth {
-  month: string
-  amount: number
-  payments: number
-}
-
-interface RevenueByLocation {
-  name: string
-  code: string
-  revenue: number
-  enrollments: number
-}
 
 // Date range options
 const DATE_RANGES = [
@@ -150,117 +83,7 @@ export default function Reports() {
     isError: revenueError,
     error: revenueErrorMsg,
     refetch: refetchRevenue
-  } = useQuery({
-    queryKey: queryKeys.reports.revenue(startDate),
-    queryFn: async () => {
-      // Use database function to aggregate revenue (avoids 1000 row limit)
-      const { data: aggregatedData, error: revenueErr } = await supabase
-        .rpc('get_revenue_by_month', { p_start_date: startDate })
-
-      if (revenueErr) throw revenueErr
-
-      // Fetch services for lookup
-      const { data: servicesData } = await supabase
-        .from('services')
-        .select('id, name, code')
-
-      const serviceMap: Record<string, { name: string; code: string }> = {}
-      const serviceNameMap: Record<string, string> = {}
-      ;(servicesData || []).forEach((s: { id: string; name: string; code: string }) => {
-        serviceMap[s.id] = { name: s.name, code: s.code }
-        if (s.code) {
-          serviceNameMap[s.code] = s.name
-        }
-      })
-
-      const records = aggregatedData || []
-
-      // Group by month (total)
-      const monthlyData: Record<string, number> = {}
-      // Group by month and service
-      const monthlyByService: Record<string, Record<string, number>> = {}
-      const allServices = new Set<string>()
-
-      records.forEach((rec: { month: string; service_id: string | null; total_revenue: number | null }) => {
-        const monthKey = rec.month
-        const revenue = Number(rec.total_revenue) || 0
-        const serviceCode = (rec.service_id && serviceMap[rec.service_id]?.code) || 'other'
-
-        // Total by month
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = 0
-        }
-        monthlyData[monthKey] = addMoney(monthlyData[monthKey], revenue)
-
-        // By service
-        if (!monthlyByService[monthKey]) {
-          monthlyByService[monthKey] = {}
-        }
-        if (!monthlyByService[monthKey][serviceCode]) {
-          monthlyByService[monthKey][serviceCode] = 0
-        }
-        monthlyByService[monthKey][serviceCode] = addMoney(monthlyByService[monthKey][serviceCode], revenue)
-        allServices.add(serviceCode)
-      })
-
-      // Convert to array and format month names
-      const chartData: RevenueByMonth[] = Object.entries(monthlyData)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([month]) => {
-          const [year, m] = month.split('-')
-          const date = new Date(Number(year), Number(m) - 1)
-          return {
-            month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-            revenue: Math.round(monthlyData[month]),
-          }
-        })
-
-      // Revenue by service chart data
-      const serviceChartData: RevenueByService[] = Object.entries(monthlyByService)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([month, services]) => {
-          const [year, m] = month.split('-')
-          const date = new Date(Number(year), Number(m) - 1)
-          const entry: RevenueByService = {
-            month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-          }
-          allServices.forEach((code) => {
-            entry[code] = Math.round(services[code] || 0)
-          })
-          return entry
-        })
-
-      const serviceKeys = Array.from(allServices).sort()
-      const totalRevenue = chartData.reduce((sum, d) => addMoney(sum, d.revenue), 0)
-
-      // Ensure 'other' service has a display name
-      if (allServices.has('other')) {
-        serviceNameMap['other'] = 'Other / Unlinked'
-      }
-
-      // Cash-basis revenue: sum of actual payments collected (for margin calculation)
-      const { data: cashData } = await supabase
-        .from('invoices')
-        .select('amount_paid')
-        .eq('status', 'paid')
-        .gte('invoice_date', startDate)
-        .limit(5000)
-
-      const cashCollected = (cashData || []).reduce(
-        (sum: number, inv: { amount_paid: number | null }) => addMoney(sum, Number(inv.amount_paid) || 0),
-        0
-      )
-
-      return {
-        revenueData: chartData,
-        revenueByServiceData: serviceChartData,
-        serviceKeys,
-        serviceNameMap,
-        totalRevenue,
-        cashCollected,
-      }
-    },
-  })
+  } = useRevenueByMonth(startDate)
 
   // Enrollments by service query
   const {
@@ -269,57 +92,7 @@ export default function Reports() {
     isError: enrollmentError,
     error: enrollmentErrorMsg,
     refetch: refetchEnrollments
-  } = useQuery({
-    queryKey: queryKeys.reports.enrollments(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('enrollments')
-        .select(`
-          id,
-          status,
-          service_id,
-          services (
-            id,
-            name,
-            code
-          )
-        `)
-        .eq('status', 'active')
-
-      if (error) throw error
-
-      const enrollments = (data || []) as EnrollmentRow[]
-
-      // Group by service
-      const serviceData: Record<string, { name: string; count: number; code: string }> = {}
-
-      enrollments.forEach((e) => {
-        const service = e.services
-        if (service) {
-          const key = service.id
-          if (!serviceData[key]) {
-            serviceData[key] = { name: service.name, count: 0, code: service.code }
-          }
-          serviceData[key].count++
-        }
-      })
-
-      const chartData: EnrollmentByService[] = Object.values(serviceData)
-        .map((s) => ({
-          name: s.name,
-          value: s.count,
-          code: s.code,
-        }))
-        .sort((a, b) => b.value - a.value)
-
-      const activeEnrollments = chartData.reduce((sum, d) => sum + d.value, 0)
-
-      return {
-        enrollmentData: chartData,
-        activeEnrollments,
-      }
-    },
-  })
+  } = useEnrollmentsByService()
 
   // Balance aging query
   const {
@@ -328,66 +101,7 @@ export default function Reports() {
     isError: balanceError,
     error: balanceErrorMsg,
     refetch: refetchBalances
-  } = useQuery({
-    queryKey: queryKeys.reports.balances(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('invoices')
-        .select('due_date, balance_due, status')
-        .gt('balance_due', 0)
-        .in('status', ['sent', 'partial', 'overdue'])
-
-      if (error) throw error
-
-      const invoices = (data || []) as BalanceRow[]
-
-      const today = dateAtMidnight(new Date())
-      const buckets: Record<string, { amount: number; count: number }> = {
-        'Current': { amount: 0, count: 0 },
-        '1-30 Days': { amount: 0, count: 0 },
-        '31-60 Days': { amount: 0, count: 0 },
-        '61-90 Days': { amount: 0, count: 0 },
-        '90+ Days': { amount: 0, count: 0 },
-      }
-
-      invoices.forEach((inv) => {
-        const dueDate = parseLocalDate(inv.due_date)
-        const daysPastDue = daysBetween(dueDate, today)
-        const amount = Number(inv.balance_due) || 0
-
-        if (daysPastDue <= 0) {
-          // Not yet due or due today
-          buckets['Current'].amount = addMoney(buckets['Current'].amount, amount)
-          buckets['Current'].count++
-        } else if (daysPastDue <= 30) {
-          buckets['1-30 Days'].amount = addMoney(buckets['1-30 Days'].amount, amount)
-          buckets['1-30 Days'].count++
-        } else if (daysPastDue <= 60) {
-          buckets['31-60 Days'].amount = addMoney(buckets['31-60 Days'].amount, amount)
-          buckets['31-60 Days'].count++
-        } else if (daysPastDue <= 90) {
-          buckets['61-90 Days'].amount = addMoney(buckets['61-90 Days'].amount, amount)
-          buckets['61-90 Days'].count++
-        } else {
-          buckets['90+ Days'].amount = addMoney(buckets['90+ Days'].amount, amount)
-          buckets['90+ Days'].count++
-        }
-      })
-
-      const chartData: BalanceAging[] = Object.entries(buckets).map(([bucket, data]) => ({
-        bucket,
-        amount: Math.round(data.amount),
-        count: data.count,
-      }))
-
-      const totalOutstanding = chartData.reduce((sum, d) => addMoney(sum, d.amount), 0)
-
-      return {
-        balanceData: chartData,
-        totalOutstanding,
-      }
-    },
-  })
+  } = useBalanceAging()
 
   // Payroll by month query - combines legacy teacher_payments and batch payroll_run
   const {
@@ -396,82 +110,7 @@ export default function Reports() {
     isError: payrollError,
     error: payrollErrorMsg,
     refetch: refetchPayroll
-  } = useQuery({
-    queryKey: queryKeys.reports.payroll(startDate),
-    queryFn: async () => {
-      // Fetch legacy individual teacher payments
-      const { data: legacyPayments, error: legacyError } = await supabase
-        .from('teacher_payments')
-        .select('pay_date, total_amount')
-        .gte('pay_date', startDate)
-        .order('pay_date', { ascending: true })
-
-      if (legacyError) throw legacyError
-
-      // Fetch batch payroll runs (paid only)
-      const { data: payrollRuns, error: runsError } = await supabase
-        .from('payroll_run')
-        .select('paid_at, total_adjusted')
-        .eq('status', 'paid')
-        .gte('paid_at', startDate)
-        .order('paid_at', { ascending: true })
-
-      if (runsError) throw runsError
-
-      // Group by month - combining both sources
-      const monthlyData: Record<string, { amount: number; count: number }> = {}
-
-      // Add legacy payments
-      const payments = (legacyPayments || []) as PayrollRow[]
-      payments.forEach((p) => {
-        const date = parseLocalDate(p.pay_date)
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { amount: 0, count: 0 }
-        }
-
-        monthlyData[monthKey].amount = addMoney(monthlyData[monthKey].amount, Number(p.total_amount) || 0)
-        monthlyData[monthKey].count++
-      })
-
-      // Add batch payroll runs
-      const runs = (payrollRuns || []) as PayrollRunRow[]
-      runs.forEach((r) => {
-        // paid_at is a timestamp — extract date portion to avoid timezone shift
-        const datePart = r.paid_at.includes('T') ? r.paid_at.split('T')[0] : r.paid_at.split(' ')[0]
-        const date = parseLocalDate(datePart)
-        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-
-        if (!monthlyData[monthKey]) {
-          monthlyData[monthKey] = { amount: 0, count: 0 }
-        }
-
-        monthlyData[monthKey].amount = addMoney(monthlyData[monthKey].amount, Number(r.total_adjusted) || 0)
-        monthlyData[monthKey].count++
-      })
-
-      // Convert to array
-      const chartData: PayrollByMonth[] = Object.entries(monthlyData)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([month, data]) => {
-          const [year, m] = month.split('-')
-          const date = new Date(Number(year), Number(m) - 1)
-          return {
-            month: date.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
-            amount: Math.round(data.amount),
-            payments: data.count,
-          }
-        })
-
-      const totalPayroll = chartData.reduce((sum, d) => addMoney(sum, d.amount), 0)
-
-      return {
-        payrollData: chartData,
-        totalPayroll,
-      }
-    },
-  })
+  } = usePayrollByMonth(startDate)
 
   // Revenue by location query
   const {
@@ -480,31 +119,7 @@ export default function Reports() {
     isError: locationError,
     error: locationErrorMsg,
     refetch: refetchLocation
-  } = useQuery({
-    queryKey: queryKeys.reports.location(startDate),
-    queryFn: async () => {
-      // Use database function to aggregate revenue by location (avoids 1000 row limit)
-      const { data: aggregatedData, error: revenueErr } = await supabase
-        .rpc('get_revenue_by_location', { p_start_date: startDate })
-
-      if (revenueErr) throw revenueErr
-
-      // Convert to chart format
-      const chartData: RevenueByLocation[] = (aggregatedData || [])
-        .map((rec: { location_id: string | null; location_name: string | null; location_code: string | null; total_revenue: number; record_count: number }) => ({
-          name: rec.location_name || 'No Location',
-          code: rec.location_code || 'none',
-          revenue: Math.round(Number(rec.total_revenue) || 0),
-          enrollments: Number(rec.record_count) || 0,
-        }))
-        .filter((loc: RevenueByLocation) => loc.revenue > 0)
-        .sort((a: RevenueByLocation, b: RevenueByLocation) => b.revenue - a.revenue)
-
-      return {
-        locationData: chartData,
-      }
-    },
-  })
+  } = useRevenueByLocation(startDate)
 
   // Combined loading state
   const loading = loadingRevenue || loadingEnrollments || loadingBalances || loadingPayroll || loadingLocation
@@ -532,7 +147,11 @@ export default function Reports() {
   const balanceData = balanceResult?.balanceData ?? []
   const totalOutstanding = balanceResult?.totalOutstanding ?? 0
 
-  const payrollData = payrollResult?.payrollData ?? []
+  const payrollData = (payrollResult?.payrollData ?? []).map(d => ({
+    month: d.monthLabel,
+    amount: d.total_amount,
+    payments: d.payment_count,
+  }))
   const totalPayroll = payrollResult?.totalPayroll ?? 0
 
   const locationData = locationResult?.locationData ?? []
@@ -919,7 +538,7 @@ export default function Reports() {
             <p className="text-xl font-bold text-red-500">
               ${balanceData
                 .filter((d) => d.bucket !== 'Current')
-                .reduce((sum, d) => addMoney(sum, d.amount), 0)
+                .reduce((sum, d) => sum + d.amount, 0)
                 .toLocaleString()}
             </p>
           </div>
