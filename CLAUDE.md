@@ -50,6 +50,8 @@ src/
 │   ├── moneyUtils.ts    # Floating-point safe money operations
 │   ├── phoneUtils.ts    # Phone normalization, validation, formatting
 │   ├── smsTemplates.ts  # SMS templates with merge fields, segment calculation
+│   ├── chartTheme.ts    # Recharts dark theme config
+│   ├── useSelectionState.ts # Table row selection hook
 │   ├── toast.tsx        # Toast context provider
 │   ├── utils.ts         # Name formatting, age calculation
 │   └── validation.ts    # Input validation
