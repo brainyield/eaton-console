@@ -1363,13 +1363,13 @@ When multiple triggers exist on the same table/event, PostgreSQL fires BEFORE tr
 |-------|-------|
 | **Trigger** | `payment_updates_invoice` |
 | **Table** | `payments` |
-| **Event** | AFTER INSERT OR UPDATE (every row) |
+| **Event** | AFTER INSERT OR UPDATE OR DELETE (every row) |
 | **Function** | `update_invoice_on_payment()` |
 
-**What it does:** Recalculates `amount_paid` on the linked invoice by summing all payments, then updates the invoice status: `paid` if fully covered, `partial` if partially covered, unchanged otherwise.
+**What it does:** Recalculates `amount_paid` on the linked invoice by summing all payments, then updates the invoice status: `paid` if fully covered, `partial` if partially covered, `draft` if no payments remain. On payment transfer (UPDATE where `invoice_id` changes), recalculates both the old and new invoices. On DELETE, recalculates the invoice that lost the payment.
 
 **Reads:** `invoices.total_amount`, `payments` (SUM of all payments for that invoice)
-**Writes:** `invoices.amount_paid`, `invoices.status` (may change to `paid` or `partial`)
+**Writes:** `invoices.amount_paid`, `invoices.status` (may change to `paid`, `partial`, or `draft`)
 
 **Downstream effects:**
 - Changing invoice status to `paid` fires **T2** (`trigger_create_revenue_on_payment`), which creates revenue records.
@@ -1378,7 +1378,7 @@ When multiple triggers exist on the same table/event, PostgreSQL fires BEFORE tr
 **Chain reaction:** `payments INSERT` → T3 sets `invoices.status = 'paid'` → T2 creates `revenue_records`
 
 **Gotchas:**
-- Fires on both INSERT and UPDATE. Transferring a payment (updating `invoice_id`) recalculates for the NEW invoice but does NOT recalculate the OLD invoice. You must manually reset `amount_paid` on the source invoice.
+- When total_paid drops to 0 (all payments removed or transferred away), invoice status resets to `draft`.
 - The `balance_due` column on `invoices` is a generated column (`total_amount - amount_paid`) — don't UPDATE it directly.
 
 ---
@@ -1587,8 +1587,8 @@ The following triggers all do the same thing: set `NEW.updated_at = NOW()` befor
 These are the most important multi-step trigger chains. When you touch upstream data, these downstream effects happen invisibly:
 
 ```
-payments INSERT/UPDATE
-  └─→ T3: invoices.amount_paid recalculated, status → paid/partial
+payments INSERT/UPDATE/DELETE
+  └─→ T3: invoices.amount_paid recalculated, status → paid/partial/draft (both old+new invoices on transfer)
        └─→ T2: revenue_records created (if status became 'paid', invoice >= 2026-01-01)
 
 event_orders.payment_status → 'paid'
@@ -1612,7 +1612,7 @@ families.status changed
 ### Important Gotchas (Consolidated)
 
 1. **T2 fires on UPDATE only** — inserting an invoice directly as `paid` skips revenue record creation.
-2. **T3 does not recalculate the OLD invoice** when transferring payments — manually reset `amount_paid`.
+2. **T3 recalculates both OLD and NEW invoices** on payment transfer — no manual reset needed. When total_paid drops to 0, status resets to `draft`.
 3. **T6 uses `pg_net` (async HTTP)** — Mailchimp sync failures are completely silent. Check Mailchimp directly if tags seem wrong.
 4. **T6 does not fire for `lead` status** — only `active`, `trial`, `churned`, `paused`.
 5. **T9 fuzzy match threshold is 0.55** — do NOT change without testing against real sibling name pairs.
@@ -1853,12 +1853,12 @@ Env var: `VITE_N8N_BASE_URL`
 | **Hooks** | `useInvoicePayments`, `useInvoiceMutations.recordPayment`, `useInvoiceMutations.recalculateInvoiceBalance`, `useInvoiceMutations.voidInvoice` (deletes payments) |
 | **Edge Functions** | `stripe-webhook` (W — INSERT payment on checkout completion) |
 | **N8N Workflows** | — |
-| **Triggers** | T3 `payment_updates_invoice` (fires on INSERT/UPDATE — recalculates invoice `amount_paid` and `status`, cascades to T2 revenue) |
+| **Triggers** | T3 `payment_updates_invoice` (fires on INSERT/UPDATE/DELETE — recalculates invoice `amount_paid` and `status` on both old and new invoices on transfer, cascades to T2 revenue) |
 | **UI Components** | `InvoiceDetailPanel` (payment list + record payment form) |
 
-**High-risk columns:** `invoice_id` (FK — changing it recalculates NEW invoice but NOT old invoice's `amount_paid`), `amount` (summed by T3 into `invoices.amount_paid`).
+**High-risk columns:** `invoice_id` (FK — changing it triggers T3 to recalculate both old and new invoices automatically), `amount` (summed by T3 into `invoices.amount_paid`).
 
-**Critical gotcha:** T3 fires on INSERT only for new payments but also on UPDATE. Transferring a payment by changing `invoice_id` recalculates the NEW invoice but leaves the OLD invoice's `amount_paid` stale — must be manually reset.
+**Note:** T3 now handles payment transfers automatically — no manual `amount_paid` reset needed on the source invoice.
 
 ---
 

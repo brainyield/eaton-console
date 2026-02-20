@@ -680,28 +680,62 @@ CREATE TRIGGER update_email_templates_updated_at BEFORE UPDATE ON email_template
 CREATE OR REPLACE FUNCTION update_invoice_on_payment()
 RETURNS TRIGGER AS $$
 DECLARE
-  invoice_total numeric;
-  total_paid numeric;
+  v_invoice_total numeric;
+  v_total_paid numeric;
+  v_target_id uuid;
 BEGIN
-  SELECT total_amount INTO invoice_total FROM invoices WHERE id = NEW.invoice_id;
-  SELECT COALESCE(SUM(amount), 0) INTO total_paid FROM payments WHERE invoice_id = NEW.invoice_id;
-  
-  UPDATE invoices 
-  SET 
-    amount_paid = total_paid,
-    status = CASE 
-      WHEN total_paid >= invoice_total THEN 'paid'::invoice_status
-      WHEN total_paid > 0 THEN 'partial'::invoice_status
-      ELSE status
-    END
-  WHERE id = NEW.invoice_id;
-  
-  RETURN NEW;
+  -- For DELETE, recalculate the invoice that lost the payment
+  IF TG_OP = 'DELETE' THEN
+    v_target_id := OLD.invoice_id;
+  ELSE
+    v_target_id := NEW.invoice_id;
+  END IF;
+
+  -- Recalculate the target (NEW) invoice
+  IF v_target_id IS NOT NULL THEN
+    SELECT total_amount INTO v_invoice_total FROM invoices WHERE id = v_target_id;
+    SELECT COALESCE(SUM(amount), 0) INTO v_total_paid FROM payments WHERE invoice_id = v_target_id;
+
+    UPDATE invoices
+    SET
+      amount_paid = v_total_paid,
+      status = CASE
+        WHEN v_total_paid >= v_invoice_total THEN 'paid'::invoice_status
+        WHEN v_total_paid > 0 THEN 'partial'::invoice_status
+        WHEN v_total_paid = 0 THEN 'draft'::invoice_status
+        ELSE status
+      END
+    WHERE id = v_target_id;
+  END IF;
+
+  -- On UPDATE: if invoice_id changed (payment transfer), also recalculate the OLD invoice
+  IF TG_OP = 'UPDATE' AND OLD.invoice_id IS DISTINCT FROM NEW.invoice_id AND OLD.invoice_id IS NOT NULL THEN
+    SELECT total_amount INTO v_invoice_total FROM invoices WHERE id = OLD.invoice_id;
+    SELECT COALESCE(SUM(amount), 0) INTO v_total_paid FROM payments WHERE invoice_id = OLD.invoice_id;
+
+    UPDATE invoices
+    SET
+      amount_paid = v_total_paid,
+      status = CASE
+        WHEN v_total_paid >= v_invoice_total THEN 'paid'::invoice_status
+        WHEN v_total_paid > 0 THEN 'partial'::invoice_status
+        WHEN v_total_paid = 0 THEN 'draft'::invoice_status
+        ELSE status
+      END
+    WHERE id = OLD.invoice_id;
+  END IF;
+
+  IF TG_OP = 'DELETE' THEN
+    RETURN OLD;
+  ELSE
+    RETURN NEW;
+  END IF;
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS payment_updates_invoice ON payments;
 CREATE TRIGGER payment_updates_invoice
-  AFTER INSERT OR UPDATE ON payments
+  AFTER INSERT OR UPDATE OR DELETE ON payments
   FOR EACH ROW EXECUTE FUNCTION update_invoice_on_payment();
 
 CREATE OR REPLACE FUNCTION mark_overdue_invoices()
