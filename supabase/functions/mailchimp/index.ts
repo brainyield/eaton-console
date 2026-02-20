@@ -821,96 +821,142 @@ Deno.serve(async (req) => {
           throw new Error('email and status are required')
         }
 
-        const statusEmail = payload.email.toLowerCase()
-        const statusHash = await md5(statusEmail)
-        const memberEndpoint = `/lists/${config.listId}/members/${statusHash}`
+        // Create Supabase client for logging and family updates
+        const supabaseSync = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+        )
 
-        // Parse name into first/last (name stored as "Last, First" or "First Last")
-        let statusFirstName = ''
-        let statusLastName = ''
-        if (payload.name) {
-          const nameParts = payload.name.trim()
-          if (nameParts.includes(',')) {
-            const [last, ...firstParts] = nameParts.split(',')
-            statusFirstName = firstParts.join(',').trim()
-            statusLastName = last.trim()
-          } else {
-            const parts = nameParts.split(/\s+/)
-            statusFirstName = parts[0] || ''
-            statusLastName = parts.slice(1).join(' ') || ''
-          }
-        }
-
-        const statusMergeFields: Record<string, string> = {}
-        if (statusFirstName) statusMergeFields.FNAME = statusFirstName
-        if (statusLastName) statusMergeFields.LNAME = statusLastName
-        if (payload.phone) statusMergeFields.PHONE = payload.phone
-
-        // Upsert member (won't re-subscribe unsubscribed contacts)
-        const upsertResponse = await mailchimpRequest(config, memberEndpoint, 'PUT', {
-          email_address: statusEmail,
-          status_if_new: 'subscribed',
-          merge_fields: statusMergeFields,
-        })
-
-        if (!upsertResponse.ok) {
-          const upsertError = await upsertResponse.json()
-          throw new Error(upsertError.detail || upsertError.title || 'Failed to upsert member')
-        }
-
-        const upsertData = await upsertResponse.json()
-
-        // Map family status to Mailchimp tag
-        const statusTagMap: Record<string, string> = {
-          active: 'active-family',
-          trial: 'active-family',
-          lead: 'lead',
-          churned: 'churned',
-          paused: 'churned',
-        }
-        const newTag = statusTagMap[payload.status] || payload.status
-
-        // Remove old status tags, add new one
-        const allStatusTags = ['active-family', 'lead', 'churned']
-        const tagUpdates = allStatusTags.map(tag => ({
-          name: tag,
-          status: tag === newTag ? 'active' : 'inactive',
-        }))
-
-        const tagEndpoint = `/lists/${config.listId}/members/${statusHash}/tags`
-        const tagResponse = await mailchimpRequest(config, tagEndpoint, 'POST', {
-          tags: tagUpdates,
-        })
-
-        // Tag endpoint returns 204 on success (no body)
-        if (!tagResponse.ok && tagResponse.status !== 204) {
-          const tagError = await tagResponse.json()
-          console.error('Tag update failed:', tagError)
-          // Don't throw — member was upserted successfully
-        }
-
-        // Update family record with mailchimp sync info
-        if (payload.familyId) {
-          const supabaseStatus = createClient(
-            Deno.env.get('SUPABASE_URL')!,
-            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-          )
-          await supabaseStatus
-            .from('families')
-            .update({
-              mailchimp_id: upsertData.id,
-              mailchimp_status: 'synced',
-              mailchimp_last_synced_at: new Date().toISOString(),
+        // Insert pending sync log record
+        let syncLogId: string | null = null
+        try {
+          const { data: logRecord } = await supabaseSync
+            .from('mailchimp_sync_log')
+            .insert({
+              family_id: payload.familyId || null,
+              old_status: payload.old_status || null,
+              new_status: payload.status,
+              sync_status: 'pending',
             })
-            .eq('id', payload.familyId)
+            .select('id')
+            .single()
+          syncLogId = logRecord?.id || null
+        } catch (logErr) {
+          console.error('Failed to create sync log:', logErr)
         }
 
-        result = {
-          success: true,
-          mailchimpId: upsertData.id,
-          action: 'status_synced',
-          tag: newTag,
-          previousStatus: payload.old_status || null,
+        try {
+          const statusEmail = payload.email.toLowerCase()
+          const statusHash = await md5(statusEmail)
+          const memberEndpoint = `/lists/${config.listId}/members/${statusHash}`
+
+          // Parse name into first/last (name stored as "Last, First" or "First Last")
+          let statusFirstName = ''
+          let statusLastName = ''
+          if (payload.name) {
+            const nameParts = payload.name.trim()
+            if (nameParts.includes(',')) {
+              const [last, ...firstParts] = nameParts.split(',')
+              statusFirstName = firstParts.join(',').trim()
+              statusLastName = last.trim()
+            } else {
+              const parts = nameParts.split(/\s+/)
+              statusFirstName = parts[0] || ''
+              statusLastName = parts.slice(1).join(' ') || ''
+            }
+          }
+
+          const statusMergeFields: Record<string, string> = {}
+          if (statusFirstName) statusMergeFields.FNAME = statusFirstName
+          if (statusLastName) statusMergeFields.LNAME = statusLastName
+          if (payload.phone) statusMergeFields.PHONE = payload.phone
+
+          // Upsert member (won't re-subscribe unsubscribed contacts)
+          const upsertResponse = await mailchimpRequest(config, memberEndpoint, 'PUT', {
+            email_address: statusEmail,
+            status_if_new: 'subscribed',
+            merge_fields: statusMergeFields,
+          })
+
+          if (!upsertResponse.ok) {
+            const upsertError = await upsertResponse.json()
+            throw new Error(upsertError.detail || upsertError.title || 'Failed to upsert member')
+          }
+
+          const upsertData = await upsertResponse.json()
+
+          // Map family status to Mailchimp tag
+          const statusTagMap: Record<string, string> = {
+            active: 'active-family',
+            trial: 'active-family',
+            lead: 'lead',
+            churned: 'churned',
+            paused: 'churned',
+          }
+          const newTag = statusTagMap[payload.status] || payload.status
+
+          // Remove old status tags, add new one
+          const allStatusTags = ['active-family', 'lead', 'churned']
+          const tagUpdates = allStatusTags.map(tag => ({
+            name: tag,
+            status: tag === newTag ? 'active' : 'inactive',
+          }))
+
+          const tagEndpoint = `/lists/${config.listId}/members/${statusHash}/tags`
+          const tagResponse = await mailchimpRequest(config, tagEndpoint, 'POST', {
+            tags: tagUpdates,
+          })
+
+          // Tag endpoint returns 204 on success (no body)
+          if (!tagResponse.ok && tagResponse.status !== 204) {
+            const tagError = await tagResponse.json()
+            console.error('Tag update failed:', tagError)
+            // Don't throw — member was upserted successfully
+          }
+
+          // Update family record with mailchimp sync info
+          if (payload.familyId) {
+            await supabaseSync
+              .from('families')
+              .update({
+                mailchimp_id: upsertData.id,
+                mailchimp_status: 'synced',
+                mailchimp_last_synced_at: new Date().toISOString(),
+              })
+              .eq('id', payload.familyId)
+          }
+
+          // Update sync log to success
+          if (syncLogId) {
+            await supabaseSync
+              .from('mailchimp_sync_log')
+              .update({
+                sync_status: 'success',
+                mailchimp_id: upsertData.id,
+                tag_applied: newTag,
+              })
+              .eq('id', syncLogId)
+          }
+
+          result = {
+            success: true,
+            mailchimpId: upsertData.id,
+            action: 'status_synced',
+            tag: newTag,
+            previousStatus: payload.old_status || null,
+          }
+        } catch (syncError) {
+          // Update sync log to failed
+          if (syncLogId) {
+            await supabaseSync
+              .from('mailchimp_sync_log')
+              .update({
+                sync_status: 'failed',
+                error_message: syncError instanceof Error ? syncError.message : String(syncError),
+              })
+              .eq('id', syncLogId)
+          }
+          throw syncError
         }
         break
       }

@@ -916,3 +916,24 @@ ALTER TABLE app_settings ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public invoice view by public_id" ON invoices
   FOR SELECT
   USING (public_id IS NOT NULL);
+
+-- ============================================================================
+-- MAILCHIMP SYNC LOG (added 2026-02-20)
+-- Tracks every sync_family_status call from T6 trigger → mailchimp edge function
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS mailchimp_sync_log (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  family_id uuid REFERENCES families(id) ON DELETE SET NULL,
+  old_status text,
+  new_status text,
+  sync_status text NOT NULL DEFAULT 'pending' CHECK (sync_status IN ('pending', 'success', 'failed')),
+  error_message text,
+  mailchimp_id text,
+  tag_applied text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_mailchimp_sync_log_family_id ON mailchimp_sync_log(family_id);
+CREATE INDEX idx_mailchimp_sync_log_status ON mailchimp_sync_log(sync_status) WHERE sync_status = 'failed';
+CREATE INDEX idx_mailchimp_sync_log_created_at ON mailchimp_sync_log(created_at DESC);

@@ -200,7 +200,7 @@ Lead-related tables (`lead_activities`, `lead_follow_ups`, `lead_campaign_engage
 - **DON'T** worry about stale invoice balances on payment transfer — T3 now recalculates both old and new invoices automatically. However, voiding/deleting invoices with payments should still be done carefully.
 - **DON'T** change the fuzzy match threshold (0.55) in `process_class_registration` without testing — catches typos (score ~0.62) while staying above sibling-to-sibling scores (0.3-0.4).
 - **DON'T** modify `create_revenue_records_on_payment()` without including the `location_id` CASE mapping (service code → location). New service codes must be added to both the trigger and the backfill.
-- **DON'T** forget `trigger_sync_family_status_to_mailchimp` fires on family status changes — it auto-syncs to Mailchimp via `pg_net`. When changing a family's status, the Mailchimp tags will be updated automatically.
+- **DON'T** forget `trigger_sync_family_status_to_mailchimp` fires on family status changes — it auto-syncs to Mailchimp via `pg_net`. When changing a family's status, the Mailchimp tags will be updated automatically. Sync results are logged to `mailchimp_sync_log` (pending/success/failed) — use `useMailchimpSyncLog()` to view.
 
 ### Database Schema Relationships
 

@@ -1459,8 +1459,10 @@ Same function as T4. Fires when an enrollment transitions INTO active/trial from
 - Mailchimp subscriber tags are swapped (old status tag removed, new status tag added)
 - Tag mapping: `active`/`trial` → `active-family`, `lead` → `lead`, `churned`/`paused` → `churned`
 
+**Sync logging:** Every `sync_family_status` call is logged to `mailchimp_sync_log` with status (`pending` → `success`/`failed`), error messages, and the Mailchimp tag applied. View with `useMailchimpSyncLog()` hook.
+
 **Gotchas:**
-- Uses `pg_net` (async HTTP) — failures are completely silent. No retry, no error logging in the DB.
+- Uses `pg_net` (async HTTP) — the trigger call itself is fire-and-forget, but the edge function now logs results to `mailchimp_sync_log`.
 - Only fires when `primary_email IS NOT NULL` (checked in function body, not WHEN clause).
 - Does NOT fire for `lead` status — only `active`, `trial`, `churned`, `paused`. Lead → active conversion triggers it because the new status is `active`.
 - Uses `SECURITY DEFINER` with a hardcoded service role key for the edge function call.

@@ -7783,3 +7783,43 @@ export function useSmsMedia() {
     },
   })
 }
+
+// ============================================================
+// Mailchimp Sync Log
+// ============================================================
+
+export function useMailchimpSyncLog(options?: { familyId?: string; status?: string; limit?: number }) {
+  return useQuery({
+    queryKey: ['mailchimp-sync-log', options?.familyId, options?.status, options?.limit],
+    queryFn: async () => {
+      // mailchimp_sync_log table — cast until db:types is regenerated
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let query = (supabase.from as any)('mailchimp_sync_log')
+        .select('*, family:families(display_name, primary_email)')
+        .order('created_at', { ascending: false })
+        .limit(options?.limit || 50)
+
+      if (options?.familyId) {
+        query = query.eq('family_id', options.familyId)
+      }
+      if (options?.status) {
+        query = query.eq('sync_status', options.status)
+      }
+
+      const { data, error } = await query
+      if (error) throw error
+      return data as Array<{
+        id: string
+        family_id: string | null
+        old_status: string | null
+        new_status: string | null
+        sync_status: 'pending' | 'success' | 'failed'
+        error_message: string | null
+        mailchimp_id: string | null
+        tag_applied: string | null
+        created_at: string
+        family: { display_name: string; primary_email: string } | null
+      }>
+    },
+  })
+}
